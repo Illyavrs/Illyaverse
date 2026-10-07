@@ -219,11 +219,14 @@ async function captureReview(page: Page, name: string) {
     await expect(page.locator('html')).toHaveClass(new RegExp(`\\b${theme}\\b`));
     const metrics = await page.evaluate(async () => {
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-      window.scrollTo(0, 0);
+      // Cancel any smooth scroll started by the result's focus or paging.
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
       await document.fonts.ready;
       await new Promise<void>((resolve) =>
         requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
       );
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       return {
         viewport_width: innerWidth,
         document_width: document.documentElement.scrollWidth,
@@ -369,9 +372,18 @@ test('official archive detail reuses actual osz downloads and independent paged 
     'href',
     `/beatmaps/${members[24].id}`,
   );
-  expect(state.membershipQueries).toEqual(['?page=1&page_size=24', '?page=2&page_size=24']);
+  // SWR intentionally revalidates on focus. Keep every request recorded while
+  // asserting page transitions independently of repeated same-page fetches.
+  const allowedPageQueries = ['?page=1&page_size=24', '?page=2&page_size=24'];
+  expect(
+    state.membershipQueries.filter(
+      (query, index, queries) => index === 0 || query !== queries[index - 1],
+    ),
+  ).toEqual(allowedPageQueries);
   await panel.getByRole('button', { name: state.copy.common.previous, exact: true }).click();
+  await expect(panel.locator('.package-difficulty-row')).toHaveCount(24);
   await captureReview(page, 'workflow-official-map-package-members');
+  for (const query of state.membershipQueries) expect(allowedPageQueries).toContain(query);
   assertClean(state);
 });
 
@@ -408,6 +420,7 @@ test('official set ID and archive file bounds block requests and preserve select
   const state = await fixtures(page);
   await page.goto('/beatmaps/import');
   await selectArchive(page);
+  const alert = page.locator('form.upload-form').getByRole('alert');
   for (const value of ['', '0', '2000000000', '1.5']) {
     await page.locator('#official_set_id').fill(value);
     expect(
@@ -420,8 +433,8 @@ test('official set ID and archive file bounds block requests and preserve select
       .evaluate((form) =>
         form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })),
       );
-    await expect(page.getByRole('alert')).toHaveText(state.copy.maps.errorOfficialSetId);
-    await expect(page.getByRole('alert')).toBeFocused();
+    await expect(alert).toHaveText(state.copy.maps.errorOfficialSetId);
+    await expect(alert).toBeFocused();
   }
   await page.locator('#official_set_id').focus();
   await page
@@ -429,7 +442,7 @@ test('official set ID and archive file bounds block requests and preserve select
     .evaluate((form) =>
       form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })),
     );
-  await expect(page.getByRole('alert')).toBeFocused();
+  await expect(alert).toBeFocused();
   await page.locator('#official_set_id').fill(String(setId));
   for (const file of [
     { ...archiveFile, name: 'single.osu' },
@@ -439,7 +452,7 @@ test('official set ID and archive file bounds block requests and preserve select
     await page
       .getByRole('button', { name: state.copy.maps.importArchiveAction, exact: true })
       .click();
-    await expect(page.getByRole('alert')).toHaveText(state.copy.maps.errorArchiveFile);
+    await expect(alert).toHaveText(state.copy.maps.errorArchiveFile);
   }
   // Allocate transient browser bytes, not a 64 MiB workspace artifact.
   await page.locator('#official_archive_file').evaluate((input: HTMLInputElement) => {
@@ -451,7 +464,7 @@ test('official set ID and archive file bounds block requests and preserve select
   await page
     .getByRole('button', { name: state.copy.maps.importArchiveAction, exact: true })
     .click();
-  await expect(page.getByRole('alert')).toHaveText(state.copy.maps.errorArchiveTooLarge);
+  await expect(alert).toHaveText(state.copy.maps.errorArchiveTooLarge);
   expect(
     await page
       .locator('#official_archive_file')
@@ -488,13 +501,14 @@ for (const locale of ['en', 'zh-TW', 'ja'] as const) {
     ] as const;
     await page.goto('/beatmaps/import');
     await selectArchive(page);
+    const alert = page.locator('form.upload-form').getByRole('alert');
     for (const [status, code, key] of cases) {
       state.outcomes.push({ status, code });
       await page
         .getByRole('button', { name: state.copy.maps.importArchiveAction, exact: true })
         .click();
-      await expect(page.getByRole('alert')).toHaveText(state.copy.maps[key]);
-      await expect(page.getByRole('alert')).toBeFocused();
+      await expect(alert).toHaveText(state.copy.maps[key]);
+      await expect(alert).toBeFocused();
       await expect(page.locator('#official_set_id')).toHaveValue(String(setId));
       expect(
         await page

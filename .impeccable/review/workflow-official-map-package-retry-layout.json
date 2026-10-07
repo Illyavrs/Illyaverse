@@ -1,0 +1,49 @@
+{
+  "provenance": "Intercepted official import fixtures; no real official credentials, package persistence or clients.",
+  "layouts": [
+    {
+      "layout": "desktop",
+      "filename": "workflow-official-map-package-retry-desktop-dark-en.png",
+      "viewport_width": 1440,
+      "document_width": 1440,
+      "scroll_y": 0,
+      "theme": "dark",
+      "sha256": "807295932a2f9df61158f115d748c15abfd99acbd3b7c29537502389cf41f79d",
+      "captured_at_utc": "2026-10-07T17:26:26.257400+00:00"
+    },
+    {
+      "layout": "desktop",
+      "filename": "workflow-official-map-package-retry-desktop-light-en.png",
+      "viewport_width": 1440,
+      "document_width": 1440,
+      "scroll_y": 0,
+      "theme": "light",
+      "sha256": "600d9235498f4c2952d0cbdb5bc1ee939c152e52511f3b916fbd4982ecd71ffc",
+      "captured_at_utc": "2026-10-07T17:26:26.557871+00:00"
+    },
+    {
+      "layout": "mobile",
+      "filename": "workflow-official-map-package-retry-mobile-dark-en.png",
+      "viewport_width": 390,
+      "document_width": 390,
+      "scroll_y": 0,
+      "theme": "dark",
+      "sha256": "5e254496fb1429848c7199e751f3d0c34f82c94e0eb31378766677d1e83b0f61",
+      "captured_at_utc": "2026-10-07T17:26:26.766601+00:00"
+    },
+    {
+      "layout": "mobile",
+      "filename": "workflow-official-map-package-retry-mobile-light-en.png",
+      "viewport_width": 390,
+      "document_width": 390,
+      "scroll_y": 0,
+      "theme": "light",
+      "sha256": "19a6d457fad5fff6d3d95d9344e1c248e6ac0db92d5b08ea17c92fb7a8e9b13e",
+      "captured_at_utc": "2026-10-07T17:26:26.967854+00:00"
+    }
+  ],
+  "source_ui_commit": "f2bbde5",
+  "source_proxy_commit": "cdc6eef",
+  "serendipity_image_id": "sha256:3fb96b85a2ccb0c48e20a8a67e1a91279c60fa670a6dd758b061799fcfdf5e91",
+  "browser_evidence": "data-official-archives/web-official-final.log"
+}
