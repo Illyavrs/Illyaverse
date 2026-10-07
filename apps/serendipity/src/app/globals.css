@@ -27,7 +27,7 @@
   --destructive: #f294a0;
   --border: #ffffff16;
   --input: #ffffff25;
-  --ring: var(--user-accent);
+  --ring: var(--readable-accent);
   --surface: rgb(12 12 12 / var(--panel-opacity));
   --surface-strong: rgb(12 12 12 / clamp(0, calc(var(--panel-opacity) + 0.15), 1));
   --page-ground: #000000;
@@ -132,7 +132,7 @@ textarea {
   caret-color: var(--readable-accent);
 }
 :focus-visible {
-  outline: 2px solid var(--user-accent);
+  outline: 2px solid var(--ring);
   outline-offset: 4px;
 }
 h1,
@@ -777,7 +777,10 @@ svg {
 .segmented button:hover {
   color: var(--foreground);
 }
-.mode-control button:disabled {
+.mode-control button:disabled,
+.appearance-controls .segmented button:disabled,
+.appearance-controls .swatches button:disabled,
+.appearance-controls input[type='color']:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -1447,20 +1450,23 @@ svg {
 .profile-banner-empty {
   margin-bottom: 28px;
 }
-.profile-pending {
+.profile-pending,
+.appearance-pending {
   display: flex;
   align-items: center;
   gap: 8px;
   margin: 12px 0;
 }
-.profile-pending svg {
+.profile-pending svg,
+.appearance-pending svg {
   width: 16px;
   height: 16px;
 }
 .profile-draft {
   margin: 12px 0;
 }
-.profile-form-error {
+.profile-form-error,
+.appearance-form-error {
   margin-bottom: 16px;
 }
 .country-input {

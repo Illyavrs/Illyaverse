@@ -26,7 +26,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const settings = useTranslations('settings');
   const pathname = usePathname();
   const locale = useLocale();
-  const { locale: setLocale, update } = useAppearance();
+  const { locale: setLocale, update, operation } = useAppearance();
   const { user, logout } = useSession();
   const { resolvedTheme } = useTheme();
   const [navOpen, setNavOpen] = useState(false);
@@ -86,6 +86,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               variant="ghost"
               size="icon"
               aria-label={t('appearance')}
+              disabled={operation !== null}
               onClick={() => update({ mode: resolvedTheme === 'dark' ? 'light' : 'dark' })}
               className="theme-toggle"
             >

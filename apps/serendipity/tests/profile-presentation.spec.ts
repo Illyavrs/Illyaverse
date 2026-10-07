@@ -90,6 +90,11 @@ async function range(page: Page, id: string, value: number) {
 
 async function capture(page: Page, name: string) {
   await page.evaluate(() => document.fonts.ready);
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
+  // Functional runs retain layout checks without invoking screenshot-only scrolling.
+  if (process.env.ILLYA_CAPTURE_WORKFLOW_REVIEW !== '1') return;
   await page.evaluate(() => {
     document.documentElement.style.setProperty('scroll-behavior', 'auto', 'important');
     document.body.style.setProperty('scroll-behavior', 'auto', 'important');
@@ -97,23 +102,16 @@ async function capture(page: Page, name: string) {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   });
   await page.mouse.move(0, 0);
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-      ),
-  );
-  await expect
-    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
-    .toBe(true);
-  if (process.env.ILLYA_CAPTURE_WORKFLOW_REVIEW === '1') {
-    await page.screenshot({
-      path: `../../.impeccable/review/profile-presentation-${name}.png`,
-      fullPage: true,
-      animations: 'disabled',
-    });
-  }
+  await expect.poll(() => page.evaluate(async () => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    return window.scrollY;
+  })).toBe(0);
+  await page.screenshot({
+    path: `../../.impeccable/review/profile-presentation-${name}.png`,
+    fullPage: true,
+    animations: 'disabled',
+  });
 }
 
 test('public profile color and banner position save, reload and stay separate from visitor appearance', async ({

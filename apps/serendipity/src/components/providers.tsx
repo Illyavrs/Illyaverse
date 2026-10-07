@@ -6,11 +6,13 @@ import {
   useContext,
   useEffect,
   useEffectEvent,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
 import { ThemeProvider, useTheme } from 'next-themes';
 import { useRouter } from 'next/navigation';
+import { useLocale } from 'next-intl';
 import useSWR, { SWRConfig } from 'swr';
 import { api, ApiError, fetcher } from '@/lib/api';
 import { isLocale, type Locale } from '@/i18n/config';
@@ -39,13 +41,20 @@ const SessionContext = createContext<Session>({
   refresh: async () => {},
   logout: async () => {},
 });
+type AppearanceOperation = 'save' | 'upload';
+type AppearanceFailure = { operation: 'save' } | { operation: 'upload'; file: File };
 type Appearance = {
   preferences: Preferences;
   ready: boolean;
   loadError: boolean;
+  operation: AppearanceOperation | null;
+  feedback: 'saved' | 'uploaded' | 'reset' | null;
+  failure: AppearanceFailure | null;
   reload: () => void;
   update: (values: Partial<Preferences>) => void;
   save: () => Promise<void>;
+  upload: (file: File) => Promise<void>;
+  retry: () => Promise<void>;
   reset: () => void;
   locale: (value: Locale) => Promise<void>;
 };
@@ -53,9 +62,14 @@ const AppearanceContext = createContext<Appearance>({
   preferences: defaults,
   ready: false,
   loadError: false,
+  operation: null,
+  feedback: null,
+  failure: null,
   reload: () => {},
   update: () => {},
   save: async () => {},
+  upload: async () => {},
+  retry: async () => {},
   reset: () => {},
   locale: async () => {},
 });
@@ -88,13 +102,24 @@ function AppearanceProvider({ children }: { children: ReactNode }) {
   const { user, loading } = useSession();
   const router = useRouter();
   const { setTheme } = useTheme();
-  const [preferences, setPreferences] = useState(defaults);
+  const currentLocale = useLocale();
+  const initialLocale = isLocale(currentLocale) ? currentLocale : defaults.locale;
+  const [preferences, setPreferences] = useState<Preferences>(() => ({
+    ...defaults,
+    locale: initialLocale,
+  }));
+  const preferencesRef = useRef(preferences);
+  const operationRef = useRef<AppearanceOperation | null>(null);
+  const [operation, setOperation] = useState<AppearanceOperation | null>(null);
+  const [feedback, setFeedback] = useState<Appearance['feedback']>(null);
+  const [failure, setFailure] = useState<AppearanceFailure | null>(null);
   const [loadedUserId, setLoadedUserId] = useState<number | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [revision, setRevision] = useState(0);
   const userId = user?.id;
   const applyPreferences = useEffectEvent((value: Partial<Preferences>, syncLocale = false) => {
     const valid = validate(value);
+    preferencesRef.current = valid;
     setPreferences(valid);
     setTheme(valid.mode);
     if (syncLocale && !document.cookie.includes(`illya_locale=${valid.locale}`)) {
@@ -107,12 +132,23 @@ function AppearanceProvider({ children }: { children: ReactNode }) {
       const raw = localStorage.getItem('illya_appearance');
       if (raw) {
         const cached = validate(JSON.parse(raw));
-        queueMicrotask(() => applyPreferences(cached));
+        queueMicrotask(() => applyPreferences({ ...cached, locale: preferencesRef.current.locale }));
       }
     } catch {
       localStorage.removeItem('illya_appearance');
     }
   }, []);
+  useEffect(() => {
+    if (isLocale(currentLocale)) {
+      queueMicrotask(() => {
+        if (preferencesRef.current.locale !== currentLocale) {
+          const next = { ...preferencesRef.current, locale: currentLocale };
+          preferencesRef.current = next;
+          setPreferences(next);
+        }
+      });
+    }
+  }, [currentLocale]);
   useEffect(() => {
     let active = true;
     if (userId !== undefined)
@@ -140,7 +176,17 @@ function AppearanceProvider({ children }: { children: ReactNode }) {
       .map((v) => parseInt(v, 16) / 255)
       .map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
     const luminance = rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
-    root.style.setProperty('--primary-contrast', luminance > 0.179 ? '#111111' : '#ffffff');
+    const darkLuminance = ((17 / 255 + 0.055) / 1.055) ** 2.4;
+    const darkContrast = (luminance + 0.05) / (darkLuminance + 0.05);
+    const lightContrast = 1.05 / (luminance + 0.05);
+    root.style.setProperty(
+      '--primary-contrast',
+      Math.max(darkContrast, lightContrast) < 4.5
+        ? '#000000'
+        : darkContrast >= lightContrast
+          ? '#111111'
+          : '#ffffff',
+    );
     root.style.setProperty('--radius', `${preferences.border_radius}px`);
     root.style.setProperty('--scene-blur', `${preferences.background_blur}px`);
     root.style.setProperty('--scene-dim', String(preferences.background_dim));
@@ -150,19 +196,80 @@ function AppearanceProvider({ children }: { children: ReactNode }) {
   }, [preferences]);
   const update = useCallback(
     (values: Partial<Preferences>) => {
-      setPreferences((p) => validate({ ...p, ...values }));
-      if (values.mode) setTheme(values.mode);
+      if (operationRef.current) return;
+      const next = validate({ ...preferencesRef.current, ...values });
+      preferencesRef.current = next;
+      setPreferences(next);
+      setFeedback(null);
+      if (values.mode) setTheme(next.mode);
     },
     [setTheme],
   );
+  async function runOperation(action: AppearanceFailure, task: () => Promise<void>) {
+    if (operationRef.current) return;
+    operationRef.current = action.operation;
+    setOperation(action.operation);
+    setFailure(null);
+    setFeedback(null);
+    try {
+      await task();
+      setFeedback(action.operation === 'save' ? 'saved' : 'uploaded');
+    } catch {
+      setFailure(action);
+    } finally {
+      operationRef.current = null;
+      setOperation(null);
+    }
+  }
   async function save() {
-    if (user) await api('/me/preferences', { method: 'PATCH', body: JSON.stringify(preferences) });
+    const p = preferencesRef.current;
+    const submitted = {
+      mode: p.mode,
+      accent_color: p.accent_color,
+      background_url: p.background_url,
+      background_blur: p.background_blur,
+      background_dim: p.background_dim,
+      panel_blur: p.panel_blur,
+      panel_opacity: p.panel_opacity,
+      border_radius: p.border_radius,
+    };
+    await runOperation({ operation: 'save' }, async () => {
+      if (user)
+        await api('/me/preferences', { method: 'PATCH', body: JSON.stringify(submitted) });
+    });
+  }
+  async function upload(file: File) {
+    if (!user) return;
+    await runOperation({ operation: 'upload', file }, async () => {
+      const data = new FormData();
+      data.set('file', file);
+      data.set('kind', 'background');
+      const result = await api<{ url: string }>('/me/media?kind=background', {
+        method: 'POST',
+        body: data,
+      });
+      const next = validate({ ...preferencesRef.current, background_url: result.url });
+      preferencesRef.current = next;
+      setPreferences(next);
+    });
+  }
+  async function retry() {
+    if (failure?.operation === 'save') await save();
+    else if (failure?.operation === 'upload') await upload(failure.file);
+  }
+  function reset() {
+    if (operationRef.current) return;
+    update({ ...defaults, locale: preferencesRef.current.locale });
+    setFailure(null);
+    setFeedback('reset');
   }
   async function locale(value: Locale) {
     if (user)
       await api('/me/preferences', { method: 'PATCH', body: JSON.stringify({ locale: value }) });
     document.cookie = `illya_locale=${value}; Path=/; Max-Age=31536000; SameSite=Lax`;
-    update({ locale: value });
+    const next = { ...preferencesRef.current, locale: value };
+    preferencesRef.current = next;
+    setPreferences(next);
     router.refresh();
   }
   return (
@@ -171,13 +278,18 @@ function AppearanceProvider({ children }: { children: ReactNode }) {
         preferences,
         ready: !loading && (!user || loadedUserId === user.id),
         loadError,
+        operation,
+        feedback,
+        failure,
         reload: () => {
           setLoadError(false);
           setRevision((r) => r + 1);
         },
         update,
         save,
-        reset: () => update(defaults),
+        upload,
+        retry,
+        reset,
         locale,
       }}
     >

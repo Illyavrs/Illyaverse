@@ -18,43 +18,22 @@ import { EmailVerificationControls } from './recovery';
 export function AppearanceControls({ compact = false }: { compact?: boolean }) {
   const t = useTranslations('settings');
   const c = useTranslations('common');
-  const { preferences: p, ready, loadError, reload, update, save, reset } = useAppearance();
+  const {
+    preferences: p,
+    ready,
+    loadError,
+    reload,
+    operation,
+    feedback,
+    failure,
+    update,
+    save,
+    upload,
+    retry,
+    reset,
+  } = useAppearance();
   const { user } = useSession();
-  const [busy, setBusy] = useState(false);
-  const [feedback, setFeedback] = useState('');
-  const [error, setError] = useState('');
-  async function persist() {
-    setBusy(true);
-    setError('');
-    try {
-      await save();
-      setFeedback(c('saved'));
-    } catch {
-      setError(c('serviceError'));
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function upload(file?: File) {
-    if (!file) return;
-    setBusy(true);
-    setError('');
-    const data = new FormData();
-    data.set('file', file);
-    data.set('kind', 'background');
-    try {
-      const result = await api<{ url: string }>('/me/media?kind=background', {
-        method: 'POST',
-        body: data,
-      });
-      update({ background_url: result.url });
-      setFeedback(t('imageUploaded'));
-    } catch {
-      setError(c('serviceError'));
-    } finally {
-      setBusy(false);
-    }
-  }
+  const busy = operation !== null;
   if (loadError) return <LoadError retry={reload} />;
   if (!ready) return <Loading />;
   return (
@@ -67,6 +46,7 @@ export function AppearanceControls({ compact = false }: { compact?: boolean }) {
               type="button"
               key={mode}
               aria-pressed={p.mode === mode}
+              disabled={busy}
               onClick={() => update({ mode })}
             >
               {t(mode)}
@@ -81,6 +61,7 @@ export function AppearanceControls({ compact = false }: { compact?: boolean }) {
             type="color"
             id={compact ? 'quick-accent' : 'accent'}
             value={p.accent_color}
+            disabled={busy}
             onChange={(e) => update({ accent_color: e.target.value })}
           />
           <span>{p.accent_color.toUpperCase()}</span>
@@ -92,6 +73,7 @@ export function AppearanceControls({ compact = false }: { compact?: boolean }) {
                 style={{ background: color }}
                 aria-label={color}
                 aria-pressed={p.accent_color === color}
+                disabled={busy}
                 onClick={() => update({ accent_color: color })}
               />
             ))}
@@ -110,9 +92,9 @@ export function AppearanceControls({ compact = false }: { compact?: boolean }) {
         />
         <p className="hint">{t('backgroundHint')}</p>
         <div className="actions">
-          <label className={`upload-button ${!user ? 'disabled' : ''}`}>
+          <label className={`upload-button ${!user || busy ? 'disabled' : ''}`}>
             <ImagePlus />
-            {t('uploadImage')}
+            {t(operation === 'upload' ? 'backgroundUploading' : 'uploadImage')}
             <input
               type="file"
               accept="image/png,image/jpeg,image/webp"
@@ -120,12 +102,16 @@ export function AppearanceControls({ compact = false }: { compact?: boolean }) {
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 e.target.value = '';
-                void upload(file);
+                if (file) void upload(file);
               }}
             />
           </label>
           {p.background_url && (
-            <Button variant="ghost" onClick={() => update({ background_url: null })}>
+            <Button
+              variant="ghost"
+              disabled={busy}
+              onClick={() => update({ background_url: null })}
+            >
               {t('removeBackground')}
             </Button>
           )}
@@ -154,6 +140,7 @@ export function AppearanceControls({ compact = false }: { compact?: boolean }) {
             max={max}
             step={1}
             value={[unit === '%' ? Math.round(p[key] * 100) : p[key]]}
+            disabled={busy}
             onValueChange={([value]) => update({ [key]: unit === '%' ? value / 100 : value })}
             aria-label={t(label)}
             aria-valuetext={`${unit === '%' ? Math.round(p[key] * 100) : p[key]}${unit}`}
@@ -162,28 +149,39 @@ export function AppearanceControls({ compact = false }: { compact?: boolean }) {
       ))}
       <p className="hint">{t('panelHint')}</p>
       <p className="hint">{user ? t('preview') : t('guest')}</p>
-      {error && (
-        <p className="form-error" role="alert">
-          {error}
+      {operation && (
+        <p className="hint appearance-pending" role="status">
+          <LoaderCircle className="spin" />
+          {t(operation === 'save' ? 'appearanceSaving' : 'backgroundUploading')}
         </p>
+      )}
+      {failure && (
+        <div className="appearance-form-error">
+          <p className="form-error" role="alert">
+            {t(failure.operation === 'save' ? 'appearanceSaveError' : 'backgroundUploadError')}
+          </p>
+          <Button variant="outline" disabled={busy} onClick={() => void retry()}>
+            {c('retry')}
+          </Button>
+        </div>
       )}
       {feedback && (
         <p className="form-success" role="status">
           <Check />
-          {feedback}
+          {feedback === 'saved'
+            ? c('saved')
+            : t(feedback === 'uploaded' ? 'imageUploaded' : 'resetDone')}
         </p>
       )}
       <div className="actions">
-        <Button onClick={persist} disabled={busy}>
-          {busy ? <LoaderCircle className="spin" /> : <Check />}
-          {c('save')}
+        <Button onClick={() => void save()} disabled={busy}>
+          {operation === 'save' ? <LoaderCircle className="spin" /> : <Check />}
+          {operation === 'save' ? t('appearanceSaving') : c('save')}
         </Button>
         <Button
           variant="ghost"
-          onClick={() => {
-            reset();
-            setFeedback(t('resetDone'));
-          }}
+          disabled={busy}
+          onClick={reset}
         >
           <RotateCcw />
           {t('reset')}

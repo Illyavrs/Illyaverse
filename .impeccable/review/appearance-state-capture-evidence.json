@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "scope": "Appearance state resilience; ordinary incumbent extension",
+  "project": "illya-web-smoke-35bfbd09486e5a04",
+  "fixture": "Synthetic intercepted appearance/account/media and disposable community API flows",
+  "log": "data-appearance-state/web-first.log",
+  "tests": 8,
+  "result": "pass",
+  "serendipityImage": "sha256:e0123955893c87ffee8add7dd8330c00a567bd665b1a8947b90f6ffcaf264805",
+  "captureRule": "Document top, cleared focus, disabled smooth scrolling, two settled frames; pending sheet is viewport-sized, other captures full-page",
+  "captures": [
+    {
+      "file": "appearance-state-desktop-dark-zhTW-pending.png",
+      "sha256": "5c0dadb73088918467a222d1ccb78d8cc79f91e2d59a0c93ff9b2b32482b3c72",
+      "width": 1440,
+      "height": 1629,
+      "capturedAt": "2026-10-07T19:33:09.8357257Z"
+    },
+    {
+      "file": "appearance-state-desktop-dark-zhTW-pending-sheet.png",
+      "sha256": "54ffb9d7bfa0087ac7a4df507c05f00f51b7d1d26fc0adb573d517922e8ceb89",
+      "width": 1440,
+      "height": 1000,
+      "capturedAt": "2026-10-07T19:33:10.0118904Z"
+    },
+    {
+      "file": "appearance-state-mobile-light-en-save-error.png",
+      "sha256": "3abd8961f5dd5ee195808527889224eb2ef96cfe1113799d0481cb8ffb8bbcf3",
+      "width": 390,
+      "height": 1724,
+      "capturedAt": "2026-10-07T19:33:12.8423279Z"
+    },
+    {
+      "file": "appearance-state-mobile-dark-ja-guest-reset.png",
+      "sha256": "cc3e6a4aa977e14b496ab28b17f53d577bb11275693d041a5a90ab74445c173d",
+      "width": 390,
+      "height": 1652,
+      "capturedAt": "2026-10-07T19:33:13.7402853Z"
+    },
+    {
+      "file": "appearance-state-mobile-dark-ja-upload-error.png",
+      "sha256": "4b145b38f6c97b5fd7d0353744f465dd27d100c3a0015c7fea65d0ae6fffc378",
+      "width": 390,
+      "height": 1747,
+      "capturedAt": "2026-10-07T19:33:15.3599098Z"
+    }
+  ],
+  "sources": [
+    {
+      "path": "apps/serendipity/src/components/providers.tsx",
+      "sha256": "59e214bae677c7719126ed1aab57ca30f67547f67ce544155d61d422e2c43b2a"
+    },
+    {
+      "path": "apps/serendipity/src/components/shell.tsx",
+      "sha256": "002d3376e252a45a4f2c5e4a42f2addf704849fe2a0262bb77c751ec2b2b2492"
+    },
+    {
+      "path": "apps/serendipity/src/features/settings.tsx",
+      "sha256": "c2e080312a8b26669f12d75835c8b7cbbead7b0ae5116b701b835a5916bb08dd"
+    },
+    {
+      "path": "apps/serendipity/src/app/globals.css",
+      "sha256": "7c6d6112fb3aa928f7d0a05fee3a2f3c3cc269835755e9b0ba1917cd88d6013e"
+    },
+    {
+      "path": "apps/serendipity/messages/en.json",
+      "sha256": "1baeb4da755b844b0a5179de09844cd966c4872944e0e09281855e087538a47c"
+    },
+    {
+      "path": "apps/serendipity/messages/ja.json",
+      "sha256": "b94adefb6b74acb5b2c864bbafa16a123b5c88441575f61a2f3439e5be58dbae"
+    },
+    {
+      "path": "apps/serendipity/messages/zh-TW.json",
+      "sha256": "8000d30cebd6cb2898773c1174f9557d1a036f6547ca58e9586a0a767a79efa2"
+    }
+  ]
+}
