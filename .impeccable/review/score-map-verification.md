@@ -26,7 +26,15 @@ Scope: original local extensions of score detail, score tables, public map disco
 | PostgreSQL | `sha256:1bea307dfb3ee30541a7acf7de14b58bcd6948da98e5d31a04c627c4d35ec64b` |
 | Caddy | `sha256:f77f856a30f0004200b36b322d61da17fade31e24875699d77fb968399b9eb77` |
 
-Ignored owned logs/helpers are retained under `data-score-map-controls/`. Deployment results will be added only after the backup-guarded update and retained-data/runtime checks finish.
+Ignored owned logs/helpers are retained under `data-score-map-controls/`.
+
+## Retained local deployment
+
+After the implementation and image gates passed, feature commit `9069844` was deployed to both existing stacks with the exact pins above. The native activity preflight was quiet (zero online stable/lazer sessions and zero received local-room receipts), and it was checked again after writers stopped.
+
+Custom-format PostgreSQL dumps and shared-data tar archives were verified and retained under `data-score-map-controls/before-score-map-controls-20261007T212040Z-{main,client}.*`. No existing backup was overwritten. No migration ran: both databases retain successful versions 1–19 and no failed migration. The main stack retains two users, zero maps and zero scores; the client-test stack retains two users, 44 maps and zero scores. Complete account/profile/preferences, beatmap, filename-alias, message/private-message, relationship/read-marker and score fingerprints, plus official archive/member counts, are unchanged.
+
+All ten running services are healthy and their application pins match the verified images. Both stacks' PostgreSQL and Caddy container IDs and image pins are unchanged. Post-update read-only HTTP checks passed for chat, channels and map catalogue; unauthenticated private conversations remain 401. HTTPS checks use only the existing CA as a request-local certificate and a request-local `--resolve`; trust and hosts are untouched. Runtime and deployment logs are retained in the same ignored evidence directory.
 
 ## Limits
 
