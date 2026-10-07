@@ -109,6 +109,10 @@ PostgreSQL integration checks and two existing native-artifact vectors. The
 populated upgrade, exact retries, ownership/conflict/cleanup, live authority,
 300-member native sets, canonical tokens, rooms and legacy processed receipts
 are covered. Rustfmt, all-target Clippy with warnings denied, and six migration
-source/checksum tests pass. Final-image and deployment checks are pending.
+source/checksum tests pass. Final Docker images pass 337 isolated HTTP requests
+in 40 categories, including canonical pending map/chart identities and unchanged
+ranked score/PP for pending submissions. Both local stacks run those image IDs
+and migration 0016 with retained-data fingerprints unchanged. Fresh DB/file
+backups and the complete evidence are recorded in [verification](verification.md).
 Real stable/lazer map search, download, gameplay and submission require separate
 user-operated client checks.
