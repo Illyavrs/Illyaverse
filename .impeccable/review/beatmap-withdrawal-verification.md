@@ -59,6 +59,17 @@ Both website fixture projects (`illya-web-smoke-1bda38cbbaad93f1` and `illya-web
 
 ## Retained deployment and native-client boundary
 
-The retained main/client stacks have not yet been upgraded to migration 0020 for this feature. Deployment requires quiet native sessions, verified image pins and fresh database/shared-media backups, then fingerprint/count checks and read-only runtime verification. No test set is withdrawn in the retained community databases.
+Source commit `370adda07e8e2fd9f4119d7d53b9c71a58461c0b` was deployed to both retained local stacks after all gates above. The quiet-session preflight passed before and after stopping writers. Fresh backups were created with UTC stem `before-beatmap-withdrawal-20261007T230233Z`: each project has a PG custom-format dump, shared-data gzip tar and before snapshot in the ignored `data-beatmap-withdrawal` directory. Database dumps passed PGDMP magic and `pg_restore --list`; both media archives passed `tar -tzf`. Older backups remain retained. No restore was performed.
+
+| Retained project | Users before/after | Maps before/after | Scores before/after | Successful schema |
+| --- | --- | --- | --- | --- |
+| `illyaverse` | 2 / 2 | 0 / 0 | 0 / 0 | 0001–0020, no failures |
+| `illyaverse-client-test` | 2 / 2 | 44 / 44 | 0 / 0 | 0001–0020, no failures |
+
+Both deployments verified empty initial availability state and active counts matching all retained maps. User/profile-preference, map, alias, community message/private-message/relationship/read-marker and score fingerprints were unchanged, as were package/archive/member counts. No community set was withdrawn for testing.
+
+All ten retained containers were healthy, and all six application containers ran the exact pins recorded above. The PostgreSQL and Caddy container IDs and images remained unchanged: main PostgreSQL `5d14715b1d58`, Caddy `1c644bc3abcf`; client-test PostgreSQL `0d0f8bcd0c55`, Caddy `d065387aa23f`.
+
+The final read-only runtime gate passed **16 HTTP assertions** across `http://localhost:3000` and `https://illya.test`: chat, channels, unauthenticated private conversations, beatmap pages/lists, public profile best, active-only catalogue access and unauthenticated withdrawn-admin denial. TLS used the existing public Caddy CA only for each curl request, with an explicit loopback resolve; it did not change machine trust or hosts. Local logs are `deployment.log` and `runtime-verification.log`.
 
 Real stable gameplay/submission and stock-lazer bridge behavior remain pending human client verification. The existing diagnostic retry request remains pending; no additional client run, hosts/CA change, trust modification or native process control was performed by these gates. This feature's passing server evidence does not complete the overall Illyaverse goal or prove all native protocol/client versions.
