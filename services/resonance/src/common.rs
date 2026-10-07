@@ -83,7 +83,10 @@ pub(crate) async fn account_in_tx(
     account_on_connection(tx, id).await
 }
 
-async fn account_on_connection(db: &mut PgConnection, id: i64) -> Result<Account, ApiError> {
+pub(crate) async fn account_on_connection(
+    db: &mut PgConnection,
+    id: i64,
+) -> Result<Account, ApiError> {
     let row = sqlx::query("SELECT id,username,country,avatar_url,joined_at,(EXISTS(SELECT 1 FROM bancho_sessions WHERE user_id=users.id AND expires_at>now()) OR EXISTS(SELECT 1 FROM lazer_sessions WHERE user_id=users.id AND access_expires_at>now() AND last_seen_at>now()-interval '3 minutes')) AS is_online FROM users WHERE id=$1 AND NOT is_restricted").bind(id).fetch_optional(&mut *db).await?.ok_or(ApiError(StatusCode::UNAUTHORIZED,"invalid_account"))?;
     let permissions = sqlx::query_scalar::<_,String>("SELECT DISTINCT unnest(r.permissions) FROM roles r JOIN user_roles ur ON ur.role_id=r.id WHERE ur.user_id=$1").bind(id).fetch_all(&mut *db).await?;
     Ok(Account {

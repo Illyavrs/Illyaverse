@@ -618,7 +618,8 @@ pub async fn handle(
         }
         87 => {
             let target = integer(payload)?;
-            let target_account = crate::common::account(state, i64::from(target)).await?;
+            let target_account =
+                crate::common::account_on_connection(&mut *db, i64::from(target)).await?;
             let blocked:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM user_relationships WHERE ((user_id=$1 AND target_id=$2) OR (user_id=$2 AND target_id=$1)) AND relation_type='block')").bind(user.id).bind(target_account.id).fetch_one(&mut *db).await?;
             if blocked {
                 return Err(ApiError(StatusCode::FORBIDDEN, "relationship_blocked"));
@@ -734,7 +735,7 @@ async fn spectate(
             if host == user.id {
                 return Err(invalid());
             }
-            crate::common::account(state, host).await?;
+            crate::common::account_on_connection(&mut *db, host).await?;
             let available:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM bancho_sessions WHERE user_id=$1 AND expires_at>now() AND spectator_host_id IS NULL)").bind(host).fetch_one(&mut *db).await?;
             let blocked:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM user_relationships WHERE ((user_id=$1 AND target_id=$2) OR (user_id=$2 AND target_id=$1)) AND relation_type='block')").bind(user.id).bind(host).fetch_one(&mut *db).await?;
             if !available || blocked {

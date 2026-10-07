@@ -167,10 +167,11 @@ async fn login(state: &AppState, client: &str, body: &[u8]) -> Result<Response, 
         .bind(uuid::Uuid::new_v4()).bind(common::token_hash(&token)).bind(player.id).bind(Utc::now()+Duration::seconds(180)).bind(last_chat).bind(last_dm).bind(&channel_ids).bind(i16::from(login.utc_offset)).bind(login.block_non_friend_dms).bind(json!(UserAction::default())).bind(&login.client_version).bind(common::token_hash(&login.client_hashes)).execute(&mut *tx).await?;
     tx.commit().await?;
     append_presence(&mut output, &player, login.utc_offset, 0)?;
-    append(
-        &mut output,
-        stats(state, &player, UserAction::default()).await?.packet(),
-    )?;
+    let self_stats = {
+        let mut connection = state.pool.acquire().await?;
+        stats_on_connection(&mut connection, &player, UserAction::default()).await?
+    };
+    append(&mut output, self_stats.packet())?;
     let online = sqlx::query("SELECT user_id,utc_offset,action FROM bancho_sessions WHERE expires_at>now() AND user_id<>$1 LIMIT 1000").bind(player.id).fetch_all(&state.pool).await?;
     for session in online {
         if let Ok(other) = common::account(state, session.get("user_id")).await {
@@ -217,16 +218,16 @@ fn append_presence(
     )
 }
 
-async fn stats(
-    state: &AppState,
+async fn stats_on_connection(
+    db: &mut sqlx::PgConnection,
     player: &Account,
     action: UserAction,
 ) -> Result<UserStats, ApiError> {
     let mode = i16::from(action.mode);
     let variant = ScoreVariant::from_legacy(action.mode, action.mods)
         .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_score_variant"))?;
-    let row = crate::score_aggregates::lifetime(&state.pool, player.id, mode, variant).await?;
-    let ranking = crate::score_aggregates::ranking(&state.pool, player.id, mode, variant).await?;
+    let row = crate::score_aggregates::lifetime(&mut *db, player.id, mode, variant).await?;
+    let ranking = crate::score_aggregates::ranking(&mut *db, player.id, mode, variant).await?;
     let pp: f64 = ranking.get("pp");
     Ok(UserStats {
         user_id: id32(player.id)?,
@@ -244,8 +245,45 @@ async fn stats(
 
 async fn poll(state: &AppState, token: &str, body: &[u8]) -> Result<Response, ApiError> {
     let packets = wire::decode_packets(body)?;
+    // The relationship rate budget also bounds the rows a crafted batch may
+    // lock. Validate every friend payload before starting any operation.
+    let mut friend_targets = Vec::new();
+    for packet in &packets {
+        if matches!(
+            packet.id,
+            wire::client::FRIEND_ADD | wire::client::FRIEND_REMOVE
+        ) {
+            let mut reader = Reader::new(packet.payload);
+            friend_targets.push(i64::from(reader.i32()?));
+            reader.finish()?;
+        }
+    }
+    if friend_targets.len() > 60 {
+        return Err(ApiError(StatusCode::TOO_MANY_REQUESTS, "rate_limited"));
+    }
     let mut tx = state.pool.begin().await?;
-    let session = sqlx::query("SELECT user_id,channels,last_chat_id,last_dm_id,utc_offset,action FROM bancho_sessions WHERE token_hash=$1 AND expires_at>now() FOR UPDATE").bind(common::token_hash(token)).fetch_optional(&mut *tx).await?;
+    let token_hash = common::token_hash(token);
+    // This first read is only a lock-order hint. The token is rechecked under
+    // its session lock after the user locks, matching password reset/login and
+    // other relationship writers. No second transaction reacquires those rows.
+    let user_id = sqlx::query_scalar::<_, i64>(
+        "SELECT user_id FROM bancho_sessions WHERE token_hash=$1 AND expires_at>now()",
+    )
+    .bind(&token_hash)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let locked_users = if let Some(user_id) = user_id {
+        friend_targets.push(user_id);
+        friend_targets.sort_unstable();
+        friend_targets.dedup();
+        sqlx::query_scalar::<_, i64>("SELECT id FROM users WHERE id=ANY($1) ORDER BY id FOR UPDATE")
+            .bind(&friend_targets)
+            .fetch_all(&mut *tx)
+            .await?
+    } else {
+        Vec::new()
+    };
+    let session = sqlx::query("SELECT user_id,channels,last_chat_id,last_dm_id,utc_offset,action FROM bancho_sessions WHERE token_hash=$1 AND user_id=$2 AND expires_at>now() FOR UPDATE").bind(&token_hash).bind(user_id).fetch_optional(&mut *tx).await?;
     let Some(session) = session else {
         let mut output = wire::int_packet(wire::server::RESTART, 0)?;
         append(
@@ -257,7 +295,7 @@ async fn poll(state: &AppState, token: &str, body: &[u8]) -> Result<Response, Ap
         )?;
         return Ok(binary(output, None));
     };
-    let player = common::account(state, session.get("user_id")).await?;
+    let player = common::account_in_tx(&mut tx, session.get("user_id")).await?;
     crate::multiplayer::refresh_spectator(&mut tx, player.id).await?;
     let mut channels: Vec<i64> = session.get("channels");
     let mut action: UserAction = serde_json::from_value(session.get("action")).unwrap_or_default();
@@ -295,24 +333,29 @@ async fn poll(state: &AppState, token: &str, body: &[u8]) -> Result<Response, Ap
                 action = UserAction::decode(packet.payload)?;
                 append(
                     &mut output,
-                    stats(state, &player, action.clone()).await?.packet(),
+                    stats_on_connection(&mut tx, &player, action.clone())
+                        .await?
+                        .packet(),
                 )?;
             }
             wire::client::REQUEST_STATUS_UPDATE => {
                 append(
                     &mut output,
-                    stats(state, &player, action.clone()).await?.packet(),
+                    stats_on_connection(&mut tx, &player, action.clone())
+                        .await?
+                        .packet(),
                 )?;
             }
             wire::client::FRIEND_ADD | wire::client::FRIEND_REMOVE => {
                 let mut reader = Reader::new(packet.payload);
                 let target = i64::from(reader.i32()?);
                 reader.finish()?;
-                common::change_relationship(
+                change_friend_in_tx(
                     state,
+                    &mut tx,
+                    &locked_users,
                     player.id,
                     target,
-                    "friend",
                     packet.id == wire::client::FRIEND_REMOVE,
                 )
                 .await?;
@@ -446,7 +489,7 @@ async fn poll(state: &AppState, token: &str, body: &[u8]) -> Result<Response, Ap
                 }
                 for id in ids {
                     let Some(online) = sqlx::query("SELECT action,utc_offset FROM bancho_sessions WHERE user_id=$1 AND expires_at>now()").bind(i64::from(id)).fetch_optional(&mut *tx).await? else {continue};
-                    let Ok(other) = common::account(state, i64::from(id)).await else {
+                    let Ok(other) = common::account_in_tx(&mut tx, i64::from(id)).await else {
                         continue;
                     };
                     let other_action =
@@ -454,7 +497,9 @@ async fn poll(state: &AppState, token: &str, body: &[u8]) -> Result<Response, Ap
                     if packet.id == wire::client::USER_STATS_REQUEST {
                         append(
                             &mut output,
-                            stats(state, &other, other_action).await?.packet(),
+                            stats_on_connection(&mut tx, &other, other_action)
+                                .await?
+                                .packet(),
                         )?;
                     } else {
                         append_presence(
@@ -548,6 +593,68 @@ async fn poll(state: &AppState, token: &str, body: &[u8]) -> Result<Response, Ap
         .await?;
     tx.commit().await?;
     Ok(binary(output, None))
+}
+
+/// The poll has already locked the actor and every friend target in ID order,
+/// before locking its Bancho session. Mutations and notifications share that
+/// transaction so failed/revoked polls cannot leave committed social changes.
+async fn change_friend_in_tx(
+    state: &AppState,
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    locked_users: &[i64],
+    user_id: i64,
+    target_id: i64,
+    remove: bool,
+) -> Result<(), ApiError> {
+    if !common::account_in_tx(tx, user_id)
+        .await?
+        .can("social.manage")
+    {
+        return Err(ApiError(
+            StatusCode::FORBIDDEN,
+            "social_permission_required",
+        ));
+    }
+    if user_id == target_id {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_relationship"));
+    }
+    common::rate_limit(state, format!("relationships:{user_id}"), 60).await?;
+    // A user inserted after the prelock query is not a valid target in this
+    // request: acquiring its FK lock now would invert the session/user order.
+    if locked_users.binary_search(&target_id).is_err() {
+        return Err(ApiError(StatusCode::NOT_FOUND, "user_not_found"));
+    }
+    let target_exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 AND NOT is_restricted)")
+            .bind(target_id)
+            .fetch_one(&mut **tx)
+            .await?;
+    if !target_exists {
+        return Err(ApiError(StatusCode::NOT_FOUND, "user_not_found"));
+    }
+    if remove {
+        sqlx::query("DELETE FROM user_relationships WHERE user_id=$1 AND target_id=$2 AND relation_type='friend'")
+            .bind(user_id).bind(target_id).execute(&mut **tx).await?;
+    } else {
+        let blocked: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM user_relationships WHERE ((user_id=$1 AND target_id=$2) OR (user_id=$2 AND target_id=$1)) AND relation_type='block')")
+            .bind(user_id).bind(target_id).fetch_one(&mut **tx).await?;
+        if blocked {
+            return Err(ApiError(StatusCode::FORBIDDEN, "relationship_blocked"));
+        }
+        let count: i64 = sqlx::query_scalar("SELECT count(*) FROM user_relationships WHERE user_id=$1 AND target_id<>$2 AND relation_type='friend'")
+            .bind(user_id).bind(target_id).fetch_one(&mut **tx).await?;
+        if count >= 4096 {
+            return Err(ApiError(StatusCode::BAD_REQUEST, "friend_limit_reached"));
+        }
+        sqlx::query("INSERT INTO user_relationships(user_id,target_id,relation_type) VALUES($1,$2,'friend') ON CONFLICT(user_id,target_id) DO UPDATE SET relation_type=EXCLUDED.relation_type")
+            .bind(user_id).bind(target_id).execute(&mut **tx).await?;
+    }
+    for id in [user_id, target_id] {
+        let packet = wire::friends_list(&common::friend_ids_in_tx(tx, id).await?)?;
+        sqlx::query("INSERT INTO bancho_packet_queue(user_id,payload) SELECT $1,$2 WHERE EXISTS(SELECT 1 FROM bancho_sessions WHERE user_id=$1 AND expires_at>now())")
+            .bind(id).bind(packet).execute(&mut **tx).await?;
+    }
+    Ok(())
 }
 
 async fn web_auth(state: &AppState, query: &HashMap<String, String>) -> Result<Account, ApiError> {

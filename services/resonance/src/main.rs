@@ -12,6 +12,8 @@ mod relax_tests;
 mod replay_capture;
 mod score_aggregates;
 mod signalr;
+#[cfg(test)]
+mod social_session_tests;
 mod stable;
 mod stable_scores;
 

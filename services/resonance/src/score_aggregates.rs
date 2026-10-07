@@ -3,8 +3,8 @@
 use illya_domain::ScoreVariant;
 use sqlx::{PgPool, postgres::PgRow};
 
-pub(crate) async fn lifetime(
-    pool: &PgPool,
+pub(crate) async fn lifetime<'e>(
+    db: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
     user: i64,
     mode: i16,
     variant: ScoreVariant,
@@ -16,11 +16,11 @@ pub(crate) async fn lifetime(
          COALESCE(avg(accuracy),0)::float8 accuracy,COALESCE(max(max_combo),0)::integer combo,
          COALESCE(sum(COALESCE((hit_counts->>'n300')::bigint,0)+COALESCE((hit_counts->>'n100')::bigint,0)+COALESCE((hit_counts->>'misses')::bigint,0)+CASE WHEN mode<>1 THEN COALESCE((hit_counts->>'n50')::bigint,0) ELSE 0 END+CASE WHEN mode=3 THEN COALESCE((hit_counts->>'geki')::bigint,0) ELSE 0 END+CASE WHEN mode IN(2,3) THEN COALESCE((hit_counts->>'katu')::bigint,0) ELSE 0 END),0)::bigint hits
          FROM scores WHERE user_id=$1 AND mode=$2 AND score_variant=$3 AND verification='verified'",
-    ).bind(user).bind(mode).bind(variant.as_str()).fetch_one(pool).await
+    ).bind(user).bind(mode).bind(variant.as_str()).fetch_one(db).await
 }
 
-pub(crate) async fn ranking(
-    pool: &PgPool,
+pub(crate) async fn ranking<'e>(
+    db: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
     user: i64,
     mode: i16,
     variant: ScoreVariant,
@@ -48,7 +48,7 @@ pub(crate) async fn ranking(
            FROM users u LEFT JOIN pp_totals t ON t.user_id=u.id LEFT JOIN score_totals s ON s.user_id=u.id
            WHERE NOT u.is_restricted
          ) SELECT * FROM placed WHERE id=$1",
-    ).bind(user).bind(mode).bind(variant.as_str()).fetch_one(pool).await
+    ).bind(user).bind(mode).bind(variant.as_str()).fetch_one(db).await
 }
 
 pub(crate) async fn ranking_page(
