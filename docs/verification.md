@@ -16,7 +16,13 @@ The rebuilt Resonance image `sha256:f50992f1a2170ab38d1f830269c4eaf8876520a779a6
 
 The owned protocol containers, network, volumes and generated temporary environment were verified removed. Existing compiler caches, retained data and backups were preserved. Detailed ignored evidence is in `data-multipart-status/source-gate.log`, `build-resonance.log` and `protocol-final.log`.
 
-Serendipity `sha256:17c76ab45378d8e08d530c5d92fcc6571b46b2da4902aec37ea7c370ffe66ed8` was rebuilt to include the protocol status-policy paragraph in its allowlisted documentation. No frontend layout, styling, translations or application source changed. Retained deployment and read-only runtime checks are pending and will be recorded after execution.
+Serendipity `sha256:17c76ab45378d8e08d530c5d92fcc6571b46b2da4902aec37ea7c370ffe66ed8` was rebuilt to include the protocol status-policy paragraph in its allowlisted documentation. No frontend layout, styling, translations or application source changed.
+
+Source commit `8c7f567c3d4701ded97e2c86ab10af2373cf3779` was deployed to both retained local stacks after quiet preflights, stopping writers and validated fresh database/shared-data backups with UTC stem `before-multipart-status-20261007T232055Z`. PGDMP magic, `pg_restore --list` and `tar -tzf` passed. An earlier helper attempt at `20261007T231945Z` stopped before image replacement because native command redirection lacked a separating space; that helper syntax was corrected and every partial/older backup was retained. No restore was performed.
+
+All ten retained services were healthy on the exact three application pins above. PostgreSQL and Caddy images/container IDs remained unchanged. Schema remains exactly successful 0001–0020 with no failures; main retains 2 users/0 maps/0 scores, client-test retains 2 users/44 maps/0 scores. Both have unchanged availability rows/counts and active counts. Full user/profile-preference, map, alias, score, channel/message/private-message/relationship/read-marker and availability fingerprints, plus retained package/archive counts, were preserved.
+
+The final runtime gate passed **18 read-only HTTP assertions** across localhost and CA-verified `https://illya.test`, including the two public `/docs/protocol` responses containing the shipped status-policy paragraph. TLS used the existing public CA and loopback resolve only for the requests; hosts and machine trust were unchanged. Ignored evidence is in `data-multipart-status/deployment-corrected.log`, `runtime-verification.log` and the dated backup snapshots.
 
 This independent correction does not explain the previously recorded real part-14 scalar-limit 413. The pending human diagnostic retry has not produced new native evidence, so real stable submission and stock-lazer gameplay remain unverified. No native client, hosts, trust store or security setting was controlled by these gates.
 
