@@ -1,0 +1,8 @@
+# Optional host-side Rust development and integration tests. Keep this off public deployments.
+services:
+  postgres:
+    ports:
+      - 127.0.0.1:15432:5432
+  sanctuary:
+    ports:
+      - 127.0.0.1:8080:8080

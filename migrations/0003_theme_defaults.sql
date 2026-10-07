@@ -1,0 +1,1 @@
+ALTER TABLE users ALTER COLUMN accent_color SET DEFAULT '#f28eb6';

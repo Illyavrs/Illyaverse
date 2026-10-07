@@ -1,0 +1,39 @@
+# Local native-client HTTPS test stack. Requires Docker Compose 2.24.4+.
+# Always use --env-file .env.client-test.local -p illyaverse-client-test
+# with BOTH -f compose.yaml -f compose.client-test.yaml.
+name: illyaverse-client-test
+
+services:
+  sanctuary:
+    environment:
+      PUBLIC_ORIGIN: https://illya.test
+      COOKIE_SECURE: "true"
+      TRUSTED_PROXY_CIDRS: 172.30.92.10/32,172.30.92.11/32
+  resonance:
+    environment:
+      ILLYA_DOMAIN: illya.test
+      TRUSTED_PROXY_CIDRS: 172.30.92.10/32
+    ports: !reset []
+  serendipity:
+    networks:
+      default:
+        ipv4_address: 172.30.92.11
+  caddy:
+    environment:
+      ILLYA_DOMAIN: illya.test
+    ports: !override
+      - 127.0.0.1:80:80
+      - 127.0.0.1:443:443
+    volumes:
+      - ./infra/Caddyfile.client-test:/etc/caddy/Caddyfile:ro
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8088/healthz]
+    networks:
+      default:
+        ipv4_address: 172.30.92.10
+
+networks:
+  default:
+    ipam:
+      config: !override
+        - subnet: 172.30.92.0/24

@@ -1,0 +1,81 @@
+name: Illyaverse CI
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: illya
+          POSTGRES_PASSWORD: illyaverse-ci-only
+          POSTGRES_DB: illyaverse_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U illya -d illyaverse_ci"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo test --workspace --locked
+      - run: cargo test -p sanctuary persistence_and_permissions --locked -- --ignored
+        env:
+          ILLYA_TEST_DATABASE_URL: postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci
+      - run: cargo test -p resonance signalr_http_websocket_and_sse --locked -- --ignored
+        env:
+          ILLYA_TEST_DATABASE_URL: postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  serendipity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+
+  containers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: sh infra/setup.sh
+      - run: docker compose config --quiet
+      - run: docker compose -f compose.yaml -f compose.production.yaml config --quiet
+      - run: docker compose -f compose.yaml -f compose.dev.yaml config --quiet
+      - run: docker compose -f compose.yaml -f compose.client-test.yaml config --quiet
+      - run: node infra/validate-compose.mjs
+      - run: node --test infra/protocol-smoke.test.mjs
+      - run: docker compose build
+      - run: docker compose up -d --wait --wait-timeout 120
+      - run: curl --fail --retry 5 --retry-delay 2 http://localhost:3000/api/v1/status
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+        working-directory: apps/serendipity
+      - run: python3 -m venv .protocol-venv
+      - run: .protocol-venv/bin/python -m pip install -r services/resonance/tests/requirements.txt
+      - run: node infra/protocol-smoke.mjs
+        env:
+          ILLYA_ALLOW_DISPOSABLE_TEST: '1'
+      - if: always()
+        run: docker compose logs --tail 100
+      - if: always()
+        run: docker compose down

@@ -1,0 +1,15 @@
+node_modules/
+.next/
+.swc-cache/
+target/
+.env
+.env.*.local
+data/
+data-*/
+.test-deps/
+.protocol-venv/
+*.log
+.impeccable/mocks/
+.impeccable/review/*.png
+test-results/
+playwright-report/

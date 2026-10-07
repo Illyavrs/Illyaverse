@@ -1,0 +1,161 @@
+name: illyaverse
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: illya
+      POSTGRES_DB: illyaverse
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run infra/setup.ps1 or infra/setup.sh first}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --data-checksums
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U illya -d illyaverse"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  sanctuary:
+    image: illyaverse/sanctuary:local
+    build:
+      context: .
+      dockerfile: services/sanctuary/Dockerfile
+    init: true
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://illya:${POSTGRES_PASSWORD:?Run setup first}@postgres:5432/illyaverse
+      SESSION_SECRET: ${SESSION_SECRET:?Run setup first}
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?Run setup first}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:3000}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      BIND_ADDRESS: 0.0.0.0:8080
+      TRUSTED_PROXY_CIDRS: 172.30.91.10/32,172.30.91.11/32
+      MEDIA_ROOT: /data/media
+      MAPS_ROOT: /data/maps
+      REPLAY_ROOT: /data/replays
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      OSU_CLIENT_ID: ${OSU_CLIENT_ID:-}
+      OSU_CLIENT_SECRET: ${OSU_CLIENT_SECRET:-}
+      OSU_API_INTERVAL_MS: ${OSU_API_INTERVAL_MS:-1000}
+      RUST_LOG: ${RUST_LOG:-info,tower_http=info}
+    volumes:
+      - shared_data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, --max-time, "3", http://127.0.0.1:8080/health/ready]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+
+  resonance:
+    image: illyaverse/resonance:local
+    build:
+      context: .
+      dockerfile: services/resonance/Dockerfile
+    init: true
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://illya:${POSTGRES_PASSWORD:?Run setup first}@postgres:5432/illyaverse
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?Run setup first}
+      SANCTUARY_INTERNAL_URL: http://sanctuary:8080
+      RESONANCE_BIND: 0.0.0.0:8081
+      ILLYA_DOMAIN: ${ILLYA_DOMAIN:-illya.example.com}
+      TRUSTED_PROXY_CIDRS: 172.30.91.10/32
+      STORAGE_PATH: /data
+      RUST_LOG: ${RUST_LOG:-info,tower_http=info}
+    volumes:
+      - shared_data:/data
+    ports:
+      - 127.0.0.1:8081:8081
+    depends_on:
+      sanctuary:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, --max-time, "3", http://127.0.0.1:8081/health]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+
+  serendipity:
+    image: illyaverse/serendipity:local
+    build:
+      context: .
+      dockerfile: apps/serendipity/Dockerfile
+      args:
+        API_INTERNAL_URL: http://sanctuary:8080
+    init: true
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+      ILLYA_DOCS_PATH: /illyaverse/docs
+      API_INTERNAL_URL: http://sanctuary:8080
+    depends_on:
+      sanctuary:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/',{redirect:'manual'}).then(r=>process.exit(r.status<400?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    networks:
+      default:
+        ipv4_address: 172.30.91.11
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      ILLYA_DOMAIN: ${ILLYA_DOMAIN:-illya.test}
+    ports:
+      - 127.0.0.1:3000:80
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      serendipity:
+        condition: service_healthy
+      resonance:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1/healthz]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    networks:
+      default:
+        ipv4_address: 172.30.91.10
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.30.91.0/24
+
+volumes:
+  postgres_data:
+  shared_data:
+  caddy_data:
+  caddy_config:

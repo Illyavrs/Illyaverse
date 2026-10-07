@@ -1,0 +1,9 @@
+[package]
+name = "kaleidoscope"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+description = "Preview-first Illyaverse connection profile and managed hosts tool"
+license = "MIT"
+
+[dependencies]

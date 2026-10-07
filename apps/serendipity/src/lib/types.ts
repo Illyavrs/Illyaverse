@@ -1,0 +1,113 @@
+export type Page<T> = { items: T[]; total: number; page: number; page_size: number };
+export type User = {
+  id: number;
+  username: string;
+  country: string;
+  bio: string;
+  avatar_url: string | null;
+  banner_url: string | null;
+  accent_color: string;
+  roles: string[];
+  permissions: string[];
+  joined_at: string;
+  pp: number;
+  play_count: number;
+  email?: string;
+  is_restricted?: boolean;
+};
+export type Preferences = {
+  mode: 'dark' | 'light' | 'system';
+  accent_color: string;
+  background_url: string | null;
+  background_blur: number;
+  background_dim: number;
+  border_radius: number;
+  locale?: string;
+};
+export type Beatmap = {
+  id: number;
+  official_id: number | null;
+  title: string;
+  artist: string;
+  creator: string;
+  version: string;
+  mode: number;
+  status: string;
+  source: string;
+  stars: number;
+  bpm: number;
+  length_seconds: number;
+  max_combo: number;
+  play_count: number;
+  md5: string;
+};
+export type Score = {
+  id: number;
+  user_id: number;
+  username: string;
+  beatmap_id: number;
+  title: string;
+  version: string;
+  mode: number;
+  score: number;
+  accuracy: number;
+  max_combo: number;
+  mods: number;
+  pp: number;
+  passed: boolean;
+  verification: string;
+  created_at: string;
+  has_replay: boolean;
+};
+export type Channel = {
+  id: number;
+  name: string;
+  description: string;
+  required_permission?: string | null;
+};
+export type Message = {
+  id: number;
+  channel_id: number;
+  user_id: number;
+  username: string;
+  avatar_url: string | null;
+  content: string;
+  created_at: string;
+};
+export type Role = { id: number; name: string; permissions: string[]; description: string };
+export type AdminUser = {
+  id: number;
+  username: string;
+  email: string;
+  country: string;
+  avatar_url: string | null;
+  is_restricted: boolean;
+  joined_at: string;
+  roles: { id: number; name: string }[];
+};
+export type Leader = {
+  id: number;
+  username: string;
+  country: string;
+  avatar_url: string | null;
+  pp: number;
+  rank: number;
+  play_count: number;
+  accuracy: number;
+};
+export type Audit = {
+  id: number;
+  actor_id: number | null;
+  action: string;
+  target_type: string;
+  target_id: string | null;
+  created_at: string;
+  details: Record<string, unknown>;
+};
+export type Status = {
+  players_online: number;
+  registered_players: number;
+  ranked_scores: number;
+  beatmap_count: number;
+  compatibility: Record<string, unknown>;
+};

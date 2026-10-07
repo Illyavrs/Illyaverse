@@ -1,0 +1,14 @@
+{
+  "name": "illyaverse",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["apps/serendipity"],
+  "scripts": {
+    "dev": "npm run dev --workspace @illyaverse/serendipity",
+    "build": "npm run build --workspace @illyaverse/serendipity",
+    "lint": "npm run lint --workspace @illyaverse/serendipity",
+    "typecheck": "npm run typecheck --workspace @illyaverse/serendipity",
+    "test:rust": "cargo test --workspace"
+  },
+  "engines": {"node": ">=22.0.0"}
+}

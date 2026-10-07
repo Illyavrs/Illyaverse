@@ -1,0 +1,76 @@
+# Only disposable-protocol-smoke.mjs supplies this fresh project's private env file.
+services:
+  postgres:
+    image: ${ILLYA_SMOKE_POSTGRES_IMAGE:?Use the disposable helper}
+    pull_policy: never
+    environment:
+      POSTGRES_USER: illya
+      POSTGRES_DB: illyaverse
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Use the disposable helper}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --data-checksums
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U illya -d illyaverse"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  sanctuary:
+    image: ${ILLYA_SMOKE_SANCTUARY_IMAGE:?Use the disposable helper}
+    pull_policy: never
+    init: true
+    environment:
+      DATABASE_URL: postgres://illya:${POSTGRES_PASSWORD:?Use the disposable helper}@postgres:5432/illyaverse
+      SESSION_SECRET: ${SESSION_SECRET:?Use the disposable helper}
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?Use the disposable helper}
+      # The unchanged independent Python test sends this browser Origin.
+      PUBLIC_ORIGIN: http://localhost:3000
+      COOKIE_SECURE: "false"
+      BIND_ADDRESS: 0.0.0.0:8080
+      TRUSTED_PROXY_CIDRS: ""
+      MEDIA_ROOT: /data/media
+      MAPS_ROOT: /data/maps
+      REPLAY_ROOT: /data/replays
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:?Use the disposable helper}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:?Use the disposable helper}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:?Use the disposable helper}
+    ports: ["127.0.0.1:${ILLYA_SMOKE_SANCTUARY_PORT:-18082}:8080"]
+    volumes: [shared_data:/data]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, --max-time, "3", http://127.0.0.1:8080/health/ready]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+  resonance:
+    image: ${ILLYA_SMOKE_RESONANCE_IMAGE:?Use the disposable helper}
+    pull_policy: never
+    init: true
+    environment:
+      DATABASE_URL: postgres://illya:${POSTGRES_PASSWORD:?Use the disposable helper}@postgres:5432/illyaverse
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?Use the disposable helper}
+      SANCTUARY_INTERNAL_URL: http://sanctuary:8080
+      RESONANCE_BIND: 0.0.0.0:8081
+      ILLYA_DOMAIN: smoke.illya.test
+      TRUSTED_PROXY_CIDRS: ""
+      STORAGE_PATH: /data
+    ports: ["127.0.0.1:${ILLYA_SMOKE_RESONANCE_PORT:-18083}:8081"]
+    volumes: [shared_data:/data]
+    depends_on:
+      sanctuary:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, --max-time, "3", http://127.0.0.1:8081/health]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+networks:
+  default: {}
+volumes:
+  postgres_data: {}
+  shared_data: {}

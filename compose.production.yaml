@@ -1,0 +1,21 @@
+# Requires Docker Compose 2.24.4+ for !override/!reset.
+# Use with: docker compose -f compose.yaml -f compose.production.yaml up -d --build --wait
+services:
+  sanctuary:
+    environment:
+      PUBLIC_ORIGIN: https://${ILLYA_DOMAIN:?Set your real ILLYA_DOMAIN}
+      COOKIE_SECURE: "true"
+  resonance:
+    ports: !reset []
+  caddy:
+    environment:
+      ILLYA_DOMAIN: ${ILLYA_DOMAIN:?Set your real ILLYA_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?Set your ACME contact email}
+    ports: !override
+      - 80:80
+      - 443:443
+      - 443:443/udp
+    volumes:
+      - ./infra/Caddyfile.production:/etc/caddy/Caddyfile:ro
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8088/healthz]

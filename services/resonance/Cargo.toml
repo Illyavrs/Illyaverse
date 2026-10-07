@@ -1,0 +1,32 @@
+[package]
+name = "resonance"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+resonance-protocol = { path = "../../crates/resonance-protocol" }
+illya-domain = { path = "../../crates/illya-domain" }
+axum = { version = "0.8", features = ["multipart", "ws"] }
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["trace"] }
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid", "json", "migrate"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+argon2 = "0.5"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+sha2 = "0.10"
+md5 = "0.7"
+rosu-mods = "0.4"
+serde_urlencoded = "0.7"
+ipnet = "2"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+futures-util = "0.3"
+tokio-stream = { version = "0.1", features = ["sync"] }
+image = { version = "0.25", default-features = false, features = ["png", "webp"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+tokio-tungstenite = "0.29"

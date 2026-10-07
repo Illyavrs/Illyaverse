@@ -1,0 +1,12 @@
+[workspace]
+resolver = "3"
+members = ["services/sanctuary", "services/resonance", "crates/illya-domain", "crates/resonance-protocol", "tools/kaleidoscope"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "MIT"
+
+[profile.release]
+lto = "thin"
+strip = true

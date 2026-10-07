@@ -1,0 +1,841 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-07T04:58:30.942995Z",
+  "title": "Design System: Illyaverse — Serendipity",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Raspberry",
+        "tonalRamp": [
+          "oklch(15% 0.12912 355.13)",
+          "oklch(26% 0.12912 355.13)",
+          "oklch(38% 0.12912 355.13)",
+          "oklch(49% 0.12912 355.13)",
+          "oklch(61% 0.12912 355.13)",
+          "oklch(72% 0.12912 355.13)",
+          "oklch(84% 0.12912 355.13)",
+          "oklch(95% 0.12912 355.13)"
+        ]
+      },
+      "primary-foreground": {
+        "role": "primary",
+        "displayName": "Primary Ink",
+        "tonalRamp": [
+          "oklch(15% 0.00830 296.98)",
+          "oklch(26% 0.00830 296.98)",
+          "oklch(38% 0.00830 296.98)",
+          "oklch(49% 0.00830 296.98)",
+          "oklch(61% 0.00830 296.98)",
+          "oklch(72% 0.00830 296.98)",
+          "oklch(84% 0.00830 296.98)",
+          "oklch(95% 0.00830 296.98)"
+        ]
+      },
+      "primary-hover": {
+        "role": "primary",
+        "displayName": "Raspberry Hover",
+        "tonalRamp": [
+          "oklch(15% 0.12912 355.13 / 0.9000)",
+          "oklch(26% 0.12912 355.13 / 0.9000)",
+          "oklch(38% 0.12912 355.13 / 0.9000)",
+          "oklch(49% 0.12912 355.13 / 0.9000)",
+          "oklch(61% 0.12912 355.13 / 0.9000)",
+          "oklch(72% 0.12912 355.13 / 0.9000)",
+          "oklch(84% 0.12912 355.13 / 0.9000)",
+          "oklch(95% 0.12912 355.13 / 0.9000)"
+        ]
+      },
+      "readable-accent": {
+        "role": "primary",
+        "displayName": "Readable Raspberry",
+        "tonalRamp": [
+          "oklch(15% 0.05334 350.31)",
+          "oklch(26% 0.05334 350.31)",
+          "oklch(38% 0.05334 350.31)",
+          "oklch(49% 0.05334 350.31)",
+          "oklch(61% 0.05334 350.31)",
+          "oklch(72% 0.05334 350.31)",
+          "oklch(84% 0.05334 350.31)",
+          "oklch(95% 0.05334 350.31)"
+        ]
+      },
+      "page-ground": {
+        "role": "neutral",
+        "displayName": "Black Ground",
+        "tonalRamp": [
+          "oklch(15% 0.00000 0.00)",
+          "oklch(26% 0.00000 0.00)",
+          "oklch(38% 0.00000 0.00)",
+          "oklch(49% 0.00000 0.00)",
+          "oklch(61% 0.00000 0.00)",
+          "oklch(72% 0.00000 0.00)",
+          "oklch(84% 0.00000 0.00)",
+          "oklch(95% 0.00000 0.00)"
+        ]
+      },
+      "background": {
+        "role": "neutral",
+        "displayName": "Near-Black Ground",
+        "tonalRamp": [
+          "oklch(15% 0.00466 285.76)",
+          "oklch(26% 0.00466 285.76)",
+          "oklch(38% 0.00466 285.76)",
+          "oklch(49% 0.00466 285.76)",
+          "oklch(61% 0.00466 285.76)",
+          "oklch(72% 0.00466 285.76)",
+          "oklch(84% 0.00466 285.76)",
+          "oklch(95% 0.00466 285.76)"
+        ]
+      },
+      "foreground": {
+        "role": "neutral",
+        "displayName": "Soft Silver",
+        "tonalRamp": [
+          "oklch(15% 0.00678 325.63)",
+          "oklch(26% 0.00678 325.63)",
+          "oklch(38% 0.00678 325.63)",
+          "oklch(49% 0.00678 325.63)",
+          "oklch(61% 0.00678 325.63)",
+          "oklch(72% 0.00678 325.63)",
+          "oklch(84% 0.00678 325.63)",
+          "oklch(95% 0.00678 325.63)"
+        ]
+      },
+      "card": {
+        "role": "neutral",
+        "displayName": "Opaque Plum",
+        "tonalRamp": [
+          "oklch(15% 0.00859 307.95)",
+          "oklch(26% 0.00859 307.95)",
+          "oklch(38% 0.00859 307.95)",
+          "oklch(49% 0.00859 307.95)",
+          "oklch(61% 0.00859 307.95)",
+          "oklch(72% 0.00859 307.95)",
+          "oklch(84% 0.00859 307.95)",
+          "oklch(95% 0.00859 307.95)"
+        ]
+      },
+      "popover": {
+        "role": "neutral",
+        "displayName": "Popover Plum",
+        "tonalRamp": [
+          "oklch(15% 0.01256 307.79)",
+          "oklch(26% 0.01256 307.79)",
+          "oklch(38% 0.01256 307.79)",
+          "oklch(49% 0.01256 307.79)",
+          "oklch(61% 0.01256 307.79)",
+          "oklch(72% 0.01256 307.79)",
+          "oklch(84% 0.01256 307.79)",
+          "oklch(95% 0.01256 307.79)"
+        ]
+      },
+      "secondary": {
+        "role": "neutral",
+        "displayName": "Selected Plum",
+        "tonalRamp": [
+          "oklch(15% 0.02181 309.49)",
+          "oklch(26% 0.02181 309.49)",
+          "oklch(38% 0.02181 309.49)",
+          "oklch(49% 0.02181 309.49)",
+          "oklch(61% 0.02181 309.49)",
+          "oklch(72% 0.02181 309.49)",
+          "oklch(84% 0.02181 309.49)",
+          "oklch(95% 0.02181 309.49)"
+        ]
+      },
+      "secondary-foreground": {
+        "role": "neutral",
+        "displayName": "Pale Lilac",
+        "tonalRamp": [
+          "oklch(15% 0.01818 314.73)",
+          "oklch(26% 0.01818 314.73)",
+          "oklch(38% 0.01818 314.73)",
+          "oklch(49% 0.01818 314.73)",
+          "oklch(61% 0.01818 314.73)",
+          "oklch(72% 0.01818 314.73)",
+          "oklch(84% 0.01818 314.73)",
+          "oklch(95% 0.01818 314.73)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted Plum",
+        "tonalRamp": [
+          "oklch(15% 0.01643 312.88)",
+          "oklch(26% 0.01643 312.88)",
+          "oklch(38% 0.01643 312.88)",
+          "oklch(49% 0.01643 312.88)",
+          "oklch(61% 0.01643 312.88)",
+          "oklch(72% 0.01643 312.88)",
+          "oklch(84% 0.01643 312.88)",
+          "oklch(95% 0.01643 312.88)"
+        ]
+      },
+      "muted-foreground": {
+        "role": "neutral",
+        "displayName": "Dusty Lilac",
+        "tonalRamp": [
+          "oklch(15% 0.02680 313.92)",
+          "oklch(26% 0.02680 313.92)",
+          "oklch(38% 0.02680 313.92)",
+          "oklch(49% 0.02680 313.92)",
+          "oklch(61% 0.02680 313.92)",
+          "oklch(72% 0.02680 313.92)",
+          "oklch(84% 0.02680 313.92)",
+          "oklch(95% 0.02680 313.92)"
+        ]
+      },
+      "accent": {
+        "role": "neutral",
+        "displayName": "Hover Plum",
+        "tonalRamp": [
+          "oklch(15% 0.02862 328.87)",
+          "oklch(26% 0.02862 328.87)",
+          "oklch(38% 0.02862 328.87)",
+          "oklch(49% 0.02862 328.87)",
+          "oklch(61% 0.02862 328.87)",
+          "oklch(72% 0.02862 328.87)",
+          "oklch(84% 0.02862 328.87)",
+          "oklch(95% 0.02862 328.87)"
+        ]
+      },
+      "accent-foreground": {
+        "role": "neutral",
+        "displayName": "Warm Silver",
+        "tonalRamp": [
+          "oklch(15% 0.01584 335.06)",
+          "oklch(26% 0.01584 335.06)",
+          "oklch(38% 0.01584 335.06)",
+          "oklch(49% 0.01584 335.06)",
+          "oklch(61% 0.01584 335.06)",
+          "oklch(72% 0.01584 335.06)",
+          "oklch(84% 0.01584 335.06)",
+          "oklch(95% 0.01584 335.06)"
+        ]
+      },
+      "destructive": {
+        "role": "neutral",
+        "displayName": "Destructive Rose",
+        "tonalRamp": [
+          "oklch(15% 0.11390 11.85)",
+          "oklch(26% 0.11390 11.85)",
+          "oklch(38% 0.11390 11.85)",
+          "oklch(49% 0.11390 11.85)",
+          "oklch(61% 0.11390 11.85)",
+          "oklch(72% 0.11390 11.85)",
+          "oklch(84% 0.11390 11.85)",
+          "oklch(95% 0.11390 11.85)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Silver Seam",
+        "tonalRamp": [
+          "oklch(15% 0.00000 0.00 / 0.0863)",
+          "oklch(26% 0.00000 0.00 / 0.0863)",
+          "oklch(38% 0.00000 0.00 / 0.0863)",
+          "oklch(49% 0.00000 0.00 / 0.0863)",
+          "oklch(61% 0.00000 0.00 / 0.0863)",
+          "oklch(72% 0.00000 0.00 / 0.0863)",
+          "oklch(84% 0.00000 0.00 / 0.0863)",
+          "oklch(95% 0.00000 0.00 / 0.0863)"
+        ]
+      },
+      "input": {
+        "role": "neutral",
+        "displayName": "Field Seam",
+        "tonalRamp": [
+          "oklch(15% 0.00000 0.00 / 0.1451)",
+          "oklch(26% 0.00000 0.00 / 0.1451)",
+          "oklch(38% 0.00000 0.00 / 0.1451)",
+          "oklch(49% 0.00000 0.00 / 0.1451)",
+          "oklch(61% 0.00000 0.00 / 0.1451)",
+          "oklch(72% 0.00000 0.00 / 0.1451)",
+          "oklch(84% 0.00000 0.00 / 0.1451)",
+          "oklch(95% 0.00000 0.00 / 0.1451)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Plum Glass",
+        "tonalRamp": [
+          "oklch(15% 0.01454 304.55 / 0.9098)",
+          "oklch(26% 0.01454 304.55 / 0.9098)",
+          "oklch(38% 0.01454 304.55 / 0.9098)",
+          "oklch(49% 0.01454 304.55 / 0.9098)",
+          "oklch(61% 0.01454 304.55 / 0.9098)",
+          "oklch(72% 0.01454 304.55 / 0.9098)",
+          "oklch(84% 0.01454 304.55 / 0.9098)",
+          "oklch(95% 0.01454 304.55 / 0.9098)"
+        ]
+      },
+      "surface-strong": {
+        "role": "neutral",
+        "displayName": "Header Glass",
+        "tonalRamp": [
+          "oklch(15% 0.01284 307.71 / 0.9608)",
+          "oklch(26% 0.01284 307.71 / 0.9608)",
+          "oklch(38% 0.01284 307.71 / 0.9608)",
+          "oklch(49% 0.01284 307.71 / 0.9608)",
+          "oklch(61% 0.01284 307.71 / 0.9608)",
+          "oklch(72% 0.01284 307.71 / 0.9608)",
+          "oklch(84% 0.01284 307.71 / 0.9608)",
+          "oklch(95% 0.01284 307.71 / 0.9608)"
+        ]
+      },
+      "ranked": {
+        "role": "neutral",
+        "displayName": "Ranked Mint",
+        "tonalRamp": [
+          "oklch(15% 0.07741 169.41)",
+          "oklch(26% 0.07741 169.41)",
+          "oklch(38% 0.07741 169.41)",
+          "oklch(49% 0.07741 169.41)",
+          "oklch(61% 0.07741 169.41)",
+          "oklch(72% 0.07741 169.41)",
+          "oklch(84% 0.07741 169.41)",
+          "oklch(95% 0.07741 169.41)"
+        ]
+      },
+      "loved": {
+        "role": "neutral",
+        "displayName": "Loved Pink",
+        "tonalRamp": [
+          "oklch(15% 0.08244 345.40)",
+          "oklch(26% 0.08244 345.40)",
+          "oklch(38% 0.08244 345.40)",
+          "oklch(49% 0.08244 345.40)",
+          "oklch(61% 0.08244 345.40)",
+          "oklch(72% 0.08244 345.40)",
+          "oklch(84% 0.08244 345.40)",
+          "oklch(95% 0.08244 345.40)"
+        ]
+      },
+      "pending": {
+        "role": "neutral",
+        "displayName": "Pending Amber",
+        "tonalRamp": [
+          "oklch(15% 0.07407 83.51)",
+          "oklch(26% 0.07407 83.51)",
+          "oklch(38% 0.07407 83.51)",
+          "oklch(49% 0.07407 83.51)",
+          "oklch(61% 0.07407 83.51)",
+          "oklch(72% 0.07407 83.51)",
+          "oklch(84% 0.07407 83.51)",
+          "oklch(95% 0.07407 83.51)"
+        ]
+      },
+      "light-readable-accent": {
+        "role": "primary",
+        "displayName": "Light Readable Raspberry",
+        "tonalRamp": [
+          "oklch(15% 0.05728 345.56)",
+          "oklch(26% 0.05728 345.56)",
+          "oklch(38% 0.05728 345.56)",
+          "oklch(49% 0.05728 345.56)",
+          "oklch(61% 0.05728 345.56)",
+          "oklch(72% 0.05728 345.56)",
+          "oklch(84% 0.05728 345.56)",
+          "oklch(95% 0.05728 345.56)"
+        ]
+      },
+      "light-page-ground": {
+        "role": "neutral",
+        "displayName": "Light Black Ground",
+        "tonalRamp": [
+          "oklch(15% 0.00615 317.75)",
+          "oklch(26% 0.00615 317.75)",
+          "oklch(38% 0.00615 317.75)",
+          "oklch(49% 0.00615 317.75)",
+          "oklch(61% 0.00615 317.75)",
+          "oklch(72% 0.00615 317.75)",
+          "oklch(84% 0.00615 317.75)",
+          "oklch(95% 0.00615 317.75)"
+        ]
+      },
+      "light-background": {
+        "role": "neutral",
+        "displayName": "Light Near-Black Ground",
+        "tonalRamp": [
+          "oklch(15% 0.00337 325.60)",
+          "oklch(26% 0.00337 325.60)",
+          "oklch(38% 0.00337 325.60)",
+          "oklch(49% 0.00337 325.60)",
+          "oklch(61% 0.00337 325.60)",
+          "oklch(72% 0.00337 325.60)",
+          "oklch(84% 0.00337 325.60)",
+          "oklch(95% 0.00337 325.60)"
+        ]
+      },
+      "light-foreground": {
+        "role": "neutral",
+        "displayName": "Light Soft Silver",
+        "tonalRamp": [
+          "oklch(15% 0.02347 316.74)",
+          "oklch(26% 0.02347 316.74)",
+          "oklch(38% 0.02347 316.74)",
+          "oklch(49% 0.02347 316.74)",
+          "oklch(61% 0.02347 316.74)",
+          "oklch(72% 0.02347 316.74)",
+          "oklch(84% 0.02347 316.74)",
+          "oklch(95% 0.02347 316.74)"
+        ]
+      },
+      "light-card": {
+        "role": "neutral",
+        "displayName": "Light Opaque Plum",
+        "tonalRamp": [
+          "oklch(15% 0.00000 0.00)",
+          "oklch(26% 0.00000 0.00)",
+          "oklch(38% 0.00000 0.00)",
+          "oklch(49% 0.00000 0.00)",
+          "oklch(61% 0.00000 0.00)",
+          "oklch(72% 0.00000 0.00)",
+          "oklch(84% 0.00000 0.00)",
+          "oklch(95% 0.00000 0.00)"
+        ]
+      },
+      "light-secondary": {
+        "role": "neutral",
+        "displayName": "Light Selected Plum",
+        "tonalRamp": [
+          "oklch(15% 0.01414 318.70)",
+          "oklch(26% 0.01414 318.70)",
+          "oklch(38% 0.01414 318.70)",
+          "oklch(49% 0.01414 318.70)",
+          "oklch(61% 0.01414 318.70)",
+          "oklch(72% 0.01414 318.70)",
+          "oklch(84% 0.01414 318.70)",
+          "oklch(95% 0.01414 318.70)"
+        ]
+      },
+      "light-secondary-foreground": {
+        "role": "neutral",
+        "displayName": "Light Pale Lilac",
+        "tonalRamp": [
+          "oklch(15% 0.03405 314.38)",
+          "oklch(26% 0.03405 314.38)",
+          "oklch(38% 0.03405 314.38)",
+          "oklch(49% 0.03405 314.38)",
+          "oklch(61% 0.03405 314.38)",
+          "oklch(72% 0.03405 314.38)",
+          "oklch(84% 0.03405 314.38)",
+          "oklch(95% 0.03405 314.38)"
+        ]
+      },
+      "light-muted": {
+        "role": "neutral",
+        "displayName": "Light Muted Plum",
+        "tonalRamp": [
+          "oklch(15% 0.01242 317.74)",
+          "oklch(26% 0.01242 317.74)",
+          "oklch(38% 0.01242 317.74)",
+          "oklch(49% 0.01242 317.74)",
+          "oklch(61% 0.01242 317.74)",
+          "oklch(72% 0.01242 317.74)",
+          "oklch(84% 0.01242 317.74)",
+          "oklch(95% 0.01242 317.74)"
+        ]
+      },
+      "light-muted-foreground": {
+        "role": "neutral",
+        "displayName": "Light Dusty Lilac",
+        "tonalRamp": [
+          "oklch(15% 0.04197 317.21)",
+          "oklch(26% 0.04197 317.21)",
+          "oklch(38% 0.04197 317.21)",
+          "oklch(49% 0.04197 317.21)",
+          "oklch(61% 0.04197 317.21)",
+          "oklch(72% 0.04197 317.21)",
+          "oklch(84% 0.04197 317.21)",
+          "oklch(95% 0.04197 317.21)"
+        ]
+      },
+      "light-accent": {
+        "role": "neutral",
+        "displayName": "Light Hover Plum",
+        "tonalRamp": [
+          "oklch(15% 0.01932 338.74)",
+          "oklch(26% 0.01932 338.74)",
+          "oklch(38% 0.01932 338.74)",
+          "oklch(49% 0.01932 338.74)",
+          "oklch(61% 0.01932 338.74)",
+          "oklch(72% 0.01932 338.74)",
+          "oklch(84% 0.01932 338.74)",
+          "oklch(95% 0.01932 338.74)"
+        ]
+      },
+      "light-destructive": {
+        "role": "neutral",
+        "displayName": "Light Destructive Rose",
+        "tonalRamp": [
+          "oklch(15% 0.16097 14.33)",
+          "oklch(26% 0.16097 14.33)",
+          "oklch(38% 0.16097 14.33)",
+          "oklch(49% 0.16097 14.33)",
+          "oklch(61% 0.16097 14.33)",
+          "oklch(72% 0.16097 14.33)",
+          "oklch(84% 0.16097 14.33)",
+          "oklch(95% 0.16097 14.33)"
+        ]
+      },
+      "light-border": {
+        "role": "neutral",
+        "displayName": "Light Silver Seam",
+        "tonalRamp": [
+          "oklch(15% 0.05682 321.48 / 0.1255)",
+          "oklch(26% 0.05682 321.48 / 0.1255)",
+          "oklch(38% 0.05682 321.48 / 0.1255)",
+          "oklch(49% 0.05682 321.48 / 0.1255)",
+          "oklch(61% 0.05682 321.48 / 0.1255)",
+          "oklch(72% 0.05682 321.48 / 0.1255)",
+          "oklch(84% 0.05682 321.48 / 0.1255)",
+          "oklch(95% 0.05682 321.48 / 0.1255)"
+        ]
+      },
+      "light-input": {
+        "role": "neutral",
+        "displayName": "Light Field Seam",
+        "tonalRamp": [
+          "oklch(15% 0.05682 321.48 / 0.1882)",
+          "oklch(26% 0.05682 321.48 / 0.1882)",
+          "oklch(38% 0.05682 321.48 / 0.1882)",
+          "oklch(49% 0.05682 321.48 / 0.1882)",
+          "oklch(61% 0.05682 321.48 / 0.1882)",
+          "oklch(72% 0.05682 321.48 / 0.1882)",
+          "oklch(84% 0.05682 321.48 / 0.1882)",
+          "oklch(95% 0.05682 321.48 / 0.1882)"
+        ]
+      },
+      "light-surface": {
+        "role": "neutral",
+        "displayName": "Light Plum Glass",
+        "tonalRamp": [
+          "oklch(15% 0.00841 325.64 / 0.9333)",
+          "oklch(26% 0.00841 325.64 / 0.9333)",
+          "oklch(38% 0.00841 325.64 / 0.9333)",
+          "oklch(49% 0.00841 325.64 / 0.9333)",
+          "oklch(61% 0.00841 325.64 / 0.9333)",
+          "oklch(72% 0.00841 325.64 / 0.9333)",
+          "oklch(84% 0.00841 325.64 / 0.9333)",
+          "oklch(95% 0.00841 325.64 / 0.9333)"
+        ]
+      },
+      "light-surface-strong": {
+        "role": "neutral",
+        "displayName": "Light Header Glass",
+        "tonalRamp": [
+          "oklch(15% 0.00841 325.64 / 0.9686)",
+          "oklch(26% 0.00841 325.64 / 0.9686)",
+          "oklch(38% 0.00841 325.64 / 0.9686)",
+          "oklch(49% 0.00841 325.64 / 0.9686)",
+          "oklch(61% 0.00841 325.64 / 0.9686)",
+          "oklch(72% 0.00841 325.64 / 0.9686)",
+          "oklch(84% 0.00841 325.64 / 0.9686)",
+          "oklch(95% 0.00841 325.64 / 0.9686)"
+        ]
+      },
+      "light-ranked": {
+        "role": "neutral",
+        "displayName": "Light Ranked Mint",
+        "tonalRamp": [
+          "oklch(15% 0.08075 160.43)",
+          "oklch(26% 0.08075 160.43)",
+          "oklch(38% 0.08075 160.43)",
+          "oklch(49% 0.08075 160.43)",
+          "oklch(61% 0.08075 160.43)",
+          "oklch(72% 0.08075 160.43)",
+          "oklch(84% 0.08075 160.43)",
+          "oklch(95% 0.08075 160.43)"
+        ]
+      },
+      "light-loved": {
+        "role": "neutral",
+        "displayName": "Light Loved Pink",
+        "tonalRamp": [
+          "oklch(15% 0.12431 354.46)",
+          "oklch(26% 0.12431 354.46)",
+          "oklch(38% 0.12431 354.46)",
+          "oklch(49% 0.12431 354.46)",
+          "oklch(61% 0.12431 354.46)",
+          "oklch(72% 0.12431 354.46)",
+          "oklch(84% 0.12431 354.46)",
+          "oklch(95% 0.12431 354.46)"
+        ]
+      },
+      "light-pending": {
+        "role": "neutral",
+        "displayName": "Light Pending Amber",
+        "tonalRamp": [
+          "oklch(15% 0.08777 70.94)",
+          "oklch(26% 0.08777 70.94)",
+          "oklch(38% 0.08777 70.94)",
+          "oklch(49% 0.08777 70.94)",
+          "oklch(61% 0.08777 70.94)",
+          "oklch(72% 0.08777 70.94)",
+          "oklch(84% 0.08777 70.94)",
+          "oklch(95% 0.08777 70.94)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Fluid landing headline; its formula is recorded in DESIGN.md."
+      },
+      "display-mobile": {
+        "displayName": "Display Mobile",
+        "purpose": "Landing headline at the page small-screen breakpoint."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Balanced page heading; its fluid size and contextual overrides are recorded in DESIGN.md."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Common h2 section heading."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Default interface reading text."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Link-rendered shadcn button text; native controls inherit body typography."
+      },
+      "field-label": {
+        "displayName": "Field Label",
+        "purpose": "Heavy field labels and slider labels."
+      },
+      "metadata": {
+        "displayName": "Metadata",
+        "purpose": "Secondary descriptions and metadata."
+      },
+      "badge": {
+        "displayName": "Badge",
+        "purpose": "Shadcn pill text."
+      },
+      "read-body": {
+        "displayName": "Read Body",
+        "purpose": "Long-form Markdown article text."
+      }
+    },
+    "shadows": [
+      {
+        "name": "control-seam",
+        "value": "0 1px 2px 0 rgb(0 0 0 / 0.05)",
+        "purpose": "The shadcn input and outline-button shadow."
+      },
+      {
+        "name": "selected-tab",
+        "value": "0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)",
+        "purpose": "The default tabs variant adds this to an active tab."
+      },
+      {
+        "name": "sheet-elevation",
+        "value": "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)",
+        "purpose": "The sheet primitive above a half-black overlay; glass panels have no default shadow."
+      }
+    ],
+    "motion": [
+      {
+        "name": "control-transition-duration",
+        "value": "150ms",
+        "purpose": "Tailwind default transition duration used by the shadcn controls."
+      },
+      {
+        "name": "control-transition-easing",
+        "value": "cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Tailwind default state-transition easing."
+      },
+      {
+        "name": "link-color",
+        "value": "0.18s",
+        "purpose": "Base anchor color transitions."
+      },
+      {
+        "name": "catalogue-row-background",
+        "value": "0.2s",
+        "purpose": "Map-row hover background transition."
+      },
+      {
+        "name": "loading-spin",
+        "value": "1s linear infinite",
+        "purpose": "The existing spinner animation."
+      },
+      {
+        "name": "sheet-opening-declaration",
+        "value": "500ms",
+        "purpose": "Declared shadcn state duration; an animation utility stylesheet is not imported, so a slide animation is not guaranteed."
+      },
+      {
+        "name": "sheet-closing-declaration",
+        "value": "300ms",
+        "purpose": "Declared shadcn state duration; an animation utility stylesheet is not imported, so a slide animation is not guaranteed."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "none",
+        "purpose": "The reduced-motion query disables transitions and animations and restores immediate scrolling."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "header-tightening",
+        "value": "1100px"
+      },
+      {
+        "name": "single-column-and-menu",
+        "value": "860px"
+      },
+      {
+        "name": "small-screen",
+        "value": "600px"
+      },
+      {
+        "name": "tailwind-sm",
+        "value": "40rem"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The shared shadcn default action; accent and contrasting text remain live-bound.",
+      "html": "<button type=\"button\" class=\"ds-button-primary\">儲存</button>",
+      "css": ".ds-button-primary{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:8px 16px;border:0;border-radius:calc(var(--radius,14px)*.65);font-size:15px;font-weight:400;line-height:1.7;white-space:nowrap;cursor:pointer;font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);transition:all 150ms cubic-bezier(0.4,0,0.2,1);}.ds-button-primary:focus-visible{outline:2px solid var(--user-accent,#f28eb6);outline-offset:4px;box-shadow:0 0 0 3px color-mix(in oklab,var(--ring,var(--user-accent,#f28eb6)) 50%,transparent);}.ds-button-primary:disabled{pointer-events:none;opacity:.5;}@media(prefers-reduced-motion:reduce){.ds-button-primary{transition:none;}}.ds-button-primary{background:var(--primary,var(--user-accent,#f28eb6));color:var(--primary-foreground,var(--primary-contrast,#111014));}.ds-button-primary:hover{background:color-mix(in oklab,var(--primary,var(--user-accent,#f28eb6)) 90%,transparent);}.ds-button-primary{box-sizing:border-box;}.ds-button-primary:disabled{cursor:not-allowed;}@media(max-width:600px){.ds-button-primary{font-size:14px;}}"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "The quiet alternative action, with the existing dark input fill and light-mode background.",
+      "html": "<button type=\"button\" class=\"ds-button-outline\">開始連線</button>",
+      "css": ".ds-button-outline{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:8px 16px;border:0;border-radius:calc(var(--radius,14px)*.65);font-size:15px;font-weight:400;line-height:1.7;white-space:nowrap;cursor:pointer;font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);transition:all 150ms cubic-bezier(0.4,0,0.2,1);}.ds-button-outline:focus-visible{outline:2px solid var(--user-accent,#f28eb6);outline-offset:4px;box-shadow:0 0 0 3px color-mix(in oklab,var(--ring,var(--user-accent,#f28eb6)) 50%,transparent),0 1px 2px 0 rgb(0 0 0 / .05);}.ds-button-outline:disabled{pointer-events:none;opacity:.5;}@media(prefers-reduced-motion:reduce){.ds-button-outline{transition:none;}}.ds-button-outline{border:1px solid var(--border,#ffffff16);background:color-mix(in oklab,var(--input,#ffffff25) 30%,transparent);color:var(--foreground,#f5f1f5);box-shadow:0 1px 2px 0 rgb(0 0 0 / .05);}.ds-button-outline:hover{background:color-mix(in oklab,var(--input,#ffffff25) 50%,transparent);}:host-context(.light) .ds-button-outline,.light .ds-button-outline{border-color:var(--border,#38213c20);background:var(--background,#fcfafc);}:host-context(.light) .ds-button-outline:hover,.light .ds-button-outline:hover{background:var(--accent,#eee0e9);color:var(--accent-foreground,#261e29);}.ds-button-outline:focus-visible{box-shadow:0 0 0 3px color-mix(in oklab,var(--ring,var(--user-accent,#f28eb6)) 50%,transparent),0 1px 2px 0 rgb(0 0 0 / .05);}.ds-button-outline{box-sizing:border-box;}.ds-button-outline:disabled{cursor:not-allowed;}@media(max-width:600px){.ds-button-outline{font-size:14px;}}"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "A transparent utility action with a subdued accent-toned hover.",
+      "html": "<button type=\"button\" class=\"ds-button-ghost\">重設</button>",
+      "css": ".ds-button-ghost{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:8px 16px;border:0;border-radius:calc(var(--radius,14px)*.65);font-size:15px;font-weight:400;line-height:1.7;white-space:nowrap;cursor:pointer;font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);transition:all 150ms cubic-bezier(0.4,0,0.2,1);}.ds-button-ghost:focus-visible{outline:2px solid var(--user-accent,#f28eb6);outline-offset:4px;box-shadow:0 0 0 3px color-mix(in oklab,var(--ring,var(--user-accent,#f28eb6)) 50%,transparent);}.ds-button-ghost:disabled{pointer-events:none;opacity:.5;}@media(prefers-reduced-motion:reduce){.ds-button-ghost{transition:none;}}.ds-button-ghost{background:transparent;color:var(--foreground,#f5f1f5);}.ds-button-ghost:hover{background:color-mix(in oklab,var(--accent,#30232f) 50%,transparent);color:var(--accent-foreground,#f5eaf2);}:host-context(.light) .ds-button-ghost:hover,.light .ds-button-ghost:hover{background:var(--accent,#eee0e9);}.ds-button-ghost{box-sizing:border-box;}.ds-button-ghost:disabled{cursor:not-allowed;}@media(max-width:600px){.ds-button-ghost{font-size:14px;}}"
+    },
+    {
+      "name": "Search Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "The catalogue search field expands shadcn input utilities and the existing icon inset.",
+      "html": "<div class=\"ds-search\"><svg class=\"ds-search-icon\" xmlns=\"http://www.w3.org/2000/svg\" width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m21 21-4.34-4.34\"/><circle cx=\"11\" cy=\"11\" r=\"8\"/></svg><input class=\"ds-search-input\" type=\"search\" aria-label=\"搜尋圖譜\" placeholder=\"搜尋圖譜\" /></div>",
+      "css": ".ds-search{position:relative;min-width:220px;} .ds-search-icon{position:absolute;left:12px;top:10px;color:var(--secondary-text,#b9aebf);pointer-events:none;} .ds-search-input{width:100%;min-width:0;height:36px;border:1px solid var(--border,#ffffff16);border-radius:calc(var(--radius,14px)*.65);padding:4px 12px 4px 38px;background:color-mix(in oklab,var(--input,#ffffff25) 30%,transparent);color:var(--foreground,#f5f1f5);font-size:15px;font-weight:400;line-height:1.7;caret-color:var(--readable-accent,color-mix(in srgb,var(--user-accent,#f28eb6) 40%,#f5f1f5));box-shadow:0 1px 2px 0 rgb(0 0 0 / .05);transition:color 150ms cubic-bezier(.4,0,.2,1),box-shadow 150ms cubic-bezier(.4,0,.2,1);font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);}.ds-search-input::placeholder{color:var(--muted-foreground,#b9aebf);}.ds-search-input:focus-visible{outline:2px solid var(--user-accent,#f28eb6);outline-offset:4px;box-shadow:0 0 0 3px color-mix(in oklab,var(--ring,var(--user-accent,#f28eb6)) 50%,transparent),0 1px 2px 0 rgb(0 0 0 / .05);}.ds-search-input[aria-invalid=true]:focus-visible{box-shadow:0 0 0 3px color-mix(in oklab,var(--destructive,#f294a0) 40%,transparent),0 1px 2px 0 rgb(0 0 0 / .05);}.ds-search-input:disabled{pointer-events:none;cursor:not-allowed;opacity:.5;}:host-context(.light) .ds-search-input,.light .ds-search-input{background:transparent;}:host-context(.light) .ds-search-input[aria-invalid=true]:focus-visible,.light .ds-search-input[aria-invalid=true]:focus-visible{box-shadow:0 0 0 3px color-mix(in oklab,var(--destructive,#a1233e) 20%,transparent),0 1px 2px 0 rgb(0 0 0 / .05);}@media(max-width:600px){.ds-search{width:100%;}}@media(prefers-reduced-motion:reduce){.ds-search-input{transition:none;}}.ds-search-input{box-sizing:border-box;}@media(max-width:600px){.ds-search-input{font-size:14px;}}"
+    },
+    {
+      "name": "Primary Navigation",
+      "kind": "nav",
+      "description": "Desktop route links with a source-matched active underline; the preview switches to the mobile sheet-link treatment.",
+      "html": "<nav class=\"ds-navigation\" aria-label=\"主要選單\"><a class=\"ds-navigation-link ds-navigation-active\" href=\"/\" aria-current=\"page\">首頁</a><a class=\"ds-navigation-link\" href=\"/beatmaps\">圖譜</a><a class=\"ds-navigation-link\" href=\"/rankings\">排行榜</a></nav>",
+      "css": ".ds-navigation{display:flex;align-items:center;gap:26px;font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);}.ds-navigation-link{position:relative;color:var(--secondary-text,#b9aebf);font-size:14px;font-weight:700;line-height:1.7;white-space:nowrap;padding:25px 0;text-decoration:none;transition:color .18s;}.ds-navigation-link:hover,.ds-navigation-active{color:var(--foreground,#f5f1f5);}.ds-navigation-active::after{content:\"\";position:absolute;height:2px;background:var(--user-accent,#f28eb6);bottom:15px;left:0;right:0;border-radius:3px;}.ds-navigation-link:focus-visible{outline:2px solid var(--user-accent,#f28eb6);outline-offset:4px;}@media(max-width:1100px){.ds-navigation{gap:18px;}.ds-navigation-link{font-size:12px;}}@media(max-width:860px){.ds-navigation{flex-direction:column;align-items:stretch;gap:6px;padding:8px 20px;}.ds-navigation-link{padding:10px 12px;border-radius:8px;font-size:15px;}.ds-navigation-active{background:var(--secondary,#29232e);color:var(--readable-accent,color-mix(in srgb,var(--user-accent,#f28eb6) 40%,#f5f1f5));}.ds-navigation-active::after{display:none;}}@media(prefers-reduced-motion:reduce){.ds-navigation-link{transition:none;}}@media(max-width:600px){.ds-navigation-link{font-size:14px;}}"
+    },
+    {
+      "name": "Secondary Badge",
+      "kind": "chip",
+      "refersTo": "badge-secondary",
+      "description": "The shadcn pill used for role labels and map difficulty; link states follow the existing badge variant.",
+      "html": "<a class=\"ds-badge\" href=\"/players/1\">player</a>",
+      "css": ".ds-badge{display:inline-flex;width:fit-content;align-items:center;justify-content:center;gap:4px;overflow:hidden;border:1px solid var(--border,#ffffff16);border-radius:9999px;padding:2px 8px;background:var(--secondary,#29232e);color:var(--secondary-foreground,#eae2ee);font-size:.75rem;font-weight:500;line-height:1rem;white-space:nowrap;text-decoration:none;transition:color 150ms cubic-bezier(.4,0,.2,1),box-shadow 150ms cubic-bezier(.4,0,.2,1);font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);}.ds-badge:hover{background:color-mix(in oklab,var(--secondary,#29232e) 90%,transparent);}.ds-badge:focus-visible{outline:2px solid var(--user-accent,#f28eb6);outline-offset:4px;box-shadow:0 0 0 3px color-mix(in oklab,var(--ring,var(--user-accent,#f28eb6)) 50%,transparent);}@media(prefers-reduced-motion:reduce){.ds-badge{transition:none;}}"
+    },
+    {
+      "name": "Glass Content Panel",
+      "kind": "card",
+      "refersTo": "glass-panel",
+      "description": "The general glass content container, with its own material and no default box shadow.",
+      "html": "<section class=\"ds-glass\"><h2 class=\"ds-glass-title\">圖譜</h2><p class=\"ds-glass-copy\">探索社群圖譜，也帶來屬於你的新作品。</p><a class=\"ds-glass-link\" href=\"/beatmaps\">探索圖譜</a></section>",
+      "css": ".ds-glass{padding:24px;overflow:hidden;background:var(--surface,#17141be8);color:var(--foreground,#f5f1f5);border:1px solid var(--border,#ffffff16);border-radius:var(--radius,14px);backdrop-filter:blur(24px);font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);}.ds-glass-title{margin:0 0 24px;font-size:1.4rem;font-weight:800;line-height:1.3;letter-spacing:-.025em;text-wrap:balance;}.ds-glass-copy{margin:0;color:var(--secondary-text,#b9aebf);font-size:14px;line-height:1.9;}.ds-glass-link{display:inline-flex;margin-top:18px;color:var(--readable-accent,color-mix(in srgb,var(--user-accent,#f28eb6) 40%,#f5f1f5));font-size:13px;font-weight:800;line-height:1.7;text-decoration:none;text-underline-offset:4px;transition:color .18s;}.ds-glass-link:hover{text-decoration:underline;}.ds-glass-link:focus-visible{outline:2px solid var(--user-accent,#f28eb6);outline-offset:4px;}@media(max-width:600px){.ds-glass{padding:12px;}}@media(prefers-reduced-motion:reduce){.ds-glass-link{transition:none;}}"
+    },
+    {
+      "name": "Game Mode Selector",
+      "kind": "custom",
+      "refersTo": "mode-control",
+      "description": "The native pressed-state button group shared by catalogues and scores; mobile labels remain intact.",
+      "html": "<div class=\"ds-mode-control\" role=\"group\" aria-label=\"遊戲模式\"><button class=\"ds-mode-button\" type=\"button\" aria-pressed=\"true\">全部</button><button class=\"ds-mode-button\" type=\"button\" aria-pressed=\"false\">osu!</button><button class=\"ds-mode-button\" type=\"button\" aria-pressed=\"false\">taiko</button><button class=\"ds-mode-button\" type=\"button\" aria-pressed=\"false\">catch</button><button class=\"ds-mode-button\" type=\"button\" aria-pressed=\"false\">mania</button></div>",
+      "css": ".ds-mode-control{display:flex;gap:4px;background:var(--background,#08080a);border-radius:calc(var(--radius,14px)*.65);padding:4px;border:1px solid var(--border,#ffffff16);font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);}.ds-mode-button{padding:5px 12px;border:0;background:transparent;border-radius:calc(var(--radius,14px)*.45);font-size:13px;font-weight:700;line-height:1.7;color:var(--secondary-text,#b9aebf);cursor:pointer;font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);}.ds-mode-button[aria-pressed=true]{background:var(--secondary,#29232e);color:var(--foreground,#f5f1f5);}.ds-mode-button:hover{color:var(--foreground,#f5f1f5);}.ds-mode-button:focus-visible{outline:2px solid var(--user-accent,#f28eb6);outline-offset:4px;}@media(max-width:600px){.ds-mode-control{max-width:100%;overflow:auto;}.ds-mode-button{padding:5px 10px;font-size:12px;white-space:nowrap;}}"
+    },
+    {
+      "name": "Initial Avatar",
+      "kind": "custom",
+      "refersTo": "avatar",
+      "description": "The existing initial fallback when a player has not uploaded an avatar.",
+      "html": "<span class=\"ds-avatar\" role=\"img\" aria-label=\"Illya\">I</span>",
+      "css": ".ds-avatar{width:32px;height:32px;display:inline-grid;place-items:center;flex-shrink:0;overflow:hidden;border-radius:calc(var(--radius,14px)*.65);background:color-mix(in srgb,var(--user-accent,#f28eb6) 15%,var(--background,#08080a));color:var(--readable-accent,color-mix(in srgb,var(--user-accent,#f28eb6) 40%,#f5f1f5));font-size:15px;font-weight:900;line-height:1.7;font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);}"
+    },
+    {
+      "name": "Scrollable Reading Table",
+      "kind": "custom",
+      "description": "The resolved Markdown pattern keeps technical columns readable inside a labeled focusable region.",
+      "html": "<div class=\"ds-reading\"><div class=\"ds-table-scroll\" tabindex=\"0\" role=\"region\" aria-label=\"可水平捲動的表格\"><table class=\"ds-reading-table\"><thead><tr><th>Client</th><th>Connection requirement</th></tr></thead><tbody><tr><td>stable</td><td><code class=\"ds-inline-code\">--devserver</code></td></tr><tr><td>lazer</td><td><code class=\"ds-inline-code\">--server</code></td></tr></tbody></table></div></div>",
+      "css": ".ds-reading{max-width:920px;padding:48px;background:var(--surface,#17141be8);border:1px solid var(--border,#ffffff16);border-radius:var(--radius,14px);backdrop-filter:blur(24px);color:var(--foreground,#f5f1f5);font-size:14px;line-height:1.95;font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);}.ds-table-scroll{overflow-x:auto;margin:20px 0;}.ds-table-scroll:focus-visible{outline:2px solid var(--user-accent,#f28eb6);outline-offset:4px;}.ds-reading-table{width:100%;min-width:640px;border-collapse:collapse;margin:0;font-size:12px;}.ds-reading-table td,.ds-reading-table th{overflow-wrap:normal;word-break:normal;text-align:left;padding:10px 14px;border:1px solid var(--border,#ffffff16);}.ds-inline-code{font-family:monospace;font-size:12px;background:var(--secondary,#29232e);padding:2px 5px;border-radius:4px;white-space:nowrap;}@media(max-width:600px){.ds-reading{padding:24px;}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Rhythm Community Songbook",
+    "overview": "Illyaverse is a personal rhythm community with the familiarity of an osu! catalogue and the softness of rounded bilingual lettering. A pure-black default ground, translucent dark glass, raspberry emphasis and restrained silver outlines give its anime-compatible world a calm, readable frame. Large introductory type opens the landing page; community tools settle into compact rows, clear controls and measured headings.\n\nPersonalization is a material rule. Players can change the theme, accent, background blur, dim and glass radius, while semantic foreground colors keep the interface coherent. Background imagery comes only from player uploads; the default world carries no artwork. This document records the built Serendipity frontend, including its light theme, rather than promising native-client compatibility.",
+    "keyCharacteristics": [
+      "Pure-black default ground with translucent plum-black glass.",
+      "Rounded Latin and Traditional Chinese typography with a strong reading hierarchy.",
+      "A player-selected accent shared by actions, focus and readable highlights.",
+      "Compact catalogue rows, quiet dividers and purposeful negative space.",
+      "Responsive navigation, intact mode labels and locally scrollable dense tables."
+    ],
+    "rules": [
+      {
+        "name": "The Personal Accent Rule",
+        "body": "Use the shared runtime accent and readable-accent roles for new surfaces; do not hard-code raspberry into personalized actions or text.",
+        "section": "colors"
+      },
+      {
+        "name": "The Paired Theme Rule",
+        "body": "Choose semantic surface and foreground pairs so light mode and user-selected accents remain readable together.",
+        "section": "colors"
+      },
+      {
+        "name": "The Bilingual Breathing Rule",
+        "body": "Preserve the built line-height and wrapping behavior when translating; do not squeeze Chinese copy or break game-mode labels to force a desktop arrangement onto mobile.",
+        "section": "typography"
+      },
+      {
+        "name": "The Local Overflow Rule",
+        "body": "Preserve meaningful labels and technical strings; scroll the bounded dense region before compressing its content or widening the document.",
+        "section": "layout"
+      },
+      {
+        "name": "The Glass Before Shadow Rule",
+        "body": "Establish ordinary container depth through the shared translucent surface, blur and border; reserve the existing lifted shadow for overlays and small control states.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Shared Radius Rule",
+        "body": "New glass, fields and buttons follow the live radius family; preserve fixed corners only where the existing small label or navigation pattern calls for them.",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "**Do** build new surfaces from semantic colors, the live accent and the shared radius family.",
+      "**Do** keep the default background plain black and use player-uploaded images for personal atmosphere.",
+      "**Do** use rounded bilingual type with enough line-height for Chinese and translated copy.",
+      "**Do** keep technical strings and mode labels intact in bounded, keyboard-accessible scroll regions.",
+      "**Do** carry explicit hover, focus, disabled and feedback states into new controls.",
+      "**Do** preserve the light-theme foreground pairs and the custom-accent contrast behavior."
+    ],
+    "donts": [
+      "**Don't** add AI-generated artwork or a default illustrated background.",
+      "**Don't** hard-code default raspberry or fixed panel radii where personalization should apply.",
+      "**Don't** apply overlay shadows to every glass section or blur readable foreground content.",
+      "**Don't** compress mobile reading tables into narrow, broken strings or split mode labels across lines.",
+      "**Don't** replace Lucide-style SVG icons with glyph characters or introduce an unrelated display font.",
+      "**Don't** turn compatibility status, empty states or activity figures into unsupported product claims."
+    ]
+  }
+}

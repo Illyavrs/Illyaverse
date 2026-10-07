@@ -1,0 +1,41 @@
+{
+	admin off
+	skip_install_trust
+}
+
+(client_test_website) {
+	tls internal
+	encode zstd gzip
+	request_body {
+		max_size 66MB
+	}
+	@protocol_paths path /web/* /osu/* /d/* /oauth/* /api/v2/* /signalr/* /spectator /spectator/* /multiplayer /multiplayer/* /metadata /metadata/*
+	handle @protocol_paths {
+		reverse_proxy resonance:8081
+	}
+	@sanctuary_paths path /api/v1/* /media/*
+	handle @sanctuary_paths {
+		reverse_proxy sanctuary:8080
+	}
+	handle {
+		reverse_proxy serendipity:3000
+	}
+}
+
+illya.test, osu.illya.test {
+	import client_test_website
+}
+
+c.illya.test, ce.illya.test, c4.illya.test, api.illya.test, spectator.illya.test, bss.illya.test, a.illya.test, b.illya.test {
+	tls internal
+	encode zstd gzip
+	request_body {
+		max_size 66MB
+	}
+	reverse_proxy resonance:8081
+}
+
+# Container-only liveness endpoint. Compose publishes only loopback 80/443.
+http://:8088 {
+	respond /healthz "ok" 200
+}
