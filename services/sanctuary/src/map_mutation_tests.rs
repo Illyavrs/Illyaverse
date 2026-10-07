@@ -124,6 +124,7 @@ impl MutationFixture {
             limits: Default::default(),
             trusted_proxies: Default::default(),
             upload_slots: Arc::new(tokio::sync::Semaphore::new(4)),
+            chat_runtime: Default::default(),
         };
         let app = router(state.clone());
         Self {

@@ -38,6 +38,7 @@ fn fixture_state(db: PgPool, root: PathBuf, origin: String, configured: bool) ->
         limits: Default::default(),
         trusted_proxies: Default::default(),
         upload_slots: Arc::new(tokio::sync::Semaphore::new(2)),
+        chat_runtime: Default::default(),
     }
 }
 

@@ -145,7 +145,7 @@ async fn scoped_rbac_privacy_deletion_revocation_and_queued_authorization() {
             client: reqwest::Client::new(),
             official: Arc::new(Mutex::new(maps::OfficialState::default())),
             limits: Default::default(), trusted_proxies: Default::default(),
-            upload_slots: Arc::new(tokio::sync::Semaphore::new(2)),
+            upload_slots: Arc::new(tokio::sync::Semaphore::new(2)), chat_runtime: Default::default(),
         };
         let app = router(state.clone());
         let admin = user(&pool, "RbacAdmin", &[3]).await;

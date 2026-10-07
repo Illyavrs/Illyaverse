@@ -157,6 +157,15 @@ impl Socket {
         value
     }
 
+    async fn messages_count(&mut self, count: usize) -> Value {
+        let mut items = Vec::new();
+        while items.len() < count {
+            let value = self.messages().await;
+            items.extend(value["items"].as_array().unwrap().iter().cloned());
+        }
+        json!({"items":items})
+    }
+
     async fn closed(&mut self) {
         assert_eq!(
             self.frame().await.0,
@@ -234,6 +243,7 @@ async fn public_chat_history_and_stream_apply_current_visibility() {
         limits: Default::default(),
         trusted_proxies: Default::default(),
         upload_slots: Arc::new(tokio::sync::Semaphore::new(2)),
+        chat_runtime: Default::default(),
     };
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -307,7 +317,7 @@ async fn public_chat_history_and_stream_apply_current_visibility() {
             (restricted, "restored sender"), (outgoing, "restored outgoing peer"),
             (incoming, "restored incoming peer"), (ordinary, "restored ordinary peer"),
         ]).await;
-        assert_eq!(ids(&socket.messages().await), restored);
+        assert_eq!(ids(&socket.messages_count(restored.len()).await), restored);
         let (_, restored_history) = request(&client, &base, Method::GET, &history_path, Some(&cookie), None).await;
         assert_eq!(restored_history["total"], 14);
         assert!(ids(&restored_history).contains(&history[1]));

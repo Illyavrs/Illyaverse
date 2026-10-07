@@ -1,0 +1,42 @@
+{
+  "checked_utc": "2026-10-07T20:40:19.7067370Z",
+  "web_image": "sha256:96d7cc60cc1afbf5132eecc4e31790281179f24d1b4fd18554404af1ea35fc4c",
+  "browser_tests": "7/7 passed (11.6s); retry after test readiness correction, same image and UI source",
+  "required_captures": [
+    {
+      "file": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\website-chat-desktop-dark-zhTW-history.png",
+      "width": 1440,
+      "height": 1193,
+      "sha256": "7aef5bc62f0743c9e66efb378515e75784eeb1b8d5906e6c5c03c54d02654570",
+      "captured_utc": "2026-10-07T20:39:33.1270185Z",
+      "source": "Synthetic intercepted Playwright website-chat.spec.ts fixture; no real community writes"
+    },
+    {
+      "file": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\website-chat-mobile-light-en-create-error.png",
+      "width": 390,
+      "height": 1013,
+      "sha256": "b2a56353023d4916c1c9d7a1f5a23235afa396dd84470c5ca61d02fa55130014",
+      "captured_utc": "2026-10-07T20:39:36.9440099Z",
+      "source": "Synthetic intercepted Playwright website-chat.spec.ts fixture; no real community writes"
+    },
+    {
+      "file": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\website-chat-mobile-dark-ja-friend-only.png",
+      "width": 390,
+      "height": 1013,
+      "sha256": "619bc560ee2d29e01df6439aa63ff54be77a6ea1b4e44cd46e17e1bfd6958eaa",
+      "captured_utc": "2026-10-07T20:39:37.7950312Z",
+      "source": "Synthetic intercepted Playwright website-chat.spec.ts fixture; no real community writes"
+    },
+    {
+      "file": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\website-chat-desktop-dark-en-reconnect.png",
+      "width": 1440,
+      "height": 1193,
+      "sha256": "310007e04fa8aab8e69c511ac79f5f2d353f28c93781db9bc96dea068ccd3ede",
+      "captured_utc": "2026-10-07T20:39:39.4935403Z",
+      "source": "Synthetic intercepted Playwright website-chat.spec.ts fixture; no real community writes"
+    }
+  ],
+  "root_render_rounds": 2,
+  "detector_findings": 86,
+  "detector_primary": 0
+}

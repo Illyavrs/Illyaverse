@@ -836,7 +836,7 @@ mod tests {
                 official: Arc::new(Mutex::new(crate::maps::OfficialState::default())),
                 limits: Arc::new(Mutex::new(HashMap::new())),
                 trusted_proxies: Arc::new(Vec::new()),
-                upload_slots: Arc::new(tokio::sync::Semaphore::new(2)),
+                upload_slots: Arc::new(tokio::sync::Semaphore::new(2)), chat_runtime: Default::default(),
             };
             // This configuration encrypts only. No worker or SMTP connection is
             // started by the test, and no media directories are created.

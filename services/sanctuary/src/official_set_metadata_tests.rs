@@ -84,6 +84,7 @@ async fn official_set_metadata_request_guards() {
         limits: Default::default(),
         trusted_proxies: Default::default(),
         upload_slots: Arc::new(tokio::sync::Semaphore::new(2)),
+        chat_runtime: Default::default(),
     };
     let app = router(state.clone());
     for key in [None, Some("wrong")] {

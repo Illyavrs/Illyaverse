@@ -55,6 +55,7 @@ pub fn validate_color(value: &str) -> bool {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Preferences {
+    pub pm_friends_only: bool,
     pub locale: String,
     pub mode: String,
     pub accent_color: String,
@@ -69,6 +70,7 @@ pub struct Preferences {
 impl Default for Preferences {
     fn default() -> Self {
         Self {
+            pm_friends_only: false,
             locale: "zh-TW".into(),
             mode: "dark".into(),
             accent_color: "#f28eb6".into(),
@@ -179,6 +181,20 @@ mod tests {
         assert_eq!(p.border_radius, 20);
         assert_eq!(p.panel_blur, 8);
         assert_eq!(p.panel_opacity, 0.55);
+        assert!(!p.pm_friends_only);
+    }
+    #[test]
+    fn friend_only_preferences_preserve_partial_theme_values() {
+        let p: Preferences = serde_json::from_value(serde_json::json!({
+            "pm_friends_only":true,"locale":"ja","mode":"light","accent_color":"#123456"
+        }))
+        .unwrap();
+        assert!(p.pm_friends_only);
+        assert_eq!(p.locale, "ja");
+        assert_eq!(p.mode, "light");
+        assert_eq!(p.accent_color, "#123456");
+        assert_eq!(p.panel_blur, 8);
+        assert!(p.validate().is_ok());
     }
     #[test]
     fn panel_preferences_reject_invalid_values_and_preserve_endpoints() {

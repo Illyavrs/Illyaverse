@@ -1,23 +1,19 @@
 use crate::{ApiError, ApiResult, AppState, auth, page};
 use axum::{
     Json,
-    extract::{
-        Path, Query, State, WebSocketUpgrade,
-        ws::{Message, WebSocket},
-    },
+    extract::{Path, Query, State, WebSocketUpgrade},
     http::HeaderMap,
     response::Response,
 };
 use illya_domain::{Pagination, has_permission};
 use serde::Deserialize;
-use serde_json::{Value, json};
-use std::time::Duration;
+use serde_json::Value;
 
 #[cfg(test)]
 #[path = "community_mutation_tests.rs"]
 mod mutation_tests;
 
-async fn can_read(state: &AppState, headers: &HeaderMap, id: i64) -> ApiResult<()> {
+pub(crate) async fn can_read(state: &AppState, headers: &HeaderMap, id: i64) -> ApiResult<()> {
     let required: Option<String> =
         sqlx::query_scalar("SELECT required_permission FROM channels WHERE id=$1")
             .bind(id)
@@ -83,59 +79,16 @@ pub async fn messages(
     let viewer = auth::optional(&state, &headers).await?.map(|user| user.id);
     fetch(&state, id, viewer, query).await
 }
-#[derive(Deserialize)]
-pub struct NewMessage {
-    content: String,
-}
 pub async fn send(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<i64>,
-    Json(input): Json<NewMessage>,
+    Json(input): Json<crate::website_chat::NewMessage>,
 ) -> ApiResult {
     let user = auth::require(&state, &headers).await?;
-    user.require("chat.send")?;
-    let content = input.content.trim();
-    if content.is_empty()
-        || content.chars().count() > 1000
-        || content
-            .chars()
-            .any(|c| c.is_control() && !matches!(c, '\n' | '\t'))
-    {
-        return Err(ApiError::bad("Message must contain 1–1,000 characters."));
-    }
-    let mut tx = state.db.begin().await?;
-    let user = auth::mutation_actor(&mut tx, &user, &[], auth::MutationScope::Permissions).await?;
-    user.require("chat.send")?;
-    // Hold the channel policy through publication. A queued permission change
-    // must be observed before sending, rather than using an earlier read check.
-    let required: Option<String> =
-        sqlx::query_scalar("SELECT required_permission FROM channels WHERE id=$1 FOR SHARE")
-            .bind(id)
-            .fetch_optional(&mut *tx)
-            .await?
-            .ok_or_else(ApiError::missing)?;
-    if let Some(permission) = required {
-        if matches!(
-            permission.as_str(),
-            "lazer.room" | "stable.room" | "chat.pm"
-        ) {
-            return Err(ApiError::missing());
-        }
-        user.require(&permission)?;
-    }
-    let message_id: i64 = sqlx::query_scalar(
-        "INSERT INTO chat_messages(channel_id,user_id,content) VALUES($1,$2,$3) RETURNING id",
-    )
-    .bind(id)
-    .bind(user.id)
-    .bind(content)
-    .fetch_one(&mut *tx)
-    .await?;
-    let value:Value=sqlx::query_scalar("SELECT to_jsonb(m)||jsonb_build_object('username',u.username,'avatar_url',u.avatar_url) FROM chat_messages m JOIN users u ON u.id=m.user_id WHERE m.id=$1").bind(message_id).fetch_one(&mut *tx).await?;
-    auth::ensure_mutation_actor(&mut tx, &user).await?;
-    tx.commit().await?;
-    Ok(Json(value))
+    Ok(Json(
+        crate::website_chat::store_message(&state, &user, id, &input, false).await?,
+    ))
 }
 pub async fn stream(
     State(state): State<AppState>,
@@ -143,30 +96,5 @@ pub async fn stream(
     Path(id): Path<i64>,
     ws: WebSocketUpgrade,
 ) -> ApiResult<Response> {
-    auth::require(&state, &headers).await?;
-    can_read(&state, &headers, id).await?;
-    Ok(ws.on_upgrade(move |socket| connection(socket, state, headers, id)))
-}
-async fn connection(mut socket: WebSocket, state: AppState, headers: HeaderMap, id: i64) {
-    let mut after_id = sqlx::query_scalar::<_, i64>(
-        "SELECT COALESCE(max(id),0) FROM chat_messages WHERE channel_id=$1",
-    )
-    .bind(id)
-    .fetch_one(&state.db)
-    .await
-    .unwrap_or(0);
-    let mut interval = tokio::time::interval(Duration::from_secs(2));
-    loop {
-        tokio::select! {
-            incoming=socket.recv()=>{match incoming{Some(Ok(Message::Close(_)))|None|Some(Err(_))=>break,Some(Ok(Message::Ping(payload)))=>{if socket.send(Message::Pong(payload)).await.is_err(){break;}},_=>{}}},
-            _=interval.tick()=>{
-                let Ok(user)=auth::require(&state,&headers).await else {let _=socket.send(Message::Close(None)).await;break;};
-                if can_read(&state,&headers,id).await.is_err(){let _=socket.send(Message::Close(None)).await;break;}
-                // Resolve sender restrictions and both block directions in every
-                // delivery query, including changes made after the upgrade.
-                let items=sqlx::query_scalar::<_,Value>("SELECT to_jsonb(m)||jsonb_build_object('username',u.username,'avatar_url',u.avatar_url) FROM chat_messages m JOIN users u ON u.id=m.user_id WHERE m.channel_id=$1 AND m.id>$2 AND NOT u.is_restricted AND NOT EXISTS(SELECT 1 FROM user_relationships r WHERE r.relation_type='block' AND ((r.user_id=$3 AND r.target_id=m.user_id) OR (r.target_id=$3 AND r.user_id=m.user_id))) ORDER BY m.id LIMIT 100").bind(id).bind(after_id).bind(user.id).fetch_all(&state.db).await;
-                match items{Ok(items) if !items.is_empty()=>{after_id=items.last().and_then(|v|v["id"].as_i64()).unwrap_or(after_id);if socket.send(Message::Text(json!({"type":"messages","items":items}).to_string().into())).await.is_err(){break;}},Err(_)=>break,_=>{}}
-            }
-        }
-    }
+    crate::website_chat_runtime::channel_stream(State(state), headers, Path(id), ws).await
 }

@@ -138,7 +138,7 @@ async fn community_mutations_recheck_authority_policy_and_expiry() {
             mail: Arc::new(mail_delivery::MailConfig::disabled()), secure_cookie: false,
             media_root: std::env::temp_dir(), maps_root: std::env::temp_dir(), replay_root: std::env::temp_dir(),
             client: reqwest::Client::new(), official: Arc::new(Mutex::new(maps::OfficialState::default())),
-            limits: Default::default(), trusted_proxies: Default::default(), upload_slots: Arc::new(tokio::sync::Semaphore::new(2)),
+            limits: Default::default(), trusted_proxies: Default::default(), upload_slots: Arc::new(tokio::sync::Semaphore::new(2)), chat_runtime: Default::default(),
         };
         let app = router(state.clone());
         let channel: i64 = sqlx::query_scalar("INSERT INTO channels(name) VALUES('#community-fixture') RETURNING id").fetch_one(&pool).await.unwrap();

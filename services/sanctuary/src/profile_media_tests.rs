@@ -85,6 +85,7 @@ fn fixture_state(db: PgPool, media_root: PathBuf) -> AppState {
         limits: Default::default(),
         trusted_proxies: Default::default(),
         upload_slots: Arc::new(tokio::sync::Semaphore::new(2)),
+        chat_runtime: Default::default(),
     }
 }
 

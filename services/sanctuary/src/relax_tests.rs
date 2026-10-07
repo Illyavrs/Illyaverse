@@ -99,7 +99,7 @@ async fn relax_scores_statistics_and_recalculation_are_partitioned() {
     let outcome=AssertUnwindSafe(async {
         sqlx::migrate!("../../migrations").run(&db).await.unwrap();
         let state=AppState{
-            db:db.clone(),secret:Arc::new("relax-test-session-secret-at-least-32-bytes".into()),internal_key:Arc::new("relax-test-service-secret-at-least-32-bytes".into()),origin:Arc::new("http://localhost:3000".into()),mail:Arc::new(mail_delivery::MailConfig::disabled()),secure_cookie:false,media_root:test_root.join("media"),maps_root:test_root.join("maps"),replay_root:test_root.join("replays"),client:reqwest::Client::new(),official:Arc::new(Mutex::new(maps::OfficialState::default())),limits:Arc::new(Mutex::new(HashMap::new())),trusted_proxies:Arc::new(Vec::new()),upload_slots:Arc::new(tokio::sync::Semaphore::new(2)),
+            db:db.clone(),secret:Arc::new("relax-test-session-secret-at-least-32-bytes".into()),internal_key:Arc::new("relax-test-service-secret-at-least-32-bytes".into()),origin:Arc::new("http://localhost:3000".into()),mail:Arc::new(mail_delivery::MailConfig::disabled()),secure_cookie:false,media_root:test_root.join("media"),maps_root:test_root.join("maps"),replay_root:test_root.join("replays"),client:reqwest::Client::new(),official:Arc::new(Mutex::new(maps::OfficialState::default())),limits:Arc::new(Mutex::new(HashMap::new())),trusted_proxies:Arc::new(Vec::new()),upload_slots:Arc::new(tokio::sync::Semaphore::new(2)),chat_runtime:Default::default(),
         };
         tokio::fs::create_dir_all(&state.maps_root).await.unwrap();
         tokio::fs::write(state.maps_root.join("fixture.osu"),MAP).await.unwrap();

@@ -32,6 +32,7 @@ fn fixture_state(db: PgPool, root: PathBuf) -> AppState {
         limits: Default::default(),
         trusted_proxies: Default::default(),
         upload_slots: Arc::new(tokio::sync::Semaphore::new(2)),
+        chat_runtime: Default::default(),
     }
 }
 
@@ -116,7 +117,7 @@ async fn wait_for_lock(db: &PgPool, application: &str, fragment: &str, count: i6
             if waiting >= count { break; }
             tokio::task::yield_now().await;
         }
-    }).await.expect("queued mutation must reach its expected database lock");
+    }).await.unwrap_or_else(|error|panic!("queued mutation must reach its expected database lock ({fragment}, count={count}): {error}"));
 }
 
 async fn wait_until_expired(db: &PgPool, expires_at: DateTime<Utc>) {

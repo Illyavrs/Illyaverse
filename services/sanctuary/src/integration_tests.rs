@@ -30,6 +30,7 @@ async fn recovery_origin_body_and_capability_guards() {
         limits: Default::default(),
         trusted_proxies: Default::default(),
         upload_slots: Arc::new(tokio::sync::Semaphore::new(2)),
+        chat_runtime: Default::default(),
     };
     let app = router(state.clone());
     for _ in 0..6 {
@@ -216,6 +217,7 @@ async fn persistence_and_permissions() {
         limits: Arc::new(Mutex::new(HashMap::new())),
         trusted_proxies: Arc::new(Vec::new()),
         upload_slots: Arc::new(tokio::sync::Semaphore::new(2)),
+        chat_runtime: Default::default(),
     };
     for path in [&state.media_root, &state.maps_root, &state.replay_root] {
         tokio::fs::create_dir_all(path).await.unwrap();
@@ -1052,6 +1054,7 @@ async fn score_scale_ingestion_recovery_and_privacy() {
         limits: Arc::new(Mutex::new(HashMap::new())),
         trusted_proxies: Arc::new(vec![]),
         upload_slots: Arc::new(tokio::sync::Semaphore::new(2)),
+        chat_runtime: Default::default(),
     };
     tokio::fs::create_dir_all(&state.maps_root).await.unwrap();
     tokio::fs::write(state.maps_root.join("fixture.osu"), MAP)

@@ -86,6 +86,7 @@ async fn extended_replay_upload_permissions_and_idempotency() {
         limits: Default::default(),
         trusted_proxies: Default::default(),
         upload_slots: Arc::new(tokio::sync::Semaphore::new(2)),
+        chat_runtime: Default::default(),
     };
     let app = router(state);
     // A task wrapper ensures schema and files are removed even if an assertion fails.

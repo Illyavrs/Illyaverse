@@ -33,6 +33,8 @@ mod score_recovery;
 mod score_scales;
 mod scores;
 mod social;
+mod website_chat;
+mod website_chat_runtime;
 
 use axum::{
     Json, Router,
@@ -73,6 +75,7 @@ pub struct AppState {
     pub limits: Arc<Mutex<HashMap<String, (Instant, u32)>>>,
     pub trusted_proxies: Arc<Vec<ipnet::IpNet>>,
     pub upload_slots: Arc<tokio::sync::Semaphore>,
+    pub chat_runtime: Arc<website_chat_runtime::ChatRuntime>,
 }
 impl AppState {
     pub fn upload_permit(&self) -> ApiResult<tokio::sync::OwnedSemaphorePermit> {
@@ -250,7 +253,7 @@ async fn guard(State(state): State<AppState>, request: Request, next: Next) -> R
             .map(|ip| ip.to_string())
             .unwrap_or_else(|| "unknown".into());
         let mut limits = state.limits.lock().await;
-        if limits.len() > 10_000 {
+        if limits.len() >= 10_000 {
             limits.retain(|_, (time, _)| time.elapsed() < Duration::from_secs(600));
         }
         let key = format!("{scope}:{ip}");
@@ -306,6 +309,7 @@ fn router(state: AppState) -> Router {
             axum::http::Method::GET,
             axum::http::Method::POST,
             axum::http::Method::PATCH,
+            axum::http::Method::PUT,
             axum::http::Method::DELETE,
         ]);
     Router::new()
@@ -425,9 +429,31 @@ fn router(state: AppState) -> Router {
             "/api/v1/channels/{id}/messages",
             get(chat::messages)
                 .post(chat::send)
-                .layer(DefaultBodyLimit::max(16 * 1024)),
+                .layer(DefaultBodyLimit::max(8 * 1024)),
         )
         .route("/api/v1/channels/{id}/stream", get(chat::stream))
+        .route("/api/v1/chat/stream", get(website_chat_runtime::stream))
+        .route(
+            "/api/v1/chat/visibility",
+            post(website_chat::visibility).layer(DefaultBodyLimit::max(8 * 1024)),
+        )
+        .route(
+            "/api/v1/conversations",
+            get(website_chat::list)
+                .post(website_chat::create)
+                .layer(DefaultBodyLimit::max(8 * 1024)),
+        )
+        .route("/api/v1/conversations/{id}", get(website_chat::detail))
+        .route(
+            "/api/v1/conversations/{id}/messages",
+            get(website_chat::history)
+                .post(website_chat::send)
+                .layer(DefaultBodyLimit::max(8 * 1024)),
+        )
+        .route(
+            "/api/v1/conversations/{id}/read",
+            axum::routing::put(website_chat::mark_read).layer(DefaultBodyLimit::max(8 * 1024)),
+        )
         .route("/api/v1/admin/users", get(admin::users))
         .route("/api/v1/admin/users/{id}", patch(admin::update_user))
         .route(
@@ -540,6 +566,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         limits: Arc::new(Mutex::new(HashMap::new())),
         trusted_proxies: Arc::new(trusted_proxies),
         upload_slots: Arc::new(tokio::sync::Semaphore::new(2)),
+        chat_runtime: Default::default(),
     };
     auth::bootstrap(&state).await?;
     score_recovery::start(state.clone());

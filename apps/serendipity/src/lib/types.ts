@@ -38,6 +38,7 @@ export type Preferences = {
   panel_opacity: number;
   border_radius: number;
   locale?: string;
+  pm_friends_only?: boolean;
 };
 export type BeatmapDifficulty = {
   id: number;
@@ -117,6 +118,17 @@ export type Message = {
   avatar_url: string | null;
   content: string;
   created_at: string;
+  is_action: boolean;
+  client_uuid: string | null;
+};
+export type Conversation = {
+  id: number;
+  peer: { id: number; username: string; avatar_url: string | null };
+  last_message: Message | null;
+  last_read_id: number | null;
+  unread_count: number;
+  can_send: boolean;
+  send_restriction: 'friend_only' | 'no_permission' | null;
 };
 export type Role = {
   id: number;
