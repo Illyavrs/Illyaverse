@@ -35,4 +35,14 @@ Pinned images:
 - Serendipity: `sha256:1f156b6306432c81c7f611a0c4228d75c624eb5bbb921f0ba8760a5ba293c839`
 - Existing Caddy: `sha256:f77f856a30f0004200b36b322d61da17fade31e24875699d77fb968399b9eb77`
 
+## Local deployment
+
+2026-10-08 Asia/Taipei: feature commit `bd52fb2` was deployed to `illyaverse` and `illyaverse-client-test` using the pinned images above. Both stacks had zero online native sessions and no received local-room receipt before the upgrade. Writers were stopped before recording account/map/alias fingerprints and creating validated custom-format PostgreSQL dumps and readable shared-data tar archives. Backups remain under ignored `data-profile-presentation/before-profile-presentation-20261007T192148Z-*`; the two dumps and media archives total about 8.02 MiB and contain no compiler-cache copy.
+
+Both databases now have exactly successful migrations `0001`–`0019`, with no failed migration. Retained account/profile/preferences, complete beatmap and filename-alias fingerprints match their stopped-writer baselines; counts of users, maps, scores, local packages, aliases, official archives/members and received local-room receipts are unchanged. Each stack retains 2 users; the main stack has 0 maps and the client-test stack 44 maps. Existing positions are centered at 50/50.
+
+All six application containers match the verified image IDs and all ten stack containers are healthy. Existing PostgreSQL/media/CA volumes and running proxies were retained. Read-only GET checks returned HTTP 200 for the landing page, settings and player page on both `http://localhost:3000` and `https://illya.test`. Anonymous public profile reads expose valid accents and centered positions, without email, permissions or private preferences. The HTTPS checks used the existing public CA file and request-local DNS override, with hostname/chain verification enabled; no hosts or trust-store change was made. Raw local deployment and runtime logs remain ignored under `data-profile-presentation/`.
+
+The final verification prose and this deployment record were added after the production image build and are repository evidence; they do not claim those later notes are present in the image's bundled documentation.
+
 Actual stable score submission remains unverified after the reported `413` failure. This profile/chat checkpoint does not establish that native submission works. The human-operated diagnostic retry is still pending; no game process, hosts file or trust store was changed by these checks.
