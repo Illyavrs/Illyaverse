@@ -69,6 +69,8 @@ services:
       DATABASE_URL: postgres://illya:${POSTGRES_PASSWORD:?Run setup first}@postgres:5432/illyaverse
       INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?Run setup first}
       SANCTUARY_INTERNAL_URL: http://sanctuary:8080
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:3000}
+      LAZER_NOTIFICATION_ENDPOINT: ${LAZER_NOTIFICATION_ENDPOINT:-}
       RESONANCE_BIND: 0.0.0.0:8081
       ILLYA_DOMAIN: ${ILLYA_DOMAIN:-illya.example.com}
       TRUSTED_PROXY_CIDRS: 172.30.91.10/32

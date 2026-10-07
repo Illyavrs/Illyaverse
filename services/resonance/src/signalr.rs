@@ -76,6 +76,7 @@ struct Connection {
 struct Playing {
     state: Value,
     token: Option<i64>,
+    connection_key: String,
 }
 pub struct Runtime {
     connections: Mutex<HashMap<String, Arc<Connection>>>,
@@ -2116,11 +2117,17 @@ async fn spectator(
                 return Err("session_must_be_playing");
             }
             token_owned(state, uid, token, &spectator).await?;
+            if let Some(token) = token {
+                crate::replay_capture::begin(state, uid, token, &c.key, &spectator)
+                    .await
+                    .map_err(|e| e.1)?;
+            }
             state.signalr.playing.lock().await.insert(
                 uid,
                 Playing {
                     state: spectator.clone(),
                     token,
+                    connection_key: c.key.clone(),
                 },
             );
             broadcast_spectator(state, uid, "UserBeganPlaying", spectator).await;
@@ -2138,6 +2145,9 @@ async fn spectator(
                 .get(&uid)
                 .cloned()
                 .ok_or("play_session_required")?;
+            if playing.connection_key != c.key {
+                return Err("play_connection_replaced");
+            }
             let bundle = if target == "SendFrameDataV2" {
                 if argument(args, 0)?.as_i64() != playing.token {
                     return Err("score_token_mismatch");
@@ -2147,6 +2157,11 @@ async fn spectator(
                 argument(args, 0)?
             };
             let bundle = frame_bundle(bundle)?;
+            if let Some(token) = playing.token {
+                crate::replay_capture::frames(state, uid, token, &c.key, &bundle)
+                    .await
+                    .map_err(|e| e.1)?;
+            }
             broadcast_spectator(state, uid, "UserSentFrames", bundle).await;
             Ok(None)
         }
@@ -2156,21 +2171,29 @@ async fn spectator(
                 .playing
                 .lock()
                 .await
-                .remove(&uid)
+                .get(&uid)
+                .cloned()
                 .ok_or("play_session_required")?;
+            if playing.connection_key != c.key {
+                return Err("play_connection_replaced");
+            }
             if target == "EndPlaySessionV2" {
                 if argument(args, 0)?.as_i64() != playing.token {
-                    state.signalr.playing.lock().await.insert(uid, playing);
                     return Err("score_token_mismatch");
                 }
                 let finalstate = integer(argument(args, 1)?)?;
                 if !(3..=5).contains(&finalstate) {
-                    state.signalr.playing.lock().await.insert(uid, playing);
                     return Err("invalid_final_state");
                 }
                 playing.state["state"] = json!(finalstate);
             } else {
-                playing.state = spectator_state(argument(args, 0)?)?;
+                let finalstate = spectator_state(argument(args, 0)?)?;
+                for key in ["beatmapID", "rulesetID", "mods", "maximumStatistics"] {
+                    if finalstate[key] != playing.state[key] {
+                        return Err("play_session_state_mismatch");
+                    }
+                }
+                playing.state = finalstate;
                 if !playing.state["state"]
                     .as_i64()
                     .is_some_and(|n| (3..=5).contains(&n))
@@ -2178,6 +2201,32 @@ async fn spectator(
                     return Err("invalid_final_state");
                 }
             }
+            if let Some(token) = playing.token {
+                // Fanout is preserved even if the recorded metadata cannot be bound.
+                if let Err(error) = crate::replay_capture::end(
+                    state,
+                    uid,
+                    token,
+                    &c.key,
+                    playing.state["state"].as_i64().unwrap() as i16,
+                )
+                .await
+                {
+                    tracing::warn!(
+                        user_id = uid,
+                        code = error.1,
+                        "spectator replay not published"
+                    );
+                }
+            }
+            let mut records = state.signalr.playing.lock().await;
+            if records
+                .get(&uid)
+                .is_some_and(|current| current.connection_key == c.key)
+            {
+                records.remove(&uid);
+            }
+            drop(records);
             broadcast_spectator(state, uid, "UserFinishedPlaying", playing.state).await;
             Ok(None)
         }
@@ -2897,6 +2946,7 @@ mod tests {
             limits: Default::default(),
             trusted_proxies: Default::default(),
             signalr: Arc::new(Runtime::new()),
+            lazer_chat: Arc::new(crate::lazer_chat::Runtime::new()),
         };
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());

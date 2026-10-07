@@ -53,6 +53,7 @@ services:
       DATABASE_URL: postgres://illya:${POSTGRES_PASSWORD:?Use the disposable helper}@postgres:5432/illyaverse
       INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?Use the disposable helper}
       SANCTUARY_INTERNAL_URL: http://sanctuary:8080
+      PUBLIC_ORIGIN: http://127.0.0.1:${ILLYA_SMOKE_RESONANCE_PORT:-18083}
       RESONANCE_BIND: 0.0.0.0:8081
       ILLYA_DOMAIN: smoke.illya.test
       TRUSTED_PROXY_CIDRS: ""

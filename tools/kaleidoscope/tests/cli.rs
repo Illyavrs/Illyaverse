@@ -168,3 +168,40 @@ fn lazer_profile_does_not_invent_a_server_flag() {
     assert!(output.contains("https://spectator.illya.test/spectator"));
     assert!(!output.contains("--server"));
 }
+
+#[test]
+fn reviewed_snapshot_rejects_intervening_changes_before_a_write() {
+    let fixture = Fixture::new();
+    let original = "127.0.0.1 localhost\r\n";
+    fs::write(fixture.hosts(), original).unwrap();
+    let snapshot = fixture.0.join("reviewed.snapshot");
+    fs::write(&snapshot, original).unwrap();
+    let snapshot_arg = snapshot.to_str().unwrap();
+    let changed = format!("{original}10.0.0.2 added.test\r\n");
+    fs::write(fixture.hosts(), &changed).unwrap();
+    for action in ["apply", "restore"] {
+        let mut args = vec![action, "--write", "--expect-current", snapshot_arg];
+        if action == "apply" {
+            args.extend(["--ip", "127.0.0.1", "--domain", "illya.test"]);
+        }
+        let output = fixture.run(&args);
+        assert_eq!(output.status.code(), Some(2));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("reviewed snapshot"));
+        assert_eq!(fs::read_to_string(fixture.hosts()).unwrap(), changed);
+        assert_eq!(fs::read_dir(&fixture.0).unwrap().count(), 2);
+    }
+    fs::write(fixture.hosts(), original).unwrap();
+    assert!(fixture
+        .run(&[
+            "apply",
+            "--write",
+            "--expect-current",
+            snapshot_arg,
+            "--ip",
+            "127.0.0.1",
+            "--domain",
+            "illya.test",
+        ])
+        .status
+        .success());
+}

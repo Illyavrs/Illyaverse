@@ -50,7 +50,20 @@ export function ScorePage({ id }: { id: number }) {
       </div>
     );
   if (!score) return null;
-  const mods = legacyMods.filter(([bit]) => (score.mods & bit) !== 0).map(([, label]) => label);
+  const mods = score.api_mods
+    ? score.api_mods.map((mod) => mod.acronym)
+    : legacyMods
+        .filter(([bit]) => (score.mods & bit) !== 0)
+        .map(([, label]) => label)
+        .filter(
+          (label) =>
+            !(label === 'DT' && score.mods & 512) && !(label === 'SD' && score.mods & 16384),
+        );
+  const modSettings = (score.api_mods ?? []).flatMap((mod) =>
+    Object.entries(mod.settings ?? {})
+      .filter(([, value]) => value !== null)
+      .map(([key, value]) => ({ mod: mod.acronym, key, value })),
+  );
   return (
     <div className="page-container">
       <Link className="back-link" href={`/players/${score.user_id}`}>
@@ -101,6 +114,30 @@ export function ScorePage({ id }: { id: number }) {
           </div>
         ))}
       </dl>
+      {modSettings.length > 0 && (
+        <section className="glass content-panel score-judgements mb-6">
+          <h2>{c('modSettings')}</h2>
+          <dl>
+            {modSettings.map(({ mod, key, value }) => (
+              <div key={`${mod}-${key}`}>
+                <dt>
+                  {mod} ·{' '}
+                  {c.has(`modSettingsLabels.${key}`)
+                    ? c(`modSettingsLabels.${key}`)
+                    : key.replaceAll('_', ' ')}
+                </dt>
+                <dd>
+                  {typeof value === 'number'
+                    ? f.number(value)
+                    : typeof value === 'boolean'
+                      ? c(value ? 'enabled' : 'disabled')
+                      : value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      )}
       <section className="glass content-panel score-judgements">
         <h2>{c('judgements')}</h2>
         <dl>
@@ -114,6 +151,10 @@ export function ScorePage({ id }: { id: number }) {
         <p className="hint">
           {score.verification === 'verified' ? p('scoreVerified') : p('scorePending')}
         </p>
+        {score.pp_eligible === false && <p className="hint">{p('scorePpExcluded')}</p>}
+        {score.has_replay && score.replay_complete === false && (
+          <p className="hint">{p('scoreReplayIncomplete')}</p>
+        )}
       </section>
     </div>
   );

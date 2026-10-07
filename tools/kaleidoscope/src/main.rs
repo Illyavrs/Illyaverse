@@ -8,12 +8,13 @@ const HELP: &str = "Kaleidoscope — Illyaverse connection assistant\n\n\
 Usage:\n\
   kaleidoscope inspect [--hosts PATH]\n\
   kaleidoscope plan --ip IP --domain DOMAIN [--domain DOMAIN...] [--hosts PATH]\n\
-  kaleidoscope apply --ip IP --domain DOMAIN [--domain DOMAIN...] [--hosts PATH] [--write | --dry-run]\n\
-  kaleidoscope restore [--hosts PATH] [--write | --dry-run]\n\
+  kaleidoscope apply --ip IP --domain DOMAIN [--domain DOMAIN...] [--hosts PATH] [--expect-current PATH] [--write | --dry-run]\n\
+  kaleidoscope restore [--hosts PATH] [--expect-current PATH] [--write | --dry-run]\n\
   kaleidoscope profile --client stable|lazer --domain DOMAIN\n\n\
 All commands preview by default. Only apply/restore with --write modify a file.\n\
 No certificate installation, DNS cache changes, or client launches are performed.\n\
 System hosts writes need administrator/root permissions. Close other hosts editors first.\n\
+--expect-current requires hosts to match an earlier byte snapshot before applying the plan.\n\
 See docs/connection.md for TLS and client compatibility requirements.";
 
 #[derive(Debug)]
@@ -25,6 +26,7 @@ struct Args {
     client: Option<String>,
     write: bool,
     dry_run: bool,
+    expect_current: Option<PathBuf>,
 }
 
 fn parse_args(values: Vec<String>) -> Result<Args> {
@@ -55,6 +57,7 @@ fn parse_args(values: Vec<String>) -> Result<Args> {
         client: None,
         write: false,
         dry_run: false,
+        expect_current: None,
     };
     let mut hosts_given = false;
     while let Some(flag) = values.next() {
@@ -67,6 +70,13 @@ fn parse_args(values: Vec<String>) -> Result<Args> {
             }
             "--ip" if args.ip.is_none() => {
                 args.ip = Some(values.next().ok_or("--ip needs an address")?)
+            }
+            "--expect-current" if args.expect_current.is_none() => {
+                args.expect_current = Some(PathBuf::from(
+                    values
+                        .next()
+                        .ok_or("--expect-current needs a snapshot path")?,
+                ));
             }
             "--domain" => args
                 .domains
@@ -85,6 +95,9 @@ fn parse_args(values: Vec<String>) -> Result<Args> {
     }
     if args.client.is_some() && args.command != "profile" {
         return Err("--client is only accepted by profile".into());
+    }
+    if args.expect_current.is_some() && !["apply", "restore"].contains(&args.command.as_str()) {
+        return Err("--expect-current is only accepted by apply and restore".into());
     }
     if args.command == "profile" {
         if hosts_given || args.ip.is_some() {
@@ -134,6 +147,11 @@ fn run(args: Args) -> Result<()> {
         _ => {}
     }
     let original = read_hosts(&args.hosts)?;
+    if let Some(snapshot) = &args.expect_current {
+        if read_hosts(snapshot)? != original {
+            return Err("Hosts changed since the reviewed snapshot. No files were modified; inspect a fresh plan".into());
+        }
+    }
     if args.command == "inspect" {
         println!(
             "Hosts: {}\nEncoding: UTF-8/ASCII\nBytes: {}",
@@ -203,6 +221,8 @@ mod tests {
             ],
             &["restore", "--ip", "127.0.0.1"],
             &["apply", "--hosts", "a", "--hosts", "b"],
+            &["inspect", "--expect-current", "a"],
+            &["apply", "--expect-current", "a", "--expect-current", "b"],
         ] {
             assert!(args(values).is_err());
         }

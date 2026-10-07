@@ -60,25 +60,53 @@ $taskCertificate | Select-Object Subject, Issuer, NotBefore, NotAfter, Thumbprin
 $taskFingerprint
 ```
 
-若決定在目前 Windows 使用者的憑證庫信任這個**本機測試 CA**，由自己明確執行以下命令。這是獨立的選擇，setup 不會代做；信任此 CA 會讓其簽出的憑證受此使用者信任。
+## 一個命令預覽本機連線
+
+建置 Kaleidoscope 後，執行 Windows helper：
 
 ```powershell
-Import-Certificate -FilePath .\data-client-test\caddy-root.crt -CertStoreLocation Cert:\CurrentUser\Root
+cargo build --release -p kaleidoscope
+.\infra\connect-client-test.ps1
 ```
 
-若指定客戶端有自己的 trust store，需按它的設定另行信任同一 CA；不應關閉 TLS 憑證驗證。保留 Caddy data volume，重新啟動後才能繼續使用同一個 CA。移除測試 CA 信任時，用上面**實際記錄的** thumbprint 指定唯一憑證：
+這個命令預設只預覽：顯示 CA subject、有效日期、SHA-256、thumbprint、既有信任狀態、十個 hosts 記錄、endpoint 與客戶端限制。它不會新增 journal、備份、hosts 記錄或憑證信任。`-Mode Apply` 與 `-Mode Restore` 不加 `-Write` 也只預覽。
+
+若明確決定套用，請先核對預覽的指紋，再自行於提高權限的終端執行；範例的 placeholder 必須換成這次**實際核對過的 CA SHA-256**：
 
 ```powershell
-# Replace the placeholder with this test certificate's recorded Thumbprint.
-Remove-Item -LiteralPath 'Cert:\CurrentUser\Root\REPLACE_WITH_RECORDED_TEST_CA_THUMBPRINT'
+.\infra\connect-client-test.ps1 -Mode Apply -Write -ExpectedSha256 'REPLACE_WITH_INSPECTED_CA_SHA256'
 ```
+
+Apply 同時需要明確的 `-Mode Apply`、`-Write` 與相符的 `-ExpectedSha256`；也可再加 `-ExpectedThumbprint` 核對 SHA-1 thumbprint。它只接受有效、自簽發的公開 CA 憑證，拒絕 private key／bundle、不相符指紋與 reparse-point 路徑。憑證信任預設限定 `CurrentUser\Root`；信任此 CA 會讓其簽出的憑證受此使用者信任。
+
+修改 Windows 系統 hosts 需要提高權限，helper 不會自己要求提權。請使用**與執行遊戲相同的 Windows 帳號**；若用另一個管理員帳號啟動終端，`CurrentUser` 是那個管理員而非原玩家。多使用者測試才明確指定 `-TrustScope LocalMachine`，並接受該電腦所有使用者的信任範圍。
+
+helper 使用 Kaleidoscope 建立原始位元組備份、保留原有 BOM／換行、檢查衝突，再比較預覽 snapshot 才寫入。既有、不屬於這次 helper journal 的 Kaleidoscope 區塊會拒絕取代。操作紀錄保存於被 Git 忽略的 `data-client-test\connection-state.json`；不要在連線仍套用時刪掉它。
+
+還原先預覽，再明確寫入：
+
+```powershell
+.\infra\connect-client-test.ps1 -Mode Restore
+.\infra\connect-client-test.ps1 -Mode Restore -Write
+```
+
+Restore 只移除這次紀錄的 managed block，保留外部後來新增的 hosts 記錄；如果該 block 被改過，會停止並要求人工檢查。只有 helper 新增的 CA 才會移除；原先已存在的信任會保留，且移除前再核對 SHA-256／thumbprint。若重建了 Caddy CA，Restore 仍使用原操作紀錄核對舊 CA，不會移除新 CA。重跑已完成的 Restore 不再寫入。
+
+若途中 hosts 或 trust 操作失敗，journal 會保留為 `incomplete`，可先 `-Mode Restore` 檢查，再明確還原；它不會用舊備份覆蓋整個 hosts。helper 的 lock 若因強制中止留在原處，確認已無執行中的 helper 後，再自行刪除 `connection-state.json.lock`。套用前可用[隔離測試腳本](../infra/tests/client-test-connection.ps1)驗證：
+
+```powershell
+.\infra\tests\client-test-connection.ps1
+```
+
+測試只使用臨時 hosts 與記憶體 trust provider，不修改真實 OS trust／hosts。`-HostsPath`／`-CertificatePath`／`-BinaryPath` 可指定測試用檔案；正式 wrapper 不提供任意 trust provider 注入。
+
+若指定客戶端有自己的 trust store，需按它的設定另行信任同一 CA；不應關閉 TLS 憑證驗證。保留 Caddy data volume，重新啟動後才能繼續使用同一個 CA。
 
 ## 規劃 hosts 與驗證 HTTPS
 
 先建置 Kaleidoscope，然後以十個明確的 `illya.test` 域名預覽。這組命令不包含官方 `ppy.sh` 域名，也不會寫入 hosts：
 
 ```powershell
-cargo build --release -p kaleidoscope
 $taskDomainArguments = @(
     '--ip', '127.0.0.1',
     '--domain', 'illya.test',
@@ -96,7 +124,7 @@ $taskDomainArguments = @(
 .\target\release\kaleidoscope.exe apply @taskDomainArguments --dry-run
 ```
 
-確認預覽後，若自行決定修改 Windows 系統 hosts，才在有足夠權限的終端執行同一組參數的 `apply --write`。工具會先備份並保留其他記錄；還原使用 `restore --write`。完整操作與權限要求見[連線文件](connection.md)。
+以上是低階 Kaleidoscope 預覽。需要可一起還原 hosts 與 CA 的本機流程時，使用上一節的 helper；不要在它的操作紀錄仍有效時混用其他 `apply --write`／`restore --write`。完整低階操作與權限要求見[連線文件](connection.md)。
 
 即使尚未套用 hosts，也可以用 curl 的 `--resolve` 做一次指定 URL 的連線測試；它不改 DNS 或系統 hosts。以下使用 CA 公開憑證驗證 TLS，不使用 `--insecure`：
 

@@ -90,7 +90,31 @@
     "footer": "為我們共同的節奏而生。",
     "mods": "Mods",
     "judgements": "判定數據",
-    "tableScroll": "可左右捲動的表格"
+    "tableScroll": "可左右捲動的表格",
+    "modSettings": "Mod 參數",
+    "enabled": "開啟",
+    "disabled": "關閉",
+    "modSettingsLabels": {
+      "extended_limits": "擴展範圍",
+      "overall_difficulty": "整體難度",
+      "fade_hit_circle_early": "提早淡出圈圈",
+      "hard_rock_offsets": "Hard Rock 位移",
+      "adjust_pitch": "調整音高",
+      "classic_health": "經典血量",
+      "circle_size": "圈圈大小",
+      "always_play_tail_sample": "總是播放滑條尾音",
+      "reflection": "鏡像方向",
+      "speed_change": "播放速度",
+      "follow_delay": "手電筒延遲",
+      "combo_based_size": "範圍隨連擊變化",
+      "drain_rate": "血量消耗",
+      "approach_rate": "接近速度",
+      "size_multiplier": "手電筒範圍",
+      "classic_note_lock": "經典鎖定判定",
+      "scroll_speed": "捲動速度",
+      "only_fade_approach_circles": "僅淡出接近圈",
+      "no_slider_head_accuracy": "忽略滑條起點準確率"
+    }
   },
   "auth": {
     "loginTitle": "歡迎回來。",
@@ -150,6 +174,7 @@
     "modeNotice": "排行榜只計入已核准的成績。"
   },
   "profile": {
+    "scoreReplayIncomplete": "Replay 擷取曾中斷，可能缺少部分影格。",
     "title": "玩家個人頁",
     "joined": "加入時間",
     "edit": "編輯個人頁",
@@ -164,7 +189,8 @@
     "replayUnavailable": "未提供 Replay",
     "banner": "個人頁橫幅",
     "scoreVerified": "這筆成績已由管理員核准。",
-    "scorePending": "這筆成績仍待審核，不會計入排行榜。"
+    "scorePending": "這筆成績仍待審核，不會計入排行榜。",
+    "scorePpExcluded": "這組 Mod 不計入排名 pp，計算結果僅供參考。"
   },
   "settings": {
     "title": "讓這裡，成為你的樣子。",
@@ -248,6 +274,8 @@
     "reject": "拒絕"
   },
   "connect": {
+    "lazerBuild": "建置獨立 lazer 測試客戶端",
+    "localTesting": "本機客戶端測試",
     "title": "下一場遊戲，從這裡開始。",
     "subtitle": "選擇客戶端，確認連線條件，使用你的獨立社群帳號。",
     "stable": "osu!stable",

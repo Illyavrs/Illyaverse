@@ -26,6 +26,8 @@ Windows PowerShell 的啟動範例：
 
 ## 使用 lazer
 
+本機已提供可重現的[獨立 lazer 測試客戶端](lazer-client-build.md)，固定官方版本並用原創 adapter 設定 Illyaverse endpoints。完整建置與離線 endpoint 驗證通過，原生登入／遊玩仍需按[本機測試文件](local-client-testing.md)操作。它與已安裝的官方客戶端分開，不把 Kaleidoscope manifest 當作官方設定檔。
+
 **官方發行版 lazer 直接切換任意私服目前未驗證。** 2026-10-07 核對官方 `ppy/osu` master 的 `6359741babba4ced42da1fcda738c35370fdf3f4` 後，release 的 endpoint 設定仍指向官方 HTTPS API 與 spectator；沒有找到可以拿來保證使用的任意伺服器 `--server` 開關。[官方 production endpoint 設定](https://github.com/ppy/osu/blob/6359741babba4ced42da1fcda738c35370fdf3f4/osu.Game/Online/ProductionEndpointConfiguration.cs)、[endpoint 選擇方式](https://github.com/ppy/osu/blob/6359741babba4ced42da1fcda738c35370fdf3f4/osu.Game/OsuGameBase.cs)、[桌面啟動參數](https://github.com/ppy/osu/blob/6359741babba4ced42da1fcda738c35370fdf3f4/osu.Desktop/Program.cs)。
 
 開發與相容性測試應使用獨立的 lazer source build，設定自己的 API／OAuth／SignalR endpoints，並使用獨立資料目錄與 Illyaverse 帳號。官方 [完整伺服器堆疊測試教學](https://github.com/ppy/osu/wiki/Testing-web-server-full-stack-with-osu!) 就是以可編譯客戶端、development endpoint 設定與 OAuth 設定進行測試。

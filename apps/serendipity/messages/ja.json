@@ -90,7 +90,31 @@
     "footer": "私たちが分かち合うリズムのために。",
     "mods": "Mods",
     "judgements": "判定",
-    "tableScroll": "横にスクロールできる表"
+    "tableScroll": "横にスクロールできる表",
+    "modSettings": "Mod 設定",
+    "enabled": "オン",
+    "disabled": "オフ",
+    "modSettingsLabels": {
+      "extended_limits": "拡張範囲",
+      "overall_difficulty": "全体難易度",
+      "fade_hit_circle_early": "サークルを早く消す",
+      "hard_rock_offsets": "Hard Rock オフセット",
+      "adjust_pitch": "音程を調整",
+      "classic_health": "クラシック HP",
+      "circle_size": "サークルサイズ",
+      "always_play_tail_sample": "常に末尾の音を再生",
+      "reflection": "反転方向",
+      "speed_change": "再生速度",
+      "follow_delay": "フラッシュライト遅延",
+      "combo_based_size": "コンボに応じた範囲",
+      "drain_rate": "HP 減少",
+      "approach_rate": "アプローチレート",
+      "size_multiplier": "フラッシュライト範囲",
+      "classic_note_lock": "クラシックノートロック",
+      "scroll_speed": "スクロール速度",
+      "only_fade_approach_circles": "アプローチサークルのみ消す",
+      "no_slider_head_accuracy": "スライダーヘッド精度を無視"
+    }
   },
   "auth": {
     "loginTitle": "おかえりなさい。",
@@ -150,6 +174,7 @@
     "modeNotice": "承認されたスコアのみが対象です。"
   },
   "profile": {
+    "scoreReplayIncomplete": "リプレイの記録が中断されたため、一部のフレームが欠けている可能性があります。",
     "title": "プロフィール",
     "joined": "参加日",
     "edit": "プロフィール編集",
@@ -164,7 +189,8 @@
     "replayUnavailable": "リプレイなし",
     "banner": "プロフィールバナー",
     "scoreVerified": "管理者に承認されたスコアです。",
-    "scorePending": "審査待ちのため、ランキングに含まれません。"
+    "scorePending": "審査待ちのため、ランキングに含まれません。",
+    "scorePpExcluded": "この Mod の組み合わせはランキング pp に加算されません。計算結果は参考値です。"
   },
   "settings": {
     "title": "あなたらしい、居場所に。",
@@ -248,6 +274,8 @@
     "reject": "拒否"
   },
   "connect": {
+    "lazerBuild": "独立した lazer テストクライアントをビルド",
+    "localTesting": "ローカルクライアントテスト",
     "title": "次のセッションは、ここから。",
     "subtitle": "クライアントを選び、接続条件を確認し、コミュニティ専用アカウントを使いましょう。",
     "stable": "osu!stable",

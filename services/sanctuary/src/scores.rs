@@ -1,11 +1,11 @@
-use crate::{ApiError, ApiResult, AppState, audit, auth, page};
+use crate::{ApiError, ApiResult, AppState, auth, page};
 use axum::{
     Json,
     extract::{Multipart, Path, Query, State},
     http::{HeaderMap, header},
     response::{IntoResponse, Response},
 };
-use illya_domain::{HitCounts, Pagination, has_permission};
+use illya_domain::{HitCounts, Pagination, has_permission, score_mods::ValidatedMods};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sqlx::Row;
@@ -83,7 +83,7 @@ pub async fn leaderboard(
     .bind(&query.country)
     .fetch_one(&state.db)
     .await?;
-    let items=sqlx::query_scalar::<_,Value>("WITH best AS (SELECT s.user_id,s.beatmap_id,max(s.pp) pp FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id WHERE s.verification='verified' AND s.passed AND b.status='ranked' AND (s.mods & 10368)=0 AND ($1::smallint IS NULL OR s.mode=$1) GROUP BY s.user_id,s.beatmap_id),weighted AS (SELECT user_id,pp,row_number() OVER(PARTITION BY user_id ORDER BY pp DESC) n FROM best),totals AS (SELECT user_id,sum(pp*power(0.95,n-1)) pp FROM weighted GROUP BY user_id),ranked AS (SELECT u.id,u.username,u.country,u.avatar_url,COALESCE(t.pp,0) pp,row_number() OVER(ORDER BY COALESCE(t.pp,0) DESC,u.id) rank,(SELECT count(*) FROM scores s WHERE s.user_id=u.id AND verification='verified' AND ($1::smallint IS NULL OR s.mode=$1)) play_count,COALESCE((SELECT avg(accuracy) FROM scores s WHERE s.user_id=u.id AND verification='verified' AND ($1::smallint IS NULL OR s.mode=$1)),0) accuracy FROM users u LEFT JOIN totals t ON t.user_id=u.id WHERE NOT u.is_restricted) SELECT to_jsonb(r) FROM ranked r WHERE ($2::text IS NULL OR country=$2) ORDER BY rank LIMIT $3 OFFSET $4")
+    let items=sqlx::query_scalar::<_,Value>("WITH best AS (SELECT s.user_id,s.beatmap_id,max(s.pp) pp FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id WHERE s.verification='verified' AND s.passed AND b.status='ranked' AND s.pp_eligible AND ($1::smallint IS NULL OR s.mode=$1) GROUP BY s.user_id,s.beatmap_id),weighted AS (SELECT user_id,pp,row_number() OVER(PARTITION BY user_id ORDER BY pp DESC) n FROM best),totals AS (SELECT user_id,sum(pp*power(0.95,n-1)) pp FROM weighted GROUP BY user_id),ranked AS (SELECT u.id,u.username,u.country,u.avatar_url,COALESCE(t.pp,0) pp,row_number() OVER(ORDER BY COALESCE(t.pp,0) DESC,u.id) rank,(SELECT count(*) FROM scores s WHERE s.user_id=u.id AND verification='verified' AND ($1::smallint IS NULL OR s.mode=$1)) play_count,COALESCE((SELECT avg(accuracy) FROM scores s WHERE s.user_id=u.id AND verification='verified' AND ($1::smallint IS NULL OR s.mode=$1)),0) accuracy FROM users u LEFT JOIN totals t ON t.user_id=u.id WHERE NOT u.is_restricted) SELECT to_jsonb(r) FROM ranked r WHERE ($2::text IS NULL OR country=$2) ORDER BY rank LIMIT $3 OFFSET $4")
         .bind(query.mode).bind(query.country).bind(size).bind(offset).fetch_all(&state.db).await?;
     Ok(page(items, total, p, size))
 }
@@ -97,6 +97,8 @@ pub struct Submission {
     accuracy: f64,
     max_combo: u32,
     mods: u32,
+    #[serde(default)]
+    api_mods: Option<Value>,
     #[serde(default = "passed_default")]
     passed: bool,
     hit_counts: HitCounts,
@@ -153,6 +155,22 @@ async fn ingest(
     {
         return Err(ApiError::bad("Invalid score values."));
     }
+    let pp_eligible = if let Some(ref native) = input.api_mods {
+        if client != "lazer" {
+            return Err(ApiError::bad(
+                "Structured mods require native lazer ingestion.",
+            ));
+        }
+        let validated = ValidatedMods::parse(input.mode as u8, native).map_err(ApiError::bad)?;
+        if validated.legacy_bits != input.mods {
+            return Err(ApiError::bad(
+                "Legacy mod projection does not match native mods.",
+            ));
+        }
+        validated.pp_eligible
+    } else {
+        input.mods & 10368 == 0
+    };
     let counts = &input.hit_counts;
     if [
         counts.n300,
@@ -208,8 +226,8 @@ async fn ingest(
     let pp = tokio::task::spawn_blocking(move || calculate_pp(&bytes, &calc, lazer))
         .await
         .map_err(ApiError::internal)??;
-    let mut value:Value=sqlx::query_scalar("INSERT INTO scores(user_id,beatmap_id,mode,score,accuracy,max_combo,mods,pp,passed,hit_counts,client,ingestion_key) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(ingestion_key) DO UPDATE SET ingestion_key=scores.ingestion_key WHERE scores.user_id=excluded.user_id AND scores.beatmap_id=excluded.beatmap_id RETURNING to_jsonb(scores)-'replay_path'")
-        .bind(user_id).bind(input.beatmap_id).bind(input.mode).bind(input.score).bind(accuracy).bind(input.max_combo as i32).bind(i64::from(input.mods)).bind(pp).bind(input.passed).bind(json!(input.hit_counts)).bind(client).bind(input.ingestion_key).fetch_optional(&state.db).await?.ok_or_else(||ApiError(axum::http::StatusCode::CONFLICT,"ingestion_conflict","The ingestion key belongs to another score.".into()))?;
+    let mut value:Value=sqlx::query_scalar("INSERT INTO scores(user_id,beatmap_id,mode,score,accuracy,max_combo,mods,pp,passed,hit_counts,client,ingestion_key,api_mods,pp_eligible) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT(ingestion_key) DO UPDATE SET ingestion_key=scores.ingestion_key WHERE scores.user_id=excluded.user_id AND scores.beatmap_id=excluded.beatmap_id RETURNING to_jsonb(scores)-'replay_path'")
+        .bind(user_id).bind(input.beatmap_id).bind(input.mode).bind(input.score).bind(accuracy).bind(input.max_combo as i32).bind(i64::from(input.mods)).bind(pp).bind(input.passed).bind(json!(input.hit_counts)).bind(client).bind(input.ingestion_key).bind(input.api_mods).bind(pp_eligible).fetch_optional(&state.db).await?.ok_or_else(||ApiError(axum::http::StatusCode::CONFLICT,"ingestion_conflict","The ingestion key belongs to another score.".into()))?;
     value["accuracy_source"] = json!(if client == "lazer" {
         "client_reported"
     } else {
@@ -227,11 +245,27 @@ fn calculate_pp(bytes: &[u8], score: &Submission, lazer: bool) -> ApiResult<f64>
         3 => rosu_pp::model::mode::GameMode::Mania,
         _ => return Err(ApiError::bad("Unsupported ruleset.")),
     };
+    let mods = if let Some(ref native) = score.api_mods {
+        if !lazer {
+            return Err(ApiError::bad(
+                "Structured mods require native lazer ingestion.",
+            ));
+        }
+        let validated = ValidatedMods::parse(score.mode as u8, native).map_err(ApiError::bad)?;
+        if validated.legacy_bits != score.mods {
+            return Err(ApiError::bad(
+                "Legacy mod projection does not match native mods.",
+            ));
+        }
+        rosu_pp::GameMods::from(validated.mods)
+    } else {
+        rosu_pp::GameMods::from(score.mods)
+    };
     let map = map
-        .convert(mode, &rosu_pp::GameMods::from(score.mods))
+        .convert(mode, &mods)
         .map_err(|_| ApiError::bad("This beatmap cannot be converted to the requested ruleset."))?;
     let attrs = rosu_pp::Difficulty::new()
-        .mods(score.mods)
+        .mods(mods.clone())
         .lazer(lazer)
         .checked_calculate(&map)
         .map_err(|_| ApiError::bad("Beatmap exceeds safe calculation limits."))?;
@@ -255,7 +289,7 @@ fn calculate_pp(bytes: &[u8], score: &Submission, lazer: bool) -> ApiResult<f64>
         legacy_total_score: u32::try_from(score.score).ok(),
     };
     let pp = rosu_pp::Performance::new(attrs)
-        .mods(score.mods)
+        .mods(mods)
         .lazer(lazer)
         .state(state)
         .calculate()
@@ -320,11 +354,6 @@ pub async fn upload_replay(
     if score.get::<i64, _>("user_id") != user.id {
         return Err(ApiError::forbidden());
     }
-    if score.get::<String, _>("client") == "lazer" {
-        return Err(ApiError::bad(
-            "This endpoint accepts legacy .osr replays; lazer replay ingestion is not implemented.",
-        ));
-    }
     let mut bytes = None;
     while let Some(mut field) = multipart
         .next_field()
@@ -334,13 +363,16 @@ pub async fn upload_replay(
         if field.name() != Some("file") {
             continue;
         }
+        if bytes.is_some() {
+            return Err(ApiError::bad("Attach exactly one replay file."));
+        }
         if !field
             .file_name()
             .unwrap_or("")
             .to_ascii_lowercase()
             .ends_with(".osr")
         {
-            return Err(ApiError::bad("Upload a legacy .osr replay."));
+            return Err(ApiError::bad("Upload an .osr replay."));
         }
         let mut buffer = Vec::new();
         while let Some(chunk) = field
@@ -356,38 +388,112 @@ pub async fn upload_replay(
         bytes = Some(buffer);
     }
     let bytes = bytes.ok_or_else(|| ApiError::bad("Attach a replay file."))?;
-    let replay = resonance_protocol::replay::LegacyReplay::parse(&bytes)
-        .map_err(|e| ApiError::bad(format!("Invalid replay container: {e}")))?;
-    let h: HitCounts =
-        serde_json::from_value(score.get("hit_counts")).map_err(ApiError::internal)?;
-    if replay.beatmap_md5 != score.get::<String, _>("md5")
-        || replay.player_name != score.get::<String, _>("username")
-        || i16::from(replay.mode) != score.get::<i16, _>("mode")
-        || i64::from(replay.total_score) != score.get::<i64, _>("score")
-        || i32::from(replay.max_combo) != score.get::<i32, _>("max_combo")
-        || i64::from(replay.mods) != score.get::<i64, _>("mods")
-        || replay.hit_counts.map(u32::from) != [h.n300, h.n100, h.n50, h.geki, h.katu, h.misses]
-    {
-        return Err(ApiError::bad(
-            "Replay metadata does not match the stored score.",
+    let mut tx = state.db.begin().await?;
+    let score=sqlx::query("SELECT s.*,b.md5,u.username FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id JOIN users u ON u.id=s.user_id WHERE s.id=$1 AND s.user_id=$2 FOR UPDATE OF s").bind(id).bind(user.id).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::missing)?;
+    let lazer = score.get::<String, _>("client") == "lazer";
+    let submission: Option<Value> = if lazer {
+        sqlx::query_scalar("SELECT submission FROM lazer_score_tokens WHERE score_id=$1 AND user_id=$2 ORDER BY id LIMIT 1").bind(id).bind(user.id).fetch_optional(&mut *tx).await?.flatten()
+    } else {
+        None
+    };
+    let expected_user = score.get::<i64, _>("user_id");
+    let username = score.get::<String, _>("username");
+    let md5 = score.get::<String, _>("md5");
+    let mode = score.get::<i16, _>("mode");
+    let total = score.get::<i64, _>("score");
+    let combo = score.get::<i32, _>("max_combo");
+    let mods = score.get::<i64, _>("mods");
+    let hits: Value = score.get("hit_counts");
+    let (bytes, sha) = tokio::task::spawn_blocking(move || -> ApiResult<(Vec<u8>, String)> {
+        use sha2::{Digest, Sha256};
+        if lazer {
+            let input: resonance_protocol::lazer::SoloScoreSubmission = serde_json::from_value(
+                submission.ok_or_else(|| ApiError::bad("Stored lazer submission is required."))?,
+            )
+            .map_err(ApiError::internal)?;
+            let replay = resonance_protocol::lazer_replay::ExtendedReplay::parse(&bytes)
+                .map_err(|e| ApiError::bad(format!("Invalid extended replay: {e}")))?;
+            let binding = resonance_protocol::lazer_replay::ReplayScore {
+                online_id: id,
+                user_id: expected_user,
+                username: &username,
+                beatmap_md5: &md5,
+                client_version: "",
+                mods_bits: mods as u32,
+                timestamp_ticks: 0,
+                submission: &input,
+            };
+            replay
+                .matches(&binding)
+                .map_err(|_| ApiError::bad("Replay metadata does not match the stored score."))?;
+        } else {
+            let replay = resonance_protocol::replay::LegacyReplay::parse(&bytes)
+                .map_err(|e| ApiError::bad(format!("Invalid replay container: {e}")))?;
+            let h: HitCounts = serde_json::from_value(hits).map_err(ApiError::internal)?;
+            if replay.beatmap_md5 != md5
+                || replay.player_name != username
+                || i16::from(replay.mode) != mode
+                || i64::from(replay.total_score) != total
+                || i32::from(replay.max_combo) != combo
+                || i64::from(replay.mods) != mods
+                || replay.hit_counts.map(u32::from)
+                    != [h.n300, h.n100, h.n50, h.geki, h.katu, h.misses]
+            {
+                return Err(ApiError::bad(
+                    "Replay metadata does not match the stored score.",
+                ));
+            }
+        }
+        let sha = format!("{:x}", Sha256::digest(&bytes));
+        Ok((bytes, sha))
+    })
+    .await
+    .map_err(ApiError::internal)??;
+    if let Some(previous) = score.get::<Option<String>, _>("replay_path") {
+        let existing = if let Some(sha) = score.get::<Option<String>, _>("replay_sha256") {
+            sha
+        } else {
+            use sha2::{Digest, Sha256};
+            if previous.contains(['/', '\\']) || previous.contains("..") {
+                return Err(ApiError::internal("unsafe stored replay path"));
+            }
+            let stored = tokio::fs::read(state.replay_root.join(previous)).await?;
+            format!("{:x}", Sha256::digest(stored))
+        };
+        if existing != sha {
+            return Err(ApiError(
+                axum::http::StatusCode::CONFLICT,
+                "replay_already_uploaded",
+                "This score already has a different replay.".into(),
+            ));
+        }
+        return Ok(Json(
+            json!({"ok":true,"verification":score.get::<String,_>("verification"),"has_replay":true,"idempotent":true}),
         ));
     }
     let path = format!("{}-{}.osr", id, Uuid::new_v4());
-    tokio::fs::write(state.replay_root.join(&path), bytes).await?;
-    sqlx::query("UPDATE scores SET replay_path=$2,verification='pending' WHERE id=$1")
+    let temporary = state.replay_root.join(format!("{path}.tmp"));
+    let destination = state.replay_root.join(&path);
+    use tokio::io::AsyncWriteExt;
+    let mut file = tokio::fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&temporary)
+        .await?;
+    file.write_all(&bytes).await?;
+    file.sync_all().await?;
+    drop(file);
+    tokio::fs::rename(&temporary, &destination).await?;
+    let result:ApiResult<()>=async {sqlx::query("UPDATE scores SET replay_path=$2,replay_sha256=$3,replay_format=$4,replay_complete=NULL,verification='pending' WHERE id=$1")
         .bind(id)
         .bind(&path)
-        .execute(&state.db)
+        .bind(&sha).bind(if lazer {"lazer"} else {"legacy"})
+        .execute(&mut *tx)
         .await?;
-    audit(
-        &state,
-        user.id,
-        "scores.replay_upload",
-        "score",
-        id,
-        json!({"metadata_matches":true,"gameplay_verified":false}),
-    )
-    .await?;
+    sqlx::query("INSERT INTO audit_events(actor_id,action,target_type,target_id,details) VALUES($1,'scores.replay_upload','score',$2,$3)").bind(user.id).bind(id.to_string()).bind(json!({"metadata_matches":true,"gameplay_verified":false,"sha256":sha,"format":if lazer {"lazer"} else {"legacy"}})).execute(&mut *tx).await?;tx.commit().await?;Ok(())}.await;
+    // Retain the full file on an uncertain database commit acknowledgement;
+    // deleting it could invalidate a reference that actually committed.
+    result?;
     Ok(Json(
         json!({"ok":true,"verification":"pending","has_replay":true}),
     ))
@@ -407,10 +513,18 @@ pub async fn replay(
     let path = row
         .get::<Option<String>, _>("replay_path")
         .ok_or_else(ApiError::missing)?;
-    if std::path::Path::new(&path).is_absolute() || path.contains("..") {
+    if std::path::Path::new(&path).is_absolute()
+        || path.contains("..")
+        || path.contains(['/', '\\'])
+    {
         return Err(ApiError::internal("unsafe stored replay path"));
     }
-    let bytes = tokio::fs::read(state.replay_root.join(path)).await?;
+    let path = state.replay_root.join(path);
+    let metadata = tokio::fs::symlink_metadata(&path).await?;
+    if !metadata.is_file() || metadata.len() > resonance_protocol::replay::MAX_REPLAY_BYTES as u64 {
+        return Err(ApiError::internal("invalid stored replay size"));
+    }
+    let bytes = tokio::fs::read(path).await?;
     Ok((
         [
             (header::CONTENT_TYPE, "application/octet-stream".to_string()),
@@ -423,6 +537,10 @@ pub async fn replay(
     )
         .into_response())
 }
+
+#[cfg(test)]
+#[path = "replay_upload_tests.rs"]
+mod replay_upload_tests;
 
 #[cfg(test)]
 mod tests {
@@ -458,6 +576,7 @@ mod tests {
                 accuracy: 100.0,
                 max_combo: 2,
                 mods: 0,
+                api_mods: None,
                 passed: true,
                 hit_counts: HitCounts {
                     n300: 2,
@@ -470,5 +589,49 @@ mod tests {
             score.max_combo = 1000;
             assert!(calculate_pp(bytes, &score, false).is_err());
         }
+    }
+    #[test]
+    fn native_rate_and_difficulty_settings_change_performance() {
+        let mut map = String::from(
+            "osu file format v14\n[General]\nMode:0\n[Difficulty]\nHPDrainRate:5\nCircleSize:4\nOverallDifficulty:5\nApproachRate:5\nSliderMultiplier:1.4\nSliderTickRate:1\n[TimingPoints]\n0,500,4,2,1,100,1,0\n[HitObjects]\n",
+        );
+        for i in 0..100 {
+            map.push_str(&format!(
+                "{},{},{},1,0,0:0:0:0:\n",
+                if i % 2 == 0 { 64 } else { 448 },
+                64 + i % 5 * 64,
+                1000 + i * 200
+            ));
+        }
+        let mut score = Submission {
+            user_id: None,
+            beatmap_id: 1,
+            mode: 0,
+            score: 1_000_000,
+            accuracy: 100.0,
+            max_combo: 100,
+            mods: 64,
+            api_mods: Some(json!([{"acronym":"DT","settings":{"speed_change":1.2}}])),
+            passed: true,
+            hit_counts: HitCounts {
+                n300: 100,
+                ..Default::default()
+            },
+            client: None,
+            ingestion_key: None,
+        };
+        let custom = calculate_pp(map.as_bytes(), &score, true).unwrap();
+        score.api_mods = None;
+        let projected = calculate_pp(map.as_bytes(), &score, true).unwrap();
+        assert!(custom.is_finite() && custom > 0.0);
+        assert!((custom - projected).abs() > 0.01);
+        score.mods = 0;
+        let normal = calculate_pp(map.as_bytes(), &score, true).unwrap();
+        score.api_mods = Some(json!([{"acronym":"DA","settings":{"overall_difficulty":9.0}}]));
+        let adjusted = calculate_pp(map.as_bytes(), &score, true).unwrap();
+        assert!((normal - adjusted).abs() > 0.01);
+        score.mods = 64;
+        assert!(calculate_pp(map.as_bytes(), &score, true).is_err());
+        assert!(calculate_pp(map.as_bytes(), &score, false).is_err());
     }
 }

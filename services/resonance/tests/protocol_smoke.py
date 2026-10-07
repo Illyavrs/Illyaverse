@@ -244,9 +244,13 @@ def run():
     admin.json("PATCH", f"/api/v1/admin/scores/{stable_id}", {"verification": "verified"})
     assert score_line.search(gateway.request("GET", "/web/osu-osz2-getscores.php?" + leaderboard_query)[0].decode())
     native_scores = gateway.json("GET", f"/api/v2/beatmaps/{map_id}/scores?mode=osu&type=global", headers=bearer)
-    assert native_scores["score_count"] == 1 and native_scores["scores"][0]["id"] == stable_id
+    assert native_scores["score_count"] == 0 and native_scores["scores"] == [] and native_scores["user_score"] is None
+    admin.json("PATCH", f"/api/v1/admin/scores/{lazer['id']}", {"verification": "verified"})
+    native_scores = gateway.json("GET", f"/api/v2/beatmaps/{map_id}/scores?mode=osu&type=global", headers=bearer)
+    assert native_scores["score_count"] == 1 and native_scores["scores"][0]["id"] == lazer["id"]
     assert native_scores["user_score"]["position"] == 1
     assert native_scores["scores"][0]["rank"] == "X" and native_scores["scores"][0]["statistics"]["great"] == 2
+    assert score_line.search(gateway.request("GET", "/web/osu-osz2-getscores.php?" + leaderboard_query)[0].decode())
     stats = gateway.json("GET", "/api/v2/me/osu", headers=bearer)["statistics"]
     assert stats["pp"] > 0 and stats["ranked_score"] >= 1000000 and stats["play_count"] >= 1
     assert stats["global_rank"] > 0 and stats["maximum_combo"] == 2 and stats["level"]["current"] >= 3

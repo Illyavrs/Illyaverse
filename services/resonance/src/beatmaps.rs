@@ -210,10 +210,23 @@ async fn scores(
         .and_then(|v| v.parse().ok())
         .unwrap_or(50)
         .clamp(1, 100);
-    let mods = if requested_mods.is_empty() {
+    let filter_acronyms = if requested_mods.len() == 1 && requested_mods[0].acronym == "NM" {
+        requested_mods.clear();
+        Some(Vec::<String>::new())
+    } else if requested_mods.is_empty() {
         None
     } else {
-        Some(i64::from(lazer::legacy_mods(&requested_mods)?))
+        Some(
+            requested_mods
+                .iter()
+                .map(|modifier| modifier.acronym.clone())
+                .collect::<Vec<_>>(),
+        )
+    };
+    let mods = if filter_acronyms.is_none() {
+        None
+    } else {
+        Some(i64::from(lazer::legacy_mods(mode as u8, &requested_mods)?))
     };
     let friends = if matches!(scope, "friend" | "friends") {
         let mut ids = common::friend_ids(&state, user.id)
@@ -226,7 +239,7 @@ async fn scores(
     } else {
         None
     };
-    let rows=sqlx::query("WITH best AS (SELECT DISTINCT ON(s.user_id) s.id,s.user_id,s.score FROM scores s JOIN users u ON u.id=s.user_id WHERE s.beatmap_id=$1 AND s.mode=$2 AND s.verification='verified' AND s.passed AND NOT u.is_restricted AND ($3::bigint IS NULL OR s.mods=$3) AND ($3::bigint IS NOT NULL OR (s.mods & 10368)=0) AND ($4::text IS NULL OR u.country=$4) AND ($5::bigint[] IS NULL OR s.user_id=ANY($5)) ORDER BY s.user_id,s.score DESC,s.id),placed AS (SELECT *,row_number() OVER(ORDER BY score DESC,id) position,count(*) OVER() score_count FROM best) SELECT * FROM placed WHERE position<=$6 OR user_id=$7 ORDER BY position").bind(map).bind(mode).bind(mods).bind(if scope=="country"{Some(&user.country)}else{None}).bind(friends).bind(limit).bind(user.id).fetch_all(&state.pool).await?;
+    let rows=sqlx::query("WITH best AS (SELECT DISTINCT ON(s.user_id) s.id,s.user_id,s.score FROM scores s JOIN users u ON u.id=s.user_id WHERE s.beatmap_id=$1 AND s.mode=$2 AND s.client='lazer' AND s.verification='verified' AND s.passed AND NOT u.is_restricted AND ($3::bigint IS NULL OR (s.api_mods IS NULL AND s.mods=$3) OR (s.api_mods IS NOT NULL AND jsonb_array_length(s.api_mods)=cardinality($8::text[]) AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(s.api_mods) modifier WHERE NOT (modifier->>'acronym'=ANY($8::text[]))))) AND ($3::bigint IS NOT NULL OR s.pp_eligible) AND ($4::text IS NULL OR u.country=$4) AND ($5::bigint[] IS NULL OR s.user_id=ANY($5)) ORDER BY s.user_id,s.score DESC,s.id),placed AS (SELECT *,row_number() OVER(ORDER BY score DESC,id) position,count(*) OVER() score_count FROM best) SELECT * FROM placed WHERE position<=$6 OR user_id=$7 ORDER BY position").bind(map).bind(mode).bind(mods).bind(if scope=="country"{Some(&user.country)}else{None}).bind(friends).bind(limit).bind(user.id).bind(filter_acronyms).fetch_all(&state.pool).await?;
     let score_count = rows
         .first()
         .map(|r| r.get::<i64, _>("score_count"))

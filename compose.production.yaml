@@ -6,6 +6,8 @@ services:
       PUBLIC_ORIGIN: https://${ILLYA_DOMAIN:?Set your real ILLYA_DOMAIN}
       COOKIE_SECURE: "true"
   resonance:
+    environment:
+      PUBLIC_ORIGIN: https://${ILLYA_DOMAIN:?Set your real ILLYA_DOMAIN}
     ports: !reset []
   caddy:
     environment:

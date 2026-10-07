@@ -64,6 +64,9 @@ export function ConnectPage() {
               <TabsContent value="lazer" className="pt-6">
                 <h2>{t('lazerTitle')}</h2>
                 <p>{t('lazerText')}</p>
+                <Link href="/docs/lazer-client" className="back-link">
+                  {t('lazerBuild')}
+                </Link>
               </TabsContent>
             </Tabs>
           </section>
@@ -80,6 +83,10 @@ export function ConnectPage() {
               </Link>
               <Link href="/docs/deployment">
                 {t('operator')}
+                <ExternalLink className="inline size-3 ml-1" />
+              </Link>
+              <Link href="/docs/local-client">
+                {t('localTesting')}
                 <ExternalLink className="inline size-3 ml-1" />
               </Link>
             </div>

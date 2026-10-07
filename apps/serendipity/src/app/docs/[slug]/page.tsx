@@ -7,6 +7,12 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 const documents: Record<string, string> = {
   connection: 'connection.md',
+  'local-client': 'local-client-testing.md',
+  'lazer-client': 'lazer-client-build.md',
+  'native-chat': 'native-chat.md',
+  'native-mods': 'native-mods.md',
+  'score-normalization': 'score-normalization.md',
+  replays: 'lazer-replays.md',
   deployment: 'deployment.md',
   architecture: 'architecture.md',
   protocol: 'protocol-compatibility.md',

@@ -130,7 +130,7 @@ async fn login(state: &AppState, client: &str, body: &[u8]) -> Result<Response, 
         let permission: Option<String> = channel.get("required_permission");
         if permission
             .as_deref()
-            .is_some_and(|p| p == "lazer.room" || !player.can(p))
+            .is_some_and(|p| matches!(p, "lazer.room" | "chat.pm") || !player.can(p))
         {
             continue;
         }
@@ -217,8 +217,8 @@ async fn stats(
     let mode = i16::from(action.mode);
     let row = sqlx::query("SELECT COALESCE(sum(score),0)::bigint AS total,COALESCE(avg(accuracy),0)::float8 AS accuracy,count(*)::bigint AS plays FROM scores WHERE user_id=$1 AND mode=$2 AND verification='verified' AND passed")
         .bind(player.id).bind(mode).fetch_one(&state.pool).await?;
-    let ranked: i64 = sqlx::query_scalar("SELECT COALESCE(sum(best),0)::bigint FROM (SELECT max(s.score) AS best FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id WHERE s.user_id=$1 AND s.mode=$2 AND s.verification='verified' AND s.passed AND b.status='ranked' AND (s.mods & 10368)=0 GROUP BY s.beatmap_id) t").bind(player.id).bind(mode).fetch_one(&state.pool).await?;
-    let ranking = sqlx::query("WITH best AS (SELECT s.user_id,s.beatmap_id,max(s.pp) pp FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id WHERE s.mode=$2 AND s.verification='verified' AND s.passed AND b.status='ranked' AND (s.mods & 10368)=0 GROUP BY s.user_id,s.beatmap_id),weighted AS (SELECT user_id,pp,row_number() OVER(PARTITION BY user_id ORDER BY pp DESC) n FROM best),totals AS (SELECT user_id,sum(pp*power(0.95,n-1)) pp FROM weighted GROUP BY user_id),placed AS (SELECT u.id,COALESCE(t.pp,0)::float8 pp,row_number() OVER(ORDER BY COALESCE(t.pp,0) DESC,u.id) placement FROM users u LEFT JOIN totals t ON t.user_id=u.id WHERE NOT u.is_restricted) SELECT pp,placement FROM placed WHERE id=$1")
+    let ranked: i64 = sqlx::query_scalar("SELECT COALESCE(sum(best),0)::bigint FROM (SELECT max(s.score) AS best FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id WHERE s.user_id=$1 AND s.mode=$2 AND s.verification='verified' AND s.passed AND b.status='ranked' AND s.pp_eligible GROUP BY s.beatmap_id) t").bind(player.id).bind(mode).fetch_one(&state.pool).await?;
+    let ranking = sqlx::query("WITH best AS (SELECT s.user_id,s.beatmap_id,max(s.pp) pp FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id WHERE s.mode=$2 AND s.verification='verified' AND s.passed AND b.status='ranked' AND s.pp_eligible GROUP BY s.user_id,s.beatmap_id),weighted AS (SELECT user_id,pp,row_number() OVER(PARTITION BY user_id ORDER BY pp DESC) n FROM best),totals AS (SELECT user_id,sum(pp*power(0.95,n-1)) pp FROM weighted GROUP BY user_id),placed AS (SELECT u.id,COALESCE(t.pp,0)::float8 pp,row_number() OVER(ORDER BY COALESCE(t.pp,0) DESC,u.id) placement FROM users u LEFT JOIN totals t ON t.user_id=u.id WHERE NOT u.is_restricted) SELECT pp,placement FROM placed WHERE id=$1")
         .bind(player.id).bind(mode).fetch_one(&state.pool).await?;
     let pp: f64 = ranking.get("pp");
     Ok(UserStats {
@@ -337,7 +337,7 @@ async fn poll(state: &AppState, token: &str, body: &[u8]) -> Result<Response, Ap
                         channels.retain(|value| *value != id);
                     } else if permission
                         .as_deref()
-                        .is_none_or(|p| p != "lazer.room" && player.can(p))
+                        .is_none_or(|p| !matches!(p, "lazer.room" | "chat.pm") && player.can(p))
                     {
                         if !channels.contains(&id) {
                             channels.push(id);
@@ -354,7 +354,15 @@ async fn poll(state: &AppState, token: &str, body: &[u8]) -> Result<Response, Ap
                 if !player.can("chat.send") {
                     return Err(ApiError(StatusCode::FORBIDDEN, "chat_permission_required"));
                 }
-                let content = message.text.trim();
+                let text = message.text.trim();
+                let (content, is_action) = if let Some(action) = text
+                    .strip_prefix("\u{1}ACTION ")
+                    .and_then(|v| v.strip_suffix('\u{1}'))
+                {
+                    (action, true)
+                } else {
+                    (text, false)
+                };
                 if content.is_empty() || content.chars().count() > 1000 {
                     return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_chat_length"));
                 }
@@ -379,21 +387,21 @@ async fn poll(state: &AppState, token: &str, body: &[u8]) -> Result<Response, Ap
                         let id: i64 = row.get("id");
                         let permission: Option<String> = row.get("required_permission");
                         if channels.contains(&id)
-                            && permission
-                                .as_deref()
-                                .is_none_or(|p| p != "lazer.room" && player.can(p))
+                            && permission.as_deref().is_none_or(|p| {
+                                !matches!(p, "lazer.room" | "chat.pm") && player.can(p)
+                            })
                         {
-                            sqlx::query("INSERT INTO chat_messages(channel_id,user_id,content) VALUES($1,$2,$3)").bind(id).bind(player.id).bind(content).execute(&mut *tx).await?;
+                            sqlx::query("INSERT INTO chat_messages(channel_id,user_id,content,is_action) VALUES($1,$2,$3,$4)").bind(id).bind(player.id).bind(content).bind(is_action).execute(&mut *tx).await?;
                         }
                     }
                 } else {
-                    let recipient = sqlx::query("SELECT u.id,b.block_non_friend_dms,EXISTS(SELECT 1 FROM user_relationships WHERE user_id=u.id AND target_id=$2 AND relation_type='friend') AS friend,EXISTS(SELECT 1 FROM user_relationships WHERE ((user_id=u.id AND target_id=$2) OR (user_id=$2 AND target_id=u.id)) AND relation_type='block') AS blocked FROM users u JOIN bancho_sessions b ON b.user_id=u.id WHERE lower(u.username)=lower($1) AND NOT u.is_restricted AND b.expires_at>now()").bind(&message.recipient).bind(player.id).fetch_optional(&mut *tx).await?;
+                    let recipient = sqlx::query("SELECT u.id,(COALESCE(b.block_non_friend_dms,false) OR COALESCE(u.preferences->>'pm_friends_only','false')='true') block_non_friend_dms,EXISTS(SELECT 1 FROM user_relationships WHERE user_id=u.id AND target_id=$2 AND relation_type='friend') AS friend,EXISTS(SELECT 1 FROM user_relationships WHERE ((user_id=u.id AND target_id=$2) OR (user_id=$2 AND target_id=u.id)) AND relation_type='block') AS blocked FROM users u LEFT JOIN bancho_sessions b ON b.user_id=u.id AND b.expires_at>now() WHERE lower(u.username)=lower($1) AND u.id<>$2 AND NOT u.is_restricted AND (b.id IS NOT NULL OR EXISTS(SELECT 1 FROM lazer_sessions WHERE user_id=u.id AND access_expires_at>now() AND last_seen_at>now()-interval '3 minutes'))").bind(&message.recipient).bind(player.id).fetch_optional(&mut *tx).await?;
                     if let Some(row) = recipient {
                         if !row.get::<bool, _>("blocked")
                             && (!row.get::<bool, _>("block_non_friend_dms")
                                 || row.get::<bool, _>("friend"))
                         {
-                            sqlx::query("INSERT INTO protocol_private_messages(sender_id,recipient_id,content) VALUES($1,$2,$3)").bind(player.id).bind(row.get::<i64,_>("id")).bind(content).execute(&mut *tx).await?;
+                            sqlx::query("INSERT INTO protocol_private_messages(sender_id,recipient_id,content,is_action) VALUES($1,$2,$3,$4)").bind(player.id).bind(row.get::<i64,_>("id")).bind(content).bind(is_action).execute(&mut *tx).await?;
                         } else {
                             append(
                                 &mut output,
@@ -461,7 +469,7 @@ async fn poll(state: &AppState, token: &str, body: &[u8]) -> Result<Response, Ap
         if row
             .get::<Option<String>, _>("required_permission")
             .as_deref()
-            .is_some_and(|p| p == "lazer.room" || !player.can(p))
+            .is_some_and(|p| matches!(p, "lazer.room" | "chat.pm") || !player.can(p))
         {
             channels.retain(|id| *id != row.get::<i64, _>("id"));
             append(
@@ -473,15 +481,19 @@ async fn poll(state: &AppState, token: &str, body: &[u8]) -> Result<Response, Ap
             )?;
         }
     }
-    let messages = sqlx::query("SELECT m.id,m.content,m.user_id,u.username,c.name FROM chat_messages m JOIN users u ON u.id=m.user_id JOIN channels c ON c.id=m.channel_id WHERE m.id>$1 AND m.channel_id=ANY($2) AND NOT u.is_restricted ORDER BY m.id LIMIT 100")
-        .bind(session.get::<i64,_>("last_chat_id")).bind(&channels).fetch_all(&mut *tx).await?;
+    let messages = sqlx::query("SELECT m.id,m.content,m.is_action,m.user_id,u.username,c.name,EXISTS(SELECT 1 FROM user_relationships WHERE relation_type='block' AND ((user_id=$3 AND target_id=m.user_id) OR (target_id=$3 AND user_id=m.user_id))) blocked FROM chat_messages m JOIN users u ON u.id=m.user_id JOIN channels c ON c.id=m.channel_id WHERE m.id>$1 AND m.channel_id=ANY($2) AND NOT u.is_restricted ORDER BY m.id LIMIT 100")
+        .bind(session.get::<i64,_>("last_chat_id")).bind(&channels).bind(player.id).fetch_all(&mut *tx).await?;
     let mut last_chat: i64 = session.get("last_chat_id");
     for row in messages {
         last_chat = row.get("id");
-        if row.get::<i64, _>("user_id") != player.id {
+        if row.get::<i64, _>("user_id") != player.id && !row.get::<bool, _>("blocked") {
             let message = ChatMessage {
                 sender: row.get("username"),
-                text: row.get("content"),
+                text: if row.get::<bool, _>("is_action") {
+                    format!("\u{1}ACTION {}\u{1}", row.get::<String, _>("content"))
+                } else {
+                    row.get("content")
+                },
                 recipient: format!("#{}", row.get::<String, _>("name")),
                 sender_id: id32(row.get("user_id"))?,
             };
@@ -491,14 +503,21 @@ async fn poll(state: &AppState, token: &str, body: &[u8]) -> Result<Response, Ap
             )?;
         }
     }
-    let messages = sqlx::query("SELECT m.id,m.content,m.sender_id,u.username FROM protocol_private_messages m JOIN users u ON u.id=m.sender_id WHERE m.id>$1 AND m.recipient_id=$2 AND NOT u.is_restricted ORDER BY m.id LIMIT 100")
+    let messages = sqlx::query("SELECT m.id,m.content,m.is_action,m.sender_id,u.username,EXISTS(SELECT 1 FROM user_relationships WHERE relation_type='block' AND ((user_id=$2 AND target_id=m.sender_id) OR (target_id=$2 AND user_id=m.sender_id))) blocked FROM protocol_private_messages m JOIN users u ON u.id=m.sender_id WHERE m.id>$1 AND m.recipient_id=$2 AND NOT u.is_restricted ORDER BY m.id LIMIT 100")
         .bind(session.get::<i64,_>("last_dm_id")).bind(player.id).fetch_all(&mut *tx).await?;
     let mut last_dm: i64 = session.get("last_dm_id");
     for row in messages {
         last_dm = row.get("id");
+        if row.get::<bool, _>("blocked") {
+            continue;
+        }
         let message = ChatMessage {
             sender: row.get("username"),
-            text: row.get("content"),
+            text: if row.get::<bool, _>("is_action") {
+                format!("\u{1}ACTION {}\u{1}", row.get::<String, _>("content"))
+            } else {
+                row.get("content")
+            },
             recipient: player.username.clone(),
             sender_id: id32(row.get("sender_id"))?,
         };
@@ -657,7 +676,7 @@ async fn leaderboard(
     } else {
         None
     };
-    let rows = sqlx::query("WITH best AS (SELECT DISTINCT ON(s.user_id) s.id,s.user_id,s.score,s.max_combo,s.mods,s.hit_counts,s.created_at,s.replay_path,u.username FROM scores s JOIN users u ON u.id=s.user_id WHERE s.beatmap_id=$1 AND s.mode=$2 AND s.verification='verified' AND s.passed AND NOT u.is_restricted AND ($3::bigint IS NULL OR s.mods=$3) AND ($3::bigint IS NOT NULL OR (s.mods & 10368)=0) AND ($4::text IS NULL OR u.country=$4) AND ($5::bigint[] IS NULL OR s.user_id=ANY($5)) ORDER BY s.user_id,s.score DESC,s.id),placed AS (SELECT *,row_number() OVER(ORDER BY score DESC,id) AS placement FROM best) SELECT * FROM placed WHERE placement<=100 OR user_id=$6 ORDER BY placement")
+    let rows = sqlx::query("WITH best AS (SELECT DISTINCT ON(s.user_id) s.id,s.user_id,s.score,s.max_combo,s.mods,s.hit_counts,s.created_at,s.replay_path,u.username FROM scores s JOIN users u ON u.id=s.user_id WHERE s.beatmap_id=$1 AND s.mode=$2 AND s.client='stable' AND s.verification='verified' AND s.passed AND NOT u.is_restricted AND ($3::bigint IS NULL OR s.mods=$3) AND ($3::bigint IS NOT NULL OR s.pp_eligible) AND ($4::text IS NULL OR u.country=$4) AND ($5::bigint[] IS NULL OR s.user_id=ANY($5)) ORDER BY s.user_id,s.score DESC,s.id),placed AS (SELECT *,row_number() OVER(ORDER BY score DESC,id) AS placement FROM best) SELECT * FROM placed WHERE placement<=100 OR user_id=$6 ORDER BY placement")
         .bind(id).bind(mode).bind(if leaderboard_type==2 {Some(requested_mods)} else {None})
         .bind(if leaderboard_type==3 {Some(&player.country)}else{None}).bind(friend_filter).bind(player.id).fetch_all(&state.pool).await?;
     let status = match map.get::<String, _>("status").as_str() {

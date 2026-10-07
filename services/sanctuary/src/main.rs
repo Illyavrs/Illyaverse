@@ -381,7 +381,7 @@ async fn ready(State(state): State<AppState>) -> ApiResult {
     Ok(Json(json!({"status":"ready"})))
 }
 async fn status(State(state): State<AppState>) -> ApiResult {
-    let value:Value=sqlx::query_scalar("SELECT jsonb_build_object('registered_players',(SELECT count(*) FROM users WHERE NOT is_restricted),'ranked_scores',(SELECT count(*) FROM scores s JOIN users u ON u.id=s.user_id JOIN beatmaps b ON b.id=s.beatmap_id WHERE s.verification='verified' AND s.passed AND b.status='ranked' AND NOT u.is_restricted AND (s.mods & 10368)=0),'beatmap_count',(SELECT count(*) FROM beatmaps))").fetch_one(&state.db).await?;
+    let value:Value=sqlx::query_scalar("SELECT jsonb_build_object('registered_players',(SELECT count(*) FROM users WHERE NOT is_restricted),'ranked_scores',(SELECT count(*) FROM scores s JOIN users u ON u.id=s.user_id JOIN beatmaps b ON b.id=s.beatmap_id WHERE s.verification='verified' AND s.passed AND b.status='ranked' AND NOT u.is_restricted AND s.pp_eligible),'beatmap_count',(SELECT count(*) FROM beatmaps))").fetch_one(&state.db).await?;
     let mut value = value;
     let online:i64=sqlx::query_scalar("SELECT count(DISTINCT active.user_id) FROM (SELECT user_id FROM bancho_sessions WHERE expires_at>now() UNION SELECT user_id FROM lazer_sessions WHERE access_expires_at>now() AND last_seen_at>now()-interval '3 minutes') active JOIN users u ON u.id=active.user_id WHERE NOT u.is_restricted").fetch_one(&state.db).await?;
     value["players_online"] = json!(online);

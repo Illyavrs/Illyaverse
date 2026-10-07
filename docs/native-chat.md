@@ -1,0 +1,57 @@
+# Native lazer chat
+
+Resonance implements original HTTP and notification-WebSocket chat contracts. The isolated real TCP integration test passed on 2026-10-07. The test uses synthetic requests following public native models; it does not launch lazer or establish native UI, reconnect or playback compatibility.
+
+## Connection and events
+
+`GET /api/v2/notifications` authenticates the opaque lazer access token and returns `notification_endpoint`. General notifications are currently an empty collection; achievement, forum and other notification delivery is not implemented. The endpoint is configured by `LAZER_NOTIFICATION_ENDPOINT`, or derived from the deployment's public origin as `ws`/`wss` plus `/notification-server`. Credentials, query strings and fragments are rejected.
+
+The native client upgrades that endpoint with `Authorization: Bearer <access token>`, then sends JSON `chat.start`. `chat.end` pauses delivery; repeated starts do not replay prior events. There is no SignalR handshake on this socket. These facts follow the official [connector](https://github.com/ppy/osu/blob/master/osu.Game/Online/Notifications/WebSocket/WebSocketNotificationsClientConnector.cs), [notification response model](https://github.com/ppy/osu/blob/master/osu.Game/Online/API/Requests/Responses/APINotificationsBundle.cs) and [WebSocket command contract](https://github.com/ppy/osu-web/blob/master/resources/views/docs/_websocket_commands.md).
+
+The server sends `chat.channel.join`, `chat.channel.part` and `chat.message.new`. A message event contains both `messages` and corresponding `users`, including the authenticated sender ID. Messages include their persisted ID, channel, timestamp, action flag and original client UUID. This matches the official [chat client](https://github.com/ppy/osu/blob/master/osu.Game/Online/Chat/WebSocketChatClient.cs), [message event model](https://github.com/ppy/osu/blob/master/osu.Game/Online/Notifications/WebSocket/Events/NewChatMessageData.cs) and [event specification](https://github.com/ppy/osu-web/blob/master/resources/views/docs/_websocket_events.md).
+
+## HTTP routes
+
+| Route | Behavior |
+| --- | --- |
+| `GET /api/v2/chat/channels` | Joinable public channels, filtered by current account permissions. |
+| `GET /api/v2/chat/updates?since=0&includes[]=presence` | Joined channel presence; repeated includes are supported. Deprecated messages and silence arrays remain empty. |
+| `GET /api/v2/chat/channels/{id}` | Authorized channel details and PM participant models. |
+| `PUT/DELETE /api/v2/chat/channels/{id}/users/{user}` | Join/leave using the authenticated owner's ID. Private room membership is checked separately. |
+| `GET /api/v2/chat/channels/{id}/messages` | Bounded recent history with `since`, exclusive `until` and `limit` up to 50; restricted/blocked senders are excluded. |
+| `POST /api/v2/chat/channels/{id}/messages` | Native form fields `message`, `is_action` and optional `uuid`. Identity comes from authentication. |
+| `POST /api/v2/chat/channels` | Create/rejoin one-to-one `PM` using `target_id`; return non-null `recent_messages` containing up to 50 authorized messages. Other channel types return an unsupported response. |
+| `POST /api/v2/chat/new` | Create/rejoin PM and send the initial message, returning channel and message. |
+| `PUT /api/v2/chat/channels/{id}/mark-as-read/{message_id}` | Persist a monotonic read marker for an actual message in that channel. |
+| `POST /api/v2/chat/ack` | Extend public chat activity by ten minutes; negative cursors are rejected. |
+
+Public notification delivery pauses when chat activity expires. PM delivery continues independently of this timeout. This follows the upstream [chat usage contract](https://github.com/ppy/osu-web/blob/master/resources/views/docs/_using_chat.md). Native form and route details were checked against [CreateChannelRequest](https://github.com/ppy/osu/blob/master/osu.Game/Online/API/Requests/CreateChannelRequest.cs), [PostMessageRequest](https://github.com/ppy/osu/blob/master/osu.Game/Online/API/Requests/PostMessageRequest.cs), [MarkChannelAsReadRequest](https://github.com/ppy/osu/blob/master/osu.Game/Online/API/Requests/MarkChannelAsReadRequest.cs), [GetUpdatesRequest](https://github.com/ppy/osu/blob/master/osu.Game/Online/API/Requests/GetUpdatesRequest.cs) and [ChatAckRequest](https://github.com/ppy/osu/blob/master/osu.Game/Online/API/Requests/ChatAckRequest.cs).
+
+Message, create-channel, initial-PM and acknowledgement bodies accept native scalar multipart, URL-encoded forms and JSON through the shared bounded native-form parser. Duplicate names, uploaded files, invalid UTF-8 and unknown chat fields are rejected. Native `is_action` is lowercase `true`/`false`. The pinned `2026.1005.1-tachyon` client sends initial chat acknowledgement as an empty POST without a Content-Type header; only the acknowledgement handler accepts that exact empty framing. A headerless non-empty body is rejected. Native `APIChatChannel.RecentMessages` is supplied on PM creation/rejoin because the client's channel manager consumes that collection directly.
+
+## Persistence and authorization
+
+Website and stable public writes share `chat_messages`. Stable private writes are bridged transactionally into a unique PM conversation; native PM writes persist through the same private-message table for stable delivery. Action messages translate to/from stable's action text envelope. No mirrored message is sent before its database transaction commits.
+
+A PostgreSQL commit notification carries only IDs. Before transmitting its payload, Resonance fetches the persisted message and rechecks the access token, restrictions, membership, channel permissions and either-direction block rules. Private multiplayer channels require actual room membership, including for administrators. PM channels require a participant identity and stay excluded from website and stable public channel lists, even with wildcard administration permissions.
+
+PM initiation and sends honor the recipient's friend-only preference, including the active stable setting. Ordered locks on both users serialize concurrent opposite sends and relationship changes. Client UUID reuse returns the existing message when the channel, content and action flag agree; conflicting reuse returns HTTP 409. Read markers cannot move backwards or claim a message in another channel.
+
+## Bounds and recovery
+
+REST chat bodies are limited to 8 KiB, messages to 1,000 characters and client identifiers to 128 permitted ASCII characters. Socket commands are limited to 2 KiB and 60 per minute. The process admits at most 512 sockets and four per user. Each database-event receiver has a 256-event buffer, emitted JSON is limited to 64 KiB and socket writes time out after two seconds.
+
+Authorization is rechecked on every command/event and periodically while connected. Token expiry/revocation or account restriction emits logout and closes the connection. Permission and membership changes remove inaccessible channel presence. A slow receiver or lost database notification connection closes affected sockets; clients can reconnect and retrieve channel history. This is bounded live delivery, not an exactly-once notification archive.
+
+The current implementation omits announcement/group channels, independent silence-history management and non-chat notification types. Full client UI, transport interruption and idle reconnection behavior still require native validation. The general SignalR room/spectator runtime remains a separate [hub implementation](signalr-compatibility.md).
+
+## Verification
+
+Five unit tests cover native command/form contracts, multipart/JSON/form parsing, empty initial acknowledgement, strict fields, cursor/message/identifier bounds, endpoint credential rejection and connection permit release. The opt-in real HTTP/WebSocket test creates and destroys its own random schema and ephemeral server:
+
+```powershell
+$env:ILLYA_TEST_DATABASE_URL = 'postgres://<test-user>:<test-password>@127.0.0.1:<test-port>/<test-database>'
+cargo test -p resonance native_chat_http_and_websocket -- --ignored --nocapture
+```
+
+It passed notification URL/event/sender/UUID checks; multipart message/create/PM/ack requests and initial headerless empty acknowledgement; non-null recent PM history; rejection of duplicate fields, file parts and oversized bodies before writes; a lower message ID committed after a newer message; concurrent identical retries and conflicting reuse; opposite PM sends; friend-only and blocked history/new messages; public keepalive expiry with continuing PM delivery; private-room observers and revoked membership; channel leave before a subsequent write; native-to-stable action PMs and stable-to-native authenticated binary PMs; repeated start/end/resume; write-permission revocation; expired/deleted tokens and restricted accounts. No existing community schema, native client configuration, hosts file or certificate store is modified by this test.

@@ -16,7 +16,7 @@
 	handle @protocol_hosts {
 		reverse_proxy resonance:8081
 	}
-	@protocol_paths path /web/* /osu/* /d/* /oauth/* /api/v2/* /signalr/*
+	@protocol_paths path /web/* /osu/* /d/* /oauth/* /api/v2/* /signalr/* /notification-server /notification-server/* /spectator /spectator/* /multiplayer /multiplayer/* /metadata /metadata/*
 	handle @protocol_paths {
 		reverse_proxy resonance:8081
 	}

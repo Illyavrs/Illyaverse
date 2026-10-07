@@ -53,11 +53,15 @@ export type Score = {
   accuracy: number;
   max_combo: number;
   mods: number;
+  api_mods?:
+    { acronym: string; settings?: Record<string, number | string | boolean | null> }[] | null;
+  pp_eligible?: boolean;
   pp: number;
   passed: boolean;
   verification: string;
   created_at: string;
   has_replay: boolean;
+  replay_complete?: boolean | null;
 };
 export type Channel = {
   id: number;

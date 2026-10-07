@@ -537,6 +537,73 @@ async fn persistence_and_permissions() {
     .await
     .unwrap();
     assert_eq!(ingestion_count, 1);
+    let native = json!({"user_id":id,"beatmap_id":map_id,"mode":0,"score":1000,"accuracy":100,"max_combo":2,"mods":64,"api_mods":[{"acronym":"DT","settings":{"speed_change":1.2}}],"hit_counts":{"n300":2},"client":"lazer","ingestion_key":"lazer:integration-rate"});
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/v1/internal/scores")
+                .header("x-illya-service-key", state.internal_key.as_str())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(native.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let stored: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 65536).await.unwrap()).unwrap();
+    assert_eq!(stored["api_mods"], native["api_mods"]);
+    assert_eq!(stored["pp_eligible"], true);
+    assert_eq!(stored["verification"], "pending");
+    let (s, _, _) = request(
+        &app,
+        Method::GET,
+        &format!("/api/v1/scores/{}", stored["id"]),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    let mut invalid = native.clone();
+    invalid["ingestion_key"] = json!("lazer:integration-invalid");
+    invalid["mods"] = json!(0);
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/v1/internal/scores")
+                .header("x-illya-service-key", state.internal_key.as_str())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(invalid.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    invalid["api_mods"] = json!([{"acronym":"DA","settings":{"overall_difficulty":8.0}}]);
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/v1/internal/scores")
+                .header("x-illya-service-key", state.internal_key.as_str())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(invalid.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let adjusted: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 65536).await.unwrap()).unwrap();
+    assert_eq!(adjusted["pp_eligible"], false);
+    assert_eq!(adjusted["api_mods"], invalid["api_mods"]);
+    let (s, _, _) = request(&app, Method::POST, "/api/v1/scores", Some(&cookie), Some(json!({"beatmap_id":map_id,"mode":0,"score":1000,"accuracy":100,"max_combo":2,"mods":64,"api_mods":native["api_mods"],"hit_counts":{"n300":2}}))).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
     sqlx::query("INSERT INTO user_roles(user_id,role_id) SELECT $1,id FROM roles WHERE name='administrator'").bind(id).execute(&db).await.unwrap();
     let (s, _, _) = request(
         &app,

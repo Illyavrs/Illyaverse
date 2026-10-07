@@ -21,7 +21,10 @@ async fn can_read(state: &AppState, headers: &HeaderMap, id: i64) -> ApiResult<(
             .await?
             .ok_or_else(ApiError::missing)?;
     if let Some(permission) = required {
-        if matches!(permission.as_str(), "lazer.room" | "stable.room") {
+        if matches!(
+            permission.as_str(),
+            "lazer.room" | "stable.room" | "chat.pm"
+        ) {
             return Err(ApiError::missing());
         }
         auth::require(state, headers).await?.require(&permission)?;
@@ -31,7 +34,7 @@ async fn can_read(state: &AppState, headers: &HeaderMap, id: i64) -> ApiResult<(
 pub async fn channels(State(state): State<AppState>, headers: HeaderMap) -> ApiResult {
     let user = auth::optional(&state, &headers).await?;
     let permissions = user.map(|u| u.permissions).unwrap_or_default();
-    let items = sqlx::query_scalar::<_, Value>("SELECT to_jsonb(c) FROM channels c WHERE required_permission IS NULL OR required_permission NOT IN ('lazer.room','stable.room') ORDER BY id")
+    let items = sqlx::query_scalar::<_, Value>("SELECT to_jsonb(c) FROM channels c WHERE required_permission IS NULL OR required_permission NOT IN ('lazer.room','stable.room','chat.pm') ORDER BY id")
         .fetch_all(&state.db)
         .await?
         .into_iter()

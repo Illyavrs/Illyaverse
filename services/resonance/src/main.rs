@@ -2,7 +2,9 @@ mod assets;
 mod beatmaps;
 mod common;
 mod lazer;
+mod lazer_chat;
 mod multiplayer;
+mod replay_capture;
 mod signalr;
 mod stable;
 mod stable_scores;
@@ -38,8 +40,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tokio::fs::create_dir_all(&storage).await?;
     tokio::fs::create_dir_all(storage.join("maps")).await?;
     tokio::fs::create_dir_all(storage.join("replays")).await?;
+    let notification_endpoint = notification_endpoint()?;
     let state = AppState {
-        pool,
+        pool: pool.clone(),
         storage: Arc::new(tokio::fs::canonicalize(storage).await?),
         sanctuary_url: Arc::new(
             env::var("SANCTUARY_INTERNAL_URL").unwrap_or_else(|_| "http://sanctuary:8080".into()),
@@ -50,6 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .build()?,
         limits: Default::default(),
         signalr: Arc::new(signalr::Runtime::new()),
+        lazer_chat: Arc::new(lazer_chat::Runtime::with_endpoint(notification_endpoint)),
         trusted_proxies: Arc::new(
             env::var("TRUSTED_PROXY_CIDRS")
                 .unwrap_or_default()
@@ -59,11 +63,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .collect::<Result<Vec<_>, _>>()?,
         ),
     };
+    state.lazer_chat.start(pool).await?;
+    if let Err(error) = replay_capture::recover_pending(&state).await {
+        tracing::warn!(code = error.1, "replay recovery will retry in background");
+    }
+    let recovery_state = state.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        interval.tick().await;
+        loop {
+            interval.tick().await;
+            if let Err(error) = replay_capture::recover_pending(&recovery_state).await {
+                tracing::warn!(code = error.1, "replay recovery batch failed");
+            }
+        }
+    });
     let app = Router::new()
         .route("/health", get(health))
         .route("/", get(index).post(stable::bancho))
         .merge(stable::router())
         .merge(lazer::router())
+        .merge(lazer_chat::router())
         .merge(signalr::router())
         .merge(beatmaps::router())
         .merge(assets::router())
@@ -84,7 +105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn index() -> Json<serde_json::Value> {
     Json(
-        json!({"service":"Resonance", "project":"Illyaverse", "stable":"login, presence, chat, friends, encrypted score submission, map/replay downloads, multiplayer and spectating", "lazer":"OAuth, map lookup/download, solo scores, REST chat, friends and SignalR hub subsets", "unsupported":["lazer extended replay uploads", "custom lazer mod settings", "native chat notification WebSocket", "cross-client multiplayer rooms", "stable target-practice submission", "tournament interfaces"], "compatibility":"experimental; live protocol tests do not replace actual native client validation", "score_policy":"submitted scores await moderator review before entering rankings"}),
+        json!({"service":"Resonance", "project":"Illyaverse", "stable":"login, presence, chat, friends, encrypted score submission, map/replay downloads, multiplayer and spectating", "lazer":"OAuth, map lookup/download, structured-mod solo scores, durable replay exports, native notification chat, friends and SignalR hub subsets", "unsupported":["unsupported lazer mod settings and customized Flashlight parameters", "deterministic replay gameplay verification", "announcement and group chat channels", "non-chat notification types", "cross-client multiplayer rooms", "native multiplayer room score aggregation", "combined legacy/lazer score normalization and native profile display-score conversion", "stable target-practice submission", "tournament interfaces"], "compatibility":"experimental; live protocol tests do not replace actual native client validation", "score_policy":"submitted scores await moderator review before entering rankings"}),
     )
 }
 async fn health(
@@ -92,6 +113,37 @@ async fn health(
 ) -> Result<Json<serde_json::Value>, common::ApiError> {
     sqlx::query("SELECT 1").execute(&state.pool).await?;
     Ok(Json(json!({"status":"ok", "service":"resonance"})))
+}
+fn notification_endpoint() -> Result<String, Box<dyn std::error::Error>> {
+    let explicit = env::var("LAZER_NOTIFICATION_ENDPOINT").unwrap_or_default();
+    let mut url = if explicit.is_empty() {
+        let origin = env::var("PUBLIC_ORIGIN").unwrap_or_else(|_| "http://localhost:3000".into());
+        let mut url = reqwest::Url::parse(&origin)?;
+        let scheme = match url.scheme() {
+            "http" => "ws",
+            "https" => "wss",
+            _ => return Err("PUBLIC_ORIGIN requires HTTP or HTTPS".into()),
+        };
+        url.set_scheme(scheme)
+            .map_err(|_| "Invalid notification scheme")?;
+        url.set_path("/notification-server");
+        url
+    } else {
+        reqwest::Url::parse(&explicit)?
+    };
+    if !matches!(url.scheme(), "ws" | "wss")
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err("LAZER_NOTIFICATION_ENDPOINT requires a websocket URL without credentials, query or fragment".into());
+    }
+    if url.path().is_empty() {
+        url.set_path("/notification-server");
+    }
+    Ok(url.into())
 }
 async fn shutdown() {
     let _ = tokio::signal::ctrl_c().await;

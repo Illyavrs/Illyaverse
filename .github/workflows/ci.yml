@@ -34,6 +34,15 @@ jobs:
       - run: cargo test -p resonance signalr_http_websocket_and_sse --locked -- --ignored
         env:
           ILLYA_TEST_DATABASE_URL: postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci
+      - run: cargo test -p resonance native_chat_http_and_websocket --locked -- --ignored
+        env:
+          ILLYA_TEST_DATABASE_URL: postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci
+      - run: cargo test -p resonance native_replay_http_websocket_persistence --locked -- --ignored
+        env:
+          ILLYA_TEST_DATABASE_URL: postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci
+      - run: cargo test -p sanctuary extended_replay_upload_permissions_and_idempotency --locked -- --ignored
+        env:
+          ILLYA_TEST_DATABASE_URL: postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
   serendipity:

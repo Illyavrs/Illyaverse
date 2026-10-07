@@ -11,6 +11,7 @@ services:
       TRUSTED_PROXY_CIDRS: 172.30.92.10/32,172.30.92.11/32
   resonance:
     environment:
+      PUBLIC_ORIGIN: https://illya.test
       ILLYA_DOMAIN: illya.test
       TRUSTED_PROXY_CIDRS: 172.30.92.10/32
     ports: !reset []

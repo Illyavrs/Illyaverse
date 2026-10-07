@@ -1,8 +1,8 @@
 use crate::common::{self, Account, ApiError, AppState};
 use axum::{
     Json, Router,
-    body::Bytes,
-    extract::{ConnectInfo, Form, Path, Query, State},
+    body::{Body, to_bytes},
+    extract::{ConnectInfo, FromRequest, Multipart, Path, Query, Request, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post, put},
@@ -11,10 +11,10 @@ use chrono::{Duration, Utc};
 use resonance_protocol::lazer::{
     ApiMod, OAuthGrant, OAuthToken, ScoreTokenRequest, SoloScoreSubmission,
 };
-use serde::Deserialize;
+use serde::{Deserialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use sqlx::Row;
-use std::{collections::HashMap, net::SocketAddr};
+use std::{collections::HashSet, net::SocketAddr};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -31,21 +31,10 @@ pub fn router() -> Router<AppState> {
         )
         .route("/api/v2/scores/{id}", get(score))
         .route("/api/v2/scores/{id}/download", get(download_replay))
-        .route("/api/v2/chat/channels", get(channels))
-        .route("/api/v2/chat/channels/{id}", get(channel))
-        .route(
-            "/api/v2/chat/channels/{id}/messages",
-            get(messages).post(send_message),
-        )
-        .route(
-            "/api/v2/chat/channels/{id}/users/{user}",
-            put(join_channel).delete(leave_channel),
-        )
         .route("/api/v2/friends", get(friends).post(add_friend))
         .route("/api/v2/friends/{id}", axum::routing::delete(remove_friend))
         .route("/api/v2/blocks", get(blocks).post(add_block))
         .route("/api/v2/blocks/{id}", axum::routing::delete(remove_block))
-        .route("/api/v2/notifications", get(empty_notifications))
         .route("/api/v2/seasonal-backgrounds", get(backgrounds))
         .route("/api/v2/news", get(news))
 }
@@ -54,7 +43,7 @@ async fn oauth(
     State(state): State<AppState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    body: Bytes,
+    request: Request,
 ) -> Result<Json<OAuthToken>, ApiError> {
     common::rate_limit(
         &state,
@@ -62,23 +51,7 @@ async fn oauth(
         30,
     )
     .await?;
-    if body.len() > 8192 {
-        return Err(ApiError(
-            StatusCode::PAYLOAD_TOO_LARGE,
-            "oauth_request_too_large",
-        ));
-    }
-    let grant: OAuthGrant = if headers
-        .get("content-type")
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|v| v.starts_with("application/json"))
-    {
-        serde_json::from_slice(&body)
-            .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_oauth_grant"))?
-    } else {
-        serde_urlencoded::from_bytes(&body)
-            .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_oauth_grant"))?
-    };
+    let grant: OAuthGrant = native_form(request).await?;
     grant.validate()?;
     let access = common::secret();
     let refresh = common::secret();
@@ -110,6 +83,84 @@ async fn oauth(
     }))
 }
 
+/// osu-framework's AddParameter requests use multipart, while API callers also
+/// use URL-encoded forms. Bound the entire body before processing either form.
+pub(crate) async fn native_form<T: DeserializeOwned>(request: Request) -> Result<T, ApiError> {
+    const MAX_BODY: usize = 8192;
+    let content_type = request
+        .headers()
+        .get("content-type")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    if !matches!(
+        content_type.as_str(),
+        "application/json" | "application/x-www-form-urlencoded" | "multipart/form-data"
+    ) {
+        return Err(ApiError(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "unsupported_native_form_type",
+        ));
+    }
+    let (parts, body) = request.into_parts();
+    let body = to_bytes(body, MAX_BODY)
+        .await
+        .map_err(|_| ApiError(StatusCode::PAYLOAD_TOO_LARGE, "native_request_too_large"))?;
+    if content_type == "application/json" {
+        return serde_json::from_slice(&body)
+            .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_native_form"));
+    }
+    let fields: Vec<(String, String)> = if content_type == "multipart/form-data" {
+        let request = Request::from_parts(parts, Body::from(body));
+        let mut multipart = Multipart::from_request(request, &())
+            .await
+            .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_native_form"))?;
+        let mut fields = Vec::new();
+        while let Some(field) = multipart
+            .next_field()
+            .await
+            .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_native_form"))?
+        {
+            if fields.len() >= 32 || field.file_name().is_some() {
+                return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_native_form"));
+            }
+            let name = field
+                .name()
+                .ok_or(ApiError(StatusCode::BAD_REQUEST, "invalid_native_form"))?
+                .to_owned();
+            let value = field
+                .bytes()
+                .await
+                .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_native_form"))?;
+            let value = std::str::from_utf8(&value)
+                .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_native_form"))?
+                .to_owned();
+            fields.push((name, value));
+        }
+        fields
+    } else {
+        serde_urlencoded::from_bytes(&body)
+            .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_native_form"))?
+    };
+    let mut names = HashSet::new();
+    if fields.len() > 32
+        || fields.iter().any(|(name, _)| {
+            name.is_empty()
+                || name.len() > 64
+                || !name.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
+                || !names.insert(name.as_str())
+        })
+    {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_native_form"));
+    }
+    let encoded = serde_urlencoded::to_string(&fields)
+        .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_native_form"))?;
+    serde_urlencoded::from_str(&encoded)
+        .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_native_form"))
+}
+
 pub fn user_json(player: &Account) -> Value {
     json!({"id":player.id,"username":player.username,"country_code":player.country,"avatar_url":player.avatar_url,"is_active":true,"is_bot":false,"is_online":player.is_online,"is_supporter":true,"is_deleted":false,"pm_friends_only":false,"last_visit":null,"join_date":player.joined_at,"profile_colour":null,"playmode":"osu","playstyle":[],"country":{"code":player.country,"name":player.country},"cover":{"custom_url":null,"url":null,"id":"0"},"groups":[],"user_achievements":[],"kudosu":{"total":0,"available":0},"statistics":null})
 }
@@ -119,7 +170,7 @@ async fn user_response(
     mode: u8,
 ) -> Result<Json<Value>, ApiError> {
     let row=sqlx::query("SELECT count(*)::bigint plays,COALESCE(sum(score),0)::bigint total,COALESCE(avg(accuracy),0)::float8 accuracy,COALESCE(max(max_combo),0)::integer combo,COALESCE(sum(COALESCE((hit_counts->>'n300')::bigint,0)+COALESCE((hit_counts->>'n100')::bigint,0)+COALESCE((hit_counts->>'misses')::bigint,0)+CASE WHEN mode<>1 THEN COALESCE((hit_counts->>'n50')::bigint,0) ELSE 0 END+CASE WHEN mode=3 THEN COALESCE((hit_counts->>'geki')::bigint,0) ELSE 0 END+CASE WHEN mode IN(2,3) THEN COALESCE((hit_counts->>'katu')::bigint,0) ELSE 0 END),0)::bigint hits FROM scores WHERE user_id=$1 AND mode=$2 AND verification='verified'").bind(player.id).bind(i16::from(mode)).fetch_one(&state.pool).await?;
-    let ranking=sqlx::query("WITH best AS (SELECT s.user_id,s.beatmap_id,max(s.pp) pp,max(s.score) best_score FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id WHERE s.verification='verified' AND s.passed AND b.status='ranked' AND (s.mods & 10368)=0 AND s.mode=$2 GROUP BY s.user_id,s.beatmap_id),weighted AS (SELECT user_id,pp,best_score,row_number() OVER(PARTITION BY user_id ORDER BY pp DESC) n FROM best),totals AS (SELECT user_id,sum(pp*power(0.95,n-1)) pp,sum(best_score) ranked_score FROM weighted GROUP BY user_id),placed AS (SELECT u.id,COALESCE(t.pp,0)::float8 pp,COALESCE(t.ranked_score,0)::bigint ranked_score,row_number() OVER(ORDER BY COALESCE(t.pp,0) DESC,u.id) global_rank,row_number() OVER(PARTITION BY u.country ORDER BY COALESCE(t.pp,0) DESC,u.id) country_rank FROM users u LEFT JOIN totals t ON t.user_id=u.id WHERE NOT u.is_restricted) SELECT * FROM placed WHERE id=$1").bind(player.id).bind(i16::from(mode)).fetch_one(&state.pool).await?;
+    let ranking=sqlx::query("WITH best AS (SELECT s.user_id,s.beatmap_id,max(s.pp) pp,max(s.score) best_score FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id WHERE s.verification='verified' AND s.passed AND b.status='ranked' AND s.pp_eligible AND s.mode=$2 GROUP BY s.user_id,s.beatmap_id),weighted AS (SELECT user_id,pp,best_score,row_number() OVER(PARTITION BY user_id ORDER BY pp DESC) n FROM best),totals AS (SELECT user_id,sum(pp*power(0.95,n-1)) pp,sum(best_score) ranked_score FROM weighted GROUP BY user_id),placed AS (SELECT u.id,COALESCE(t.pp,0)::float8 pp,COALESCE(t.ranked_score,0)::bigint ranked_score,row_number() OVER(ORDER BY COALESCE(t.pp,0) DESC,u.id) global_rank,row_number() OVER(PARTITION BY u.country ORDER BY COALESCE(t.pp,0) DESC,u.id) country_rank FROM users u LEFT JOIN totals t ON t.user_id=u.id WHERE NOT u.is_restricted) SELECT * FROM placed WHERE id=$1").bind(player.id).bind(i16::from(mode)).fetch_one(&state.pool).await?;
     let grades=sqlx::query("SELECT count(*) FILTER(WHERE s.passed AND s.accuracy=100 AND (s.mods & 1032)=0)::bigint ss,count(*) FILTER(WHERE s.passed AND s.accuracy=100 AND (s.mods & 1032)<>0)::bigint ssh,count(*) FILTER(WHERE COALESCE(t.submission->>'rank',a.details->>'rank')='S')::bigint s,count(*) FILTER(WHERE COALESCE(t.submission->>'rank',a.details->>'rank')='SH')::bigint sh,count(*) FILTER(WHERE COALESCE(t.submission->>'rank',a.details->>'rank')='A')::bigint a FROM scores s LEFT JOIN lazer_score_tokens t ON t.score_id=s.id LEFT JOIN LATERAL(SELECT details FROM audit_events WHERE action='scores.stable_ingest' AND target_id=s.id::text ORDER BY id DESC LIMIT 1)a ON true WHERE s.user_id=$1 AND s.mode=$2 AND s.verification='verified'").bind(player.id).bind(i16::from(mode)).fetch_one(&state.pool).await?;
     let mut value = user_json(&player);
     let total = row.get::<i64, _>("total");
@@ -138,14 +189,17 @@ fn level(total: i64) -> Value {
     while current < 100 {
         let next = start + (formula((current + 1) as f64) - formula(current as f64)).round() as u64;
         if (total.max(0) as u64) < next {
-            return json!({"current":current,"progress":100.0*(total.max(0)as u64-start)as f64/(next-start)as f64});
+            let progress = (((total.max(0) as u64 - start) as u128 * 100) / (next - start) as u128)
+                .min(100) as u32;
+            return json!({"current":current,"progress":progress});
         }
         start = next;
         current += 1;
     }
     let remaining = (total.max(0) as u64).saturating_sub(start);
     current += remaining / 99_999_999_999;
-    json!({"current":current,"progress":100.0*(remaining%99_999_999_999)as f64/99_999_999_999.0})
+    let progress = ((remaining % 99_999_999_999) as u128 * 100 / 99_999_999_999).min(100) as u32;
+    json!({"current":current,"progress":progress})
 }
 fn mode(value: &str) -> Result<u8, ApiError> {
     match value {
@@ -229,9 +283,10 @@ async fn create_score(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<i64>,
-    Form(input): Form<ScoreTokenRequest>,
+    request: Request,
 ) -> Result<Json<Value>, ApiError> {
     let player = common::bearer(&state, &headers).await?;
+    let input: ScoreTokenRequest = native_form(request).await?;
     input.validate()?;
     common::rate_limit(&state, format!("score-token:{}", player.id), 60).await?;
     let map = sqlx::query("SELECT id,md5,mode FROM beatmaps WHERE (id=$1 OR official_id=$1) AND md5=$2 ORDER BY (official_id=$1) DESC LIMIT 1")
@@ -257,59 +312,12 @@ async fn create_score(
     Ok(Json(json!({"id":token})))
 }
 
-/// The current pp adapter supports legacy modifier bits at their standard speed.
-/// Reject custom settings rather than silently calculate the wrong performance.
-pub(crate) fn legacy_mods(mods: &[ApiMod]) -> Result<u32, ApiError> {
-    let mut bits = 0;
-    let mut seen = std::collections::HashSet::new();
-    for modifier in mods {
-        if !seen.insert(&modifier.acronym) {
-            return Err(ApiError(StatusCode::BAD_REQUEST, "duplicate_mod"));
-        }
-        let bit = match modifier.acronym.as_str() {
-            "NF" => 1,
-            "EZ" => 2,
-            "HD" => 8,
-            "HR" => 16,
-            "SD" => 32,
-            "DT" => 64,
-            "RX" => 128,
-            "HT" => 256,
-            "NC" => 512 | 64,
-            "FL" => 1024,
-            "SO" => 4096,
-            "AP" => 8192,
-            "PF" => 16384 | 32,
-            _ => {
-                return Err(ApiError(
-                    StatusCode::NOT_IMPLEMENTED,
-                    "mod_not_supported_by_pp_adapter",
-                ));
-            }
-        };
-        for (key, value) in &modifier.settings {
-            let allowed = match (modifier.acronym.as_str(), key.as_str()) {
-                ("DT" | "NC", "speed_change") => value.as_f64() == Some(1.5),
-                ("HT", "speed_change") => value.as_f64() == Some(0.75),
-                ("DT" | "NC" | "HT", "adjust_pitch") => value.is_boolean(),
-                _ => false,
-            };
-            if !allowed {
-                return Err(ApiError(
-                    StatusCode::NOT_IMPLEMENTED,
-                    "custom_mod_settings_not_supported",
-                ));
-            }
-        }
-        bits |= bit;
-    }
-    if bits & 64 != 0 && bits & 256 != 0
-        || bits & 16 != 0 && bits & 2 != 0
-        || bits & 1 != 0 && bits & 32 != 0
-    {
-        return Err(ApiError(StatusCode::BAD_REQUEST, "incompatible_mods"));
-    }
-    Ok(bits)
+/// Validate native parameters before projecting legacy bits for score filters.
+pub(crate) fn legacy_mods(ruleset: u8, mods: &[ApiMod]) -> Result<u32, ApiError> {
+    let input = json!(mods);
+    illya_domain::score_mods::ValidatedMods::parse(ruleset, &input)
+        .map(|mods| mods.legacy_bits)
+        .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_score_mods"))
 }
 fn hit_counts(input: &SoloScoreSubmission) -> Value {
     let count = |name| input.statistics.get(name).copied().unwrap_or(0);
@@ -333,7 +341,9 @@ async fn submit_score(
 ) -> Result<Json<Value>, ApiError> {
     let player = common::bearer(&state, &headers).await?;
     input.validate()?;
-    let mods = legacy_mods(&input.mods)?;
+    let mods = illya_domain::score_mods::ValidatedMods::parse(input.ruleset_id, &json!(input.mods))
+        .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_score_mods"))?
+        .legacy_bits;
     if state.service_key.len() < 32 {
         return Err(ApiError(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -356,7 +366,7 @@ async fn submit_score(
     let score_id = if let Some(score_id) = token.get::<Option<i64>, _>("score_id") {
         score_id
     } else {
-        let response=state.http.post(format!("{}/api/v1/internal/scores",state.sanctuary_url.trim_end_matches('/'))).header("x-illya-service-key",state.service_key.as_str()).json(&json!({"user_id":player.id,"beatmap_id":map_id,"mode":input.ruleset_id,"score":input.total_score,"accuracy":input.accuracy*100.0,"max_combo":input.max_combo,"mods":mods,"passed":input.passed,"hit_counts":hit_counts(&input),"client":"lazer","ingestion_key":format!("lazer:{token_id}")})).send().await.map_err(|_|ApiError(StatusCode::SERVICE_UNAVAILABLE,"score_ingestion_unavailable"))?;
+        let response=state.http.post(format!("{}/api/v1/internal/scores",state.sanctuary_url.trim_end_matches('/'))).header("x-illya-service-key",state.service_key.as_str()).json(&json!({"user_id":player.id,"beatmap_id":map_id,"mode":input.ruleset_id,"score":input.total_score,"accuracy":input.accuracy*100.0,"max_combo":input.max_combo,"mods":mods,"api_mods":input.mods,"passed":input.passed,"hit_counts":hit_counts(&input),"client":"lazer","ingestion_key":format!("lazer:{token_id}")})).send().await.map_err(|_|ApiError(StatusCode::SERVICE_UNAVAILABLE,"score_ingestion_unavailable"))?;
         if !response.status().is_success() {
             return Err(ApiError(
                 StatusCode::BAD_REQUEST,
@@ -382,6 +392,13 @@ async fn submit_score(
         score_id
     };
     tx.commit().await?;
+    if let Err(error) = crate::replay_capture::finalize(&state, player.id, token_id).await {
+        tracing::warn!(
+            score_id,
+            code = error.1,
+            "submitted score replay not published"
+        );
+    }
     let mut result = score_json(&state, score_id, &player).await?;
     result["mods"] = json!(input.mods);
     result["statistics"] = json!(input.statistics);
@@ -425,7 +442,8 @@ pub(crate) async fn score_json(
     } else {
         json!({"great":count("n300"),"ok":count("n100"),"meh":count("n50"),"perfect":count("geki"),"good":count("katu"),"miss":count("misses")})
     };
-    let mut output = json!({"id":id,"user_id":owner.id,"user":user_json(&owner),"ruleset_id":row.get::<i16,_>("mode"),"beatmap_id":row.get::<i64,_>("native_map_id"),"total_score":row.get::<i64,_>("score"),"accuracy":row.get::<f64,_>("accuracy")/100.0,"max_combo":row.get::<i32,_>("max_combo"),"passed":row.get::<bool,_>("passed"),"pp":row.get::<f64,_>("pp"),"mods":submission.get("mods").cloned().unwrap_or(json!(legacy_mods)),"statistics":submission.get("statistics").cloned().unwrap_or(stats),"maximum_statistics":submission.get("maximum_statistics").cloned().unwrap_or(json!({})),"ended_at":audit.get("ended_at").cloned().unwrap_or(json!(row.get::<chrono::DateTime<Utc>,_>("created_at"))),"has_replay":row.get::<Option<String>,_>("replay_path").is_some(),"ranked":verified&&row.get::<String,_>("map_status")=="ranked"&&(bits&10368)==0,"processed":true,"position":null,"scores_around":null,"verification":row.get::<String,_>("verification")});
+    let mut output = json!({"id":id,"user_id":owner.id,"user":user_json(&owner),"ruleset_id":row.get::<i16,_>("mode"),"beatmap_id":row.get::<i64,_>("native_map_id"),"total_score":row.get::<i64,_>("score"),"accuracy":row.get::<f64,_>("accuracy")/100.0,"max_combo":row.get::<i32,_>("max_combo"),"passed":row.get::<bool,_>("passed"),"pp":row.get::<f64,_>("pp"),"mods":submission.get("mods").cloned().unwrap_or(json!(legacy_mods)),"statistics":submission.get("statistics").cloned().unwrap_or(stats),"maximum_statistics":submission.get("maximum_statistics").cloned().unwrap_or(json!({})),"ended_at":audit.get("ended_at").cloned().unwrap_or(json!(row.get::<chrono::DateTime<Utc>,_>("created_at"))),"has_replay":row.get::<Option<String>,_>("replay_path").is_some(),"ranked":verified&&row.get::<String,_>("map_status")=="ranked"&&row.get::<bool,_>("pp_eligible"),"processed":true,"position":null,"scores_around":null,"verification":row.get::<String,_>("verification")});
+    output["replay_complete"] = json!(row.get::<Option<bool>, _>("replay_complete"));
     if let Some(grade) = grade {
         output["rank"] = grade.clone();
     }
@@ -453,7 +471,7 @@ async fn download_replay(
 ) -> Result<Response, ApiError> {
     let player = common::bearer(&state, &headers).await?;
     let path = sqlx::query_scalar::<_, Option<String>>(
-        "SELECT replay_path FROM scores WHERE id=$1 AND (verification='verified' OR user_id=$2)",
+        "SELECT replay_path FROM scores s JOIN users u ON u.id=s.user_id WHERE s.id=$1 AND NOT u.is_restricted AND (s.verification='verified' OR s.user_id=$2)",
     )
     .bind(id)
     .bind(player.id)
@@ -472,171 +490,6 @@ async fn download_replay(
         .into_response())
 }
 
-fn channel_json(row: &sqlx::postgres::PgRow) -> Value {
-    json!({"channel_id":row.get::<i64,_>("id"),"name":format!("#{}",row.get::<String,_>("name")),"description":row.get::<String,_>("description"),"type":"PUBLIC","moderated":false,"message_length_limit":1000,"current_user_attributes":{"can_message":true,"can_message_error":null},"users":[]})
-}
-async fn channel_allowed(
-    state: &AppState,
-    player: &Account,
-    row: &sqlx::postgres::PgRow,
-) -> Result<bool, ApiError> {
-    match row.get::<Option<String>,_>("required_permission").as_deref() {
-        Some("lazer.room") => Ok(sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM lazer_room_members m JOIN lazer_rooms r ON r.id=m.room_id WHERE m.user_id=$1 AND r.channel_id=$2)").bind(player.id).bind(row.get::<i64,_>("id")).fetch_one(&state.pool).await?),
-        Some(permission) => Ok(player.can(permission)),
-        None => Ok(true),
-    }
-}
-async fn channel_access(
-    state: &AppState,
-    player: &Account,
-    id: i64,
-) -> Result<sqlx::postgres::PgRow, ApiError> {
-    let row = sqlx::query("SELECT * FROM channels WHERE id=$1")
-        .bind(id)
-        .fetch_optional(&state.pool)
-        .await?
-        .ok_or(ApiError(StatusCode::NOT_FOUND, "channel_not_found"))?;
-    if !channel_allowed(state, player, &row).await? {
-        return Err(ApiError(
-            StatusCode::FORBIDDEN,
-            "channel_permission_required",
-        ));
-    }
-    Ok(row)
-}
-async fn channels(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> Result<Json<Value>, ApiError> {
-    let player = common::bearer(&state, &headers).await?;
-    let rows = sqlx::query("SELECT * FROM channels ORDER BY id")
-        .fetch_all(&state.pool)
-        .await?;
-    let mut channels = Vec::new();
-    for row in rows {
-        if channel_allowed(&state, &player, &row).await? {
-            let mut channel = channel_json(&row);
-            channel["current_user_attributes"]["can_message"] = json!(player.can("chat.send"));
-            channels.push(channel);
-        }
-    }
-    Ok(Json(json!(channels)))
-}
-async fn channel(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path(id): Path<i64>,
-) -> Result<Json<Value>, ApiError> {
-    let player = common::bearer(&state, &headers).await?;
-    let row = channel_access(&state, &player, id).await?;
-    Ok(Json(json!({"channel":channel_json(&row),"users":[]})))
-}
-async fn join_channel(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((id, user)): Path<(i64, i64)>,
-) -> Result<Json<Value>, ApiError> {
-    let player = common::bearer(&state, &headers).await?;
-    if user != player.id {
-        return Err(ApiError(
-            StatusCode::FORBIDDEN,
-            "cannot_join_as_another_user",
-        ));
-    }
-    let row = channel_access(&state, &player, id).await?;
-    sqlx::query("INSERT INTO lazer_channel_members(user_id,channel_id) VALUES($1,$2) ON CONFLICT DO NOTHING").bind(player.id).bind(id).execute(&state.pool).await?;
-    Ok(Json(channel_json(&row)))
-}
-async fn leave_channel(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path((id, user)): Path<(i64, i64)>,
-) -> Result<StatusCode, ApiError> {
-    let player = common::bearer(&state, &headers).await?;
-    if user != player.id {
-        return Err(ApiError(
-            StatusCode::FORBIDDEN,
-            "cannot_leave_as_another_user",
-        ));
-    }
-    sqlx::query("DELETE FROM lazer_channel_members WHERE user_id=$1 AND channel_id=$2")
-        .bind(player.id)
-        .bind(id)
-        .execute(&state.pool)
-        .await?;
-    Ok(StatusCode::NO_CONTENT)
-}
-fn message_json(row: &sqlx::postgres::PgRow) -> Value {
-    json!({"message_id":row.get::<i64,_>("id"),"sender_id":row.get::<i64,_>("user_id"),"channel_id":row.get::<i64,_>("channel_id"),"content":row.get::<String,_>("content"),"is_action":false,"timestamp":row.get::<chrono::DateTime<Utc>,_>("created_at")} )
-}
-async fn messages(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path(id): Path<i64>,
-    Query(query): Query<HashMap<String, String>>,
-) -> Result<Json<Value>, ApiError> {
-    let player = common::bearer(&state, &headers).await?;
-    channel_access(&state, &player, id).await?;
-    let since: i64 = query.get("since").and_then(|v| v.parse().ok()).unwrap_or(0);
-    let rows = sqlx::query(
-        "SELECT * FROM chat_messages WHERE channel_id=$1 AND id>$2 ORDER BY id LIMIT 100",
-    )
-    .bind(id)
-    .bind(since)
-    .fetch_all(&state.pool)
-    .await?;
-    Ok(Json(json!(
-        rows.iter().map(message_json).collect::<Vec<_>>()
-    )))
-}
-#[derive(Deserialize)]
-struct ChatInput {
-    message: String,
-    #[serde(default)]
-    is_action: bool,
-}
-async fn send_message(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path(id): Path<i64>,
-    Form(input): Form<ChatInput>,
-) -> Result<Json<Value>, ApiError> {
-    let player = common::bearer(&state, &headers).await?;
-    channel_access(&state, &player, id).await?;
-    if !player.can("chat.send") {
-        return Err(ApiError(StatusCode::FORBIDDEN, "chat_permission_required"));
-    }
-    if input.is_action {
-        return Err(ApiError(
-            StatusCode::NOT_IMPLEMENTED,
-            "action_messages_unavailable",
-        ));
-    }
-    let message = input.message.trim();
-    if message.is_empty() || message.chars().count() > 1000 || message.contains('\0') {
-        return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_message_length"));
-    }
-    common::rate_limit(&state, format!("chat:{}", player.id), 30).await?;
-    let joined: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM lazer_channel_members WHERE user_id=$1 AND channel_id=$2)",
-    )
-    .bind(player.id)
-    .bind(id)
-    .fetch_one(&state.pool)
-    .await?;
-    if !joined {
-        return Err(ApiError(StatusCode::FORBIDDEN, "join_channel_first"));
-    }
-    let row = sqlx::query(
-        "INSERT INTO chat_messages(channel_id,user_id,content) VALUES($1,$2,$3) RETURNING *",
-    )
-    .bind(id)
-    .bind(player.id)
-    .bind(message)
-    .fetch_one(&state.pool)
-    .await?;
-    Ok(Json(message_json(&row)))
-}
 async fn relationship_json(
     state: &AppState,
     owner: i64,
@@ -720,15 +573,6 @@ async fn remove_block(
     common::change_relationship(&state, owner.id, id, "block", true).await?;
     Ok(StatusCode::NO_CONTENT)
 }
-async fn empty_notifications(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> Result<Json<Value>, ApiError> {
-    common::bearer(&state, &headers).await?;
-    Ok(Json(
-        json!({"notifications":[],"stacks":[],"unread_count":0}),
-    ))
-}
 async fn backgrounds() -> Json<Value> {
     Json(json!({"ends_at":"2099-01-01T00:00:00Z","backgrounds":[]}))
 }
@@ -741,41 +585,152 @@ async fn news() -> Json<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn level_uses_total_score_thresholds_and_bounded_progress() {
-        assert_eq!(level(0), json!({"current":1,"progress":0.0}));
-        assert_eq!(level(30_000)["current"], 2);
-        assert_eq!(level(130_000)["current"], 3);
-        assert_eq!(level(29_999)["current"], 1);
-        assert!(
-            level(i64::MAX)["progress"]
-                .as_f64()
-                .is_some_and(|p| (0.0..100.0).contains(&p))
+
+    fn multipart(fields: &[(&str, &str)]) -> Request {
+        let mut body = String::new();
+        for (name, value) in fields {
+            body.push_str(&format!(
+                "--native-fixture\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n"
+            ));
+        }
+        body.push_str("--native-fixture--\r\n");
+        Request::builder()
+            .header(
+                "content-type",
+                "multipart/form-data; boundary=native-fixture",
+            )
+            .body(Body::from(body))
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn native_multipart_and_urlencoded_preserve_login_and_score_fields() {
+        let grant: OAuthGrant = native_form(multipart(&[
+            ("grant_type", "password"),
+            ("username", "Illya + 玩家"),
+            ("password", "secret&=+ ü"),
+            ("client_id", "5"),
+            ("client_secret", "native-public-client"),
+            ("scope", "*"),
+        ]))
+        .await
+        .unwrap();
+        assert!(matches!(grant, OAuthGrant::Password { username, password }
+            if username == "Illya + 玩家" && password == "secret&=+ ü"));
+        let fields = [
+            ("beatmap_hash", "0123456789abcdef0123456789abcdef"),
+            ("version_hash", "native-version"),
+            ("ruleset_id", "3"),
+        ];
+        let encoded = serde_urlencoded::to_string(fields).unwrap();
+        let urlencoded = Request::builder()
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(Body::from(encoded))
+            .unwrap();
+        for request in [multipart(&fields), urlencoded] {
+            let input: ScoreTokenRequest = native_form(request).await.unwrap();
+            input.validate().unwrap();
+            assert_eq!(input.ruleset_id, 3);
+            assert_eq!(input.version_hash, "native-version");
+            assert_eq!(input.beatmap_hash, fields[0].1);
+        }
+        let refresh: OAuthGrant = native_form(multipart(&[
+            ("grant_type", "refresh_token"),
+            ("refresh_token", "refresh+&=value"),
+            ("client_id", "5"),
+        ]))
+        .await
+        .unwrap();
+        assert!(matches!(refresh, OAuthGrant::Refresh { refresh_token }
+            if refresh_token == "refresh+&=value"));
+    }
+
+    #[tokio::test]
+    async fn native_forms_reject_ambiguous_files_malformed_and_oversized_bodies() {
+        let duplicate = multipart(&[("grant_type", "password"), ("grant_type", "refresh_token")]);
+        let encoded_duplicate = Request::builder()
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(Body::from("grant_type=password&grant_type=refresh_token"))
+            .unwrap();
+        let file = Request::builder()
+            .header("content-type", "multipart/form-data; boundary=x")
+            .body(Body::from("--x\r\nContent-Disposition: form-data; name=\"password\"; filename=\"secret.txt\"\r\n\r\nsecret\r\n--x--\r\n"))
+            .unwrap();
+        let malformed = Request::builder()
+            .header("content-type", "multipart/form-data")
+            .body(Body::from("missing-boundary"))
+            .unwrap();
+        for request in [duplicate, encoded_duplicate, file, malformed] {
+            assert_eq!(
+                native_form::<OAuthGrant>(request).await.unwrap_err().0,
+                StatusCode::BAD_REQUEST
+            );
+        }
+        let oversized = Request::builder()
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(Body::from("x".repeat(8193)))
+            .unwrap();
+        assert_eq!(
+            native_form::<OAuthGrant>(oversized).await.unwrap_err().0,
+            StatusCode::PAYLOAD_TOO_LARGE
+        );
+        let unsupported = Request::builder()
+            .header("content-type", "text/plain")
+            .body(Body::from("grant_type=password"))
+            .unwrap();
+        assert_eq!(
+            native_form::<OAuthGrant>(unsupported).await.unwrap_err().0,
+            StatusCode::UNSUPPORTED_MEDIA_TYPE
         );
     }
     #[test]
-    fn pp_adapter_rejects_unknown_mods_and_custom_speeds() {
+    fn level_uses_total_score_thresholds_and_bounded_progress() {
+        assert_eq!(level(0), json!({"current":1,"progress":0}));
+        assert_eq!(level(-1), json!({"current":1,"progress":0}));
+        assert_eq!(level(15_599), json!({"current":1,"progress":51}));
+        assert_eq!(level(30_000)["current"], 2);
+        assert_eq!(level(30_000)["progress"], 0);
+        assert_eq!(level(130_000)["current"], 3);
+        assert_eq!(level(29_999)["current"], 1);
+        assert_eq!(level(29_999)["progress"], 99);
+        assert!(
+            level(i64::MAX)["progress"]
+                .as_u64()
+                .is_some_and(|p| p < 100)
+        );
+    }
+    #[test]
+    fn pp_adapter_preserves_native_custom_speeds() {
         let mut settings = std::collections::BTreeMap::new();
         settings.insert("speed_change".into(), json!(1.2));
         assert!(
-            legacy_mods(&[ApiMod {
-                acronym: "DT".into(),
-                settings
-            }])
-            .is_err()
+            legacy_mods(
+                0,
+                &[ApiMod {
+                    acronym: "DT".into(),
+                    settings
+                }]
+            )
+            .is_ok()
         );
         assert!(
-            legacy_mods(&[ApiMod {
-                acronym: "DA".into(),
-                settings: Default::default()
-            }])
-            .is_err()
+            legacy_mods(
+                0,
+                &[ApiMod {
+                    acronym: "DA".into(),
+                    settings: Default::default()
+                }]
+            )
+            .is_ok()
         );
         assert_eq!(
-            legacy_mods(&[ApiMod {
-                acronym: "NC".into(),
-                settings: Default::default()
-            }])
+            legacy_mods(
+                0,
+                &[ApiMod {
+                    acronym: "NC".into(),
+                    settings: Default::default()
+                }]
+            )
             .unwrap(),
             576
         );

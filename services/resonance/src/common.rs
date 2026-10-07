@@ -27,6 +27,7 @@ pub struct AppState {
     pub limits: Arc<Mutex<HashMap<String, (Instant, u32)>>>,
     pub trusted_proxies: Arc<Vec<ipnet::IpNet>>,
     pub signalr: Arc<crate::signalr::Runtime>,
+    pub lazer_chat: Arc<crate::lazer_chat::Runtime>,
 }
 
 #[derive(Debug)]

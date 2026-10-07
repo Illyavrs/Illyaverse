@@ -90,7 +90,31 @@
     "footer": "Made for the rhythm we share.",
     "mods": "Mods",
     "judgements": "Judgements",
-    "tableScroll": "Horizontally scrollable table"
+    "tableScroll": "Horizontally scrollable table",
+    "modSettings": "Mod settings",
+    "enabled": "On",
+    "disabled": "Off",
+    "modSettingsLabels": {
+      "extended_limits": "Extended limits",
+      "overall_difficulty": "Overall difficulty",
+      "fade_hit_circle_early": "Fade circles early",
+      "hard_rock_offsets": "Hard Rock offsets",
+      "adjust_pitch": "Adjust pitch",
+      "classic_health": "Classic health",
+      "circle_size": "Circle size",
+      "always_play_tail_sample": "Always play tail sound",
+      "reflection": "Reflection",
+      "speed_change": "Playback rate",
+      "follow_delay": "Flashlight delay",
+      "combo_based_size": "Size follows combo",
+      "drain_rate": "HP drain",
+      "approach_rate": "Approach rate",
+      "size_multiplier": "Flashlight size",
+      "classic_note_lock": "Classic note lock",
+      "scroll_speed": "Scroll speed",
+      "only_fade_approach_circles": "Fade approach circles only",
+      "no_slider_head_accuracy": "Ignore slider head accuracy"
+    }
   },
   "auth": {
     "loginTitle": "Welcome back.",
@@ -150,6 +174,7 @@
     "modeNotice": "Rankings include approved scores only."
   },
   "profile": {
+    "scoreReplayIncomplete": "Replay capture was interrupted and may be missing frames.",
     "title": "Player profile",
     "joined": "Joined",
     "edit": "Edit profile",
@@ -164,7 +189,8 @@
     "replayUnavailable": "Replay unavailable",
     "banner": "Profile banner",
     "scoreVerified": "This score was approved by a moderator.",
-    "scorePending": "This score is pending review and is excluded from rankings."
+    "scorePending": "This score is pending review and is excluded from rankings.",
+    "scorePpExcluded": "These mods are excluded from ranked pp. The calculated pp is shown for reference."
   },
   "settings": {
     "title": "Make it yours.",
@@ -248,6 +274,8 @@
     "reject": "Reject"
   },
   "connect": {
+    "lazerBuild": "Build the independent lazer test client",
+    "localTesting": "Local client testing",
     "title": "Your next session starts here.",
     "subtitle": "Choose your client. Follow the requirements. Keep your official account separate.",
     "stable": "osu!stable",

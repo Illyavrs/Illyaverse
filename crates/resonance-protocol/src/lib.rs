@@ -2,6 +2,7 @@
 //! sessions, score acceptance, permissions, or multiplayer state.
 
 pub mod lazer;
+pub mod lazer_replay;
 pub mod multiplayer;
 pub mod replay;
 pub mod signalr;
