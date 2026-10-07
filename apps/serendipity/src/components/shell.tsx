@@ -37,6 +37,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     ['/rankings', 'rankings'],
     ['/chat', 'community'],
     ['/connect', 'connect'],
+    ['/settings', 'settings'],
   ];
   if (user && hasPermission(user.permissions, 'admin.view')) links.push(['/admin', 'admin']);
   const navigation = links.map(([href, key]) => (
@@ -138,9 +139,20 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 </SheetHeader>
                 <nav className="mobile-nav">
                   {navigation}
-                  <Link href="/settings" onClick={() => setNavOpen(false)}>
-                    {t('settings')}
-                  </Link>
+                  {user ? (
+                    <Link href={`/players/${user.id}`} onClick={() => setNavOpen(false)}>
+                      {t('profile')}
+                    </Link>
+                  ) : (
+                    <>
+                      <Link href="/login" onClick={() => setNavOpen(false)}>
+                        {t('signIn')}
+                      </Link>
+                      <Link href="/register" onClick={() => setNavOpen(false)}>
+                        {t('join')}
+                      </Link>
+                    </>
+                  )}
                 </nav>
               </SheetContent>
             </Sheet>
@@ -177,9 +189,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <ArrowUpRight />
           </a>
         </nav>
-        <span className="footer-note">
-          Independent community · osu! is a trademark of ppy Pty Ltd
-        </span>
+        <span className="footer-note">{common('legal')}</span>
       </footer>
     </>
   );

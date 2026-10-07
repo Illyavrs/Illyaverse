@@ -24,13 +24,15 @@ The monorepo lives in osu-ps/Illyaverse. Operators deploy containers, configure 
 
 ## Capabilities and Constraints
 
-Public registration. Landing and connection guides. Light/dark themes; uploaded backgrounds, blur, dim, accent and radius controls. Profile banners and customization. Server-enforced permissions with restricted administrative areas. Chat, official beatmap fetching with rate limits, local exclusive beatmap uploads, scores, replays and rosu-pp calculations. All source must be original: upstream projects inform behavior and structure only.
+Public registration. Landing and connection guides. Light/dark themes; uploaded backgrounds, independent background blur and dim, independent panel blur and opacity, accent and radius controls. Private appearance preferences preview immediately and remain in the guest's browser; signed-in players explicitly save them to their account. Background uploads require an account. Profile banners and customization. Server-enforced permissions with restricted administrative areas. Chat, official beatmap fetching with rate limits, local exclusive beatmap uploads, scores, replays and rosu-pp calculations. All source must be original: upstream projects inform behavior and structure only.
 
 ## Brand Commitments
 
-Illyaverse, inspired by 魔法少女伊莉雅. Related project names should form a coherent family like Solar System. osu! official site provides layout inspiration. Anime-compatible frosted glass, black and dark glass by default, rounded typography. User-customized values override defaults.
+Illyaverse, inspired by 魔法少女伊莉雅. Related project names should form a coherent family like Solar System. osu! official site provides layout inspiration. Anime-compatible frosted glass, pure black and neutral gray-black glass by default, neutral gray/white light surfaces, rounded typography. User-customized values override defaults. The panel material uses independent blur and opacity controls rather than a fixed heavy blur.
 
 User correction: no AI-generated art. The default background is plain black; only player-uploaded backgrounds are used. Commit messages follow Conventional Commits with type(scope): subject.
+
+Use direct, ordinary product labels and explanatory copy. Avoid poetic marketing taglines. Appearance defaults are 8px panel blur, 55% panel opacity and 14px radius; panel blur ranges from 0–48px, opacity from 0–100%, and radius from 0–40px. Background blur and dim remain separate controls.
 
 ## Evidence on Hand
 
@@ -39,6 +41,8 @@ Reference URLs: SunriseCommunity/Solar-System, osuAkatsuki/bancho.py, GooGuTeam/
 ## Product Principles
 
 - Personalization works without compromising readable content.
+- Panel material and background treatment remain independently adjustable.
+- Community and appearance copy uses direct labels that explain available actions.
 - Data and capability claims reflect the running server.
 - Deployment and connection instructions are reversible and explicit.
 - Permissions are enforced at every protected API.

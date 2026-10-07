@@ -10,12 +10,15 @@ export function ConnectPage() {
   const t = useTranslations('connect');
   const n = useTranslations('nav');
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState(false);
   async function copy() {
+    setCopyError(false);
     try {
       await navigator.clipboard.writeText(t('stableCommand'));
       setCopied(true);
     } catch {
       setCopied(false);
+      setCopyError(true);
     }
   }
   return (
@@ -58,6 +61,11 @@ export function ConnectPage() {
                 {copied && (
                   <p className="form-success" role="status">
                     {t('copied')}
+                  </p>
+                )}
+                {copyError && (
+                  <p className="form-error" role="alert">
+                    {t('copyError')}
                   </p>
                 )}
               </TabsContent>

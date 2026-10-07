@@ -8,8 +8,9 @@ import './globals.css';
 import { Providers } from '@/components/providers';
 import { Shell } from '@/components/shell';
 export const metadata: Metadata = {
-  title: { default: 'Illyaverse — find your rhythm', template: '%s · Illyaverse' },
-  description: 'An independent osu! rhythm community. Your songs, your personal bests, your world.',
+  title: { default: 'Illyaverse · osu! community server', template: '%s · Illyaverse' },
+  description:
+    'An independent osu! community server with beatmaps, rankings, player profiles and chat.',
 };
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const locale = await getLocale();

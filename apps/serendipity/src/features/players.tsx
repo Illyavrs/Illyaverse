@@ -155,7 +155,7 @@ export function PlayerPage({ id }: { id: number }) {
               </div>
               {user?.id === id && (
                 <Button variant="outline" asChild>
-                  <Link href="/settings">
+                  <Link href="/settings?tab=profile">
                     <Pencil />
                     {t('edit')}
                   </Link>

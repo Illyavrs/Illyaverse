@@ -1,59 +1,60 @@
 ---
 name: Illyaverse — Serendipity
-description: A quiet rhythm community songbook on black ground and personal glass.
+description: Illyaverse appearance system with a black default background and personal glass controls.
 colors:
   primary: "#f28eb6"
-  primary-foreground: "#111014"
+  primary-foreground: "#111111"
   primary-hover: "color-mix(in oklab, var(--primary) 90%, transparent)"
-  readable-accent: "color-mix(in srgb, var(--user-accent) 40%, #f5f1f5)"
+  readable-accent: "color-mix(in srgb, var(--user-accent) 40%, #f5f5f5)"
   page-ground: "#000000"
-  background: "#08080a"
-  foreground: "#f5f1f5"
-  card: "#141216"
-  popover: "#19161c"
-  secondary: "#29232e"
-  secondary-foreground: "#eae2ee"
-  muted: "#262129"
-  muted-foreground: "#b9aebf"
-  accent: "#30232f"
-  accent-foreground: "#f5eaf2"
+  background: "#080808"
+  foreground: "#f5f5f5"
+  card: "#141414"
+  popover: "#191919"
+  secondary: "#262626"
+  secondary-foreground: "#e8e8e8"
+  muted: "#222222"
+  muted-foreground: "#b5b5b5"
+  accent: "#2c2c2c"
+  accent-foreground: "#f5f5f5"
   destructive: "#f294a0"
   border: "#ffffff16"
   input: "#ffffff25"
-  surface: "#17141be8"
-  surface-strong: "#151218f5"
+  surface: "rgb(12 12 12 / var(--panel-opacity))"
+  surface-strong: "rgb(12 12 12 / clamp(0, calc(var(--panel-opacity) + 0.15), 1))"
   ranked: "#93d7be"
   loved: "#edb0d1"
   pending: "#e8cd99"
-  light-readable-accent: "color-mix(in srgb, var(--user-accent) 30%, #261e29)"
-  light-page-ground: "#f7f4f8"
-  light-background: "#fcfafc"
-  light-foreground: "#261e29"
+  light-readable-accent: "color-mix(in srgb, var(--user-accent) 30%, #262626)"
+  light-page-ground: "#f5f5f5"
+  light-background: "#fafafa"
+  light-foreground: "#262626"
   light-card: "#ffffff"
-  light-secondary: "#ece5ee"
-  light-secondary-foreground: "#473b4d"
-  light-muted: "#eee8f0"
-  light-muted-foreground: "#66556c"
-  light-accent: "#eee0e9"
+  light-secondary: "#e8e8e8"
+  light-secondary-foreground: "#444444"
+  light-muted: "#eeeeee"
+  light-muted-foreground: "#606060"
+  light-accent: "#e2e2e2"
   light-destructive: "#a1233e"
-  light-border: "#38213c20"
-  light-input: "#38213c30"
-  light-surface: "#fffaffee"
-  light-surface-strong: "#fffafff7"
+  light-border: "#00000020"
+  light-input: "#00000030"
+  light-surface: "rgb(255 255 255 / var(--panel-opacity))"
+  light-surface-strong: "rgb(255 255 255 / clamp(0, calc(var(--panel-opacity) + 0.15), 1))"
   light-ranked: "#246346"
   light-loved: "#984168"
   light-pending: "#785018"
 typography:
   display:
     fontFamily: "'Nunito Variable', 'Noto Sans TC', sans-serif"
-    fontWeight: 850
+    fontSize: "40px"
+    fontWeight: 800
     lineHeight: 1.35
     letterSpacing: "-0.035em"
   display-mobile:
     fontFamily: "'Nunito Variable', 'Noto Sans TC', sans-serif"
-    fontSize: "37px"
-    fontWeight: 850
-    lineHeight: 1.45
+    fontSize: "32px"
+    fontWeight: 800
+    lineHeight: 1.35
     letterSpacing: "-0.035em"
   headline:
     fontFamily: "'Nunito Variable', 'Noto Sans TC', sans-serif"
@@ -170,17 +171,18 @@ components:
 
 ## Overview
 
-**Creative North Star: "The Quiet Rhythm Community Songbook"**
+**Creative North Star: "Black Ground and Personal Glass"**
 
-Illyaverse is a personal rhythm community with the familiarity of an osu! catalogue and the softness of rounded bilingual lettering. A pure-black default ground, translucent dark glass, raspberry emphasis and restrained silver outlines give its anime-compatible world a calm, readable frame. Large introductory type opens the landing page; community tools settle into compact rows, clear controls and measured headings.
+Illyaverse is a personal rhythm community with the familiarity of an osu! catalogue and rounded bilingual lettering. A pure-black default ground, translucent neutral gray-black glass, a player-selected accent and restrained silver outlines keep its anime-compatible interface readable. The landing page uses a compact introduction; community tools use compact rows, direct labels and measured headings.
 
-Personalization is a material rule. Players can change the theme, accent, background blur, dim and glass radius, while semantic foreground colors keep the interface coherent. Background imagery comes only from player uploads; the default world carries no artwork. This document records the built Serendipity frontend, including its light theme, rather than promising native-client compatibility.
+Personalization is a material rule. Players can change the theme, accent, background blur and dim, panel blur and opacity, and glass radius independently, while semantic foreground colors keep the interface coherent. Background imagery comes only from player uploads; the default world carries no artwork. This document records the built Serendipity frontend, including its neutral light theme, rather than promising native-client compatibility.
 
 **Key Characteristics:**
 
-- Pure-black default ground with translucent plum-black glass.
+- Pure-black default ground with translucent neutral gray-black glass.
 - Rounded Latin and Traditional Chinese typography with a strong reading hierarchy.
 - A player-selected accent shared by actions, focus and readable highlights.
+- Independent controls for background treatment, panel material and radius.
 - Compact catalogue rows, quiet dividers and purposeful negative space.
 - Responsive navigation, intact mode labels and locally scrollable dense tables.
 
@@ -188,7 +190,7 @@ The normative frontmatter records default values extracted from `apps/serendipit
 
 ## Colors
 
-The palette places a warm raspberry voice inside near-black plum neutrals; the light theme preserves that warmth on pale lilac-white surfaces.
+The palette keeps the default raspberry accent within neutral black and gray surfaces; the light theme uses neutral gray and white replacements.
 
 ### Primary
 
@@ -199,11 +201,11 @@ The palette places a warm raspberry voice inside near-black plum neutrals; the l
 ### Neutral
 
 - **Black Ground** (`page-ground`): the default canvas. `background` provides a slightly lifted opaque ground for fields, selectors and code.
-- **Plum Glass** (`surface`, `surface-strong`): the translucent container and denser sticky-header materials. `card` and `popover` serve opaque component layers.
-- **Soft Silver** (`foreground`): primary text. **Dusty Lilac** (`muted-foreground`) carries descriptions, metadata and secondary navigation.
-- **Plum Layers** (`secondary`, `muted`, `accent`): selected controls, subdued regions and hover states. Their matching foreground tokens stay paired with them.
+- **Neutral Glass** (`surface`, `surface-strong`): the translucent container and denser sticky-header materials. Their opacity comes from the live panel-opacity control. `card` and `popover` serve opaque component layers.
+- **Soft Silver** (`foreground`): primary text. **Secondary Gray** (`muted-foreground`) carries descriptions, metadata and secondary navigation.
+- **Gray Layers** (`secondary`, `muted`, `accent`): selected controls, subdued regions and hover states. Their matching foreground tokens stay paired with them.
 - **Silver Seams** (`border`, `input`): quiet dividers and field outlines; preserve their source alpha values.
-- **Light Ground and Glass** (`light-*`): semantic replacements applied by the `.light` theme. Light card and popover surfaces are white; the page ground remains a pale lilac neutral rather than pure white.
+- **Light Ground and Glass** (`light-*`): semantic replacements applied by the `.light` theme. Light card and popover surfaces are white; the page ground and supporting layers are neutral grays.
 
 ### Semantic status
 
@@ -221,7 +223,7 @@ Ranked mint, loved pink and pending amber label beatmap states. Their `light-*` 
 
 ### Hierarchy
 
-- **Display:** the landing headline uses a fluid size (`clamp(2.5rem, 4.7vw, 4.2rem)`), weight 850, line-height 1.35 and tight tracking. At the small-screen breakpoint it becomes 37px with line-height 1.45, keeping the Chinese title open and legible.
+- **Display:** the compact landing headline uses the `display` token, with the `display-mobile` token at 600px and below. The subtitle uses 17px, weight 700 on desktop; supporting copy uses 14px and line-height 1.8. These labels identify the site and its available actions directly.
 - **Headline:** general page headings use `clamp(2rem, 3.6vw, 3.25rem)`, weight 800, line-height 1.3 and balanced wrapping. Small-screen page headings use 31px. Auth, profile and detail views have contextual heading sizes rather than a universal fixed h1.
 - **Title:** common h2 headings use the `title` token. Section and form contexts generally range from 19px to 27px; keep their scale subordinate to the page heading.
 - **Body:** the default body uses the `body` token, reduced to 14px at 600px and below. Supporting copy generally uses 13–16px with generous line-height (1.8–2). Guide paragraphs have a 70ch measure; hints have a 65ch measure.
@@ -238,6 +240,8 @@ Spacing is a practical rhythm rather than a rigid grid. Four- and eight-pixel st
 
 The desktop landing body pairs a flexible catalogue with a 290px connection column, reduced to 250px at 1100px. Profiles pair a 270px about column with a flexible score column; connection guides pair a 210px sidebar with a flexible reading area. Chat uses a 220px channel rail. These are surface-specific compositions, not a universal sidebar requirement.
 
+The landing introduction is a compact glass panel with a 270px desktop minimum height and 32px 36px padding. At 1100px and below its padding is 32px; at 860px and below its minimum height is 260px; at 600px and below it has no minimum height and uses 24px padding. Its tools column groups ordinary community, account and appearance links before the connection guide.
+
 ### Responsive behavior
 
 - **At 1100px and below:** header spacing and navigation type tighten; the landing connection column narrows and the username label hides.
@@ -250,17 +254,21 @@ The desktop landing body pairs a flexible catalogue with a 290px connection colu
 
 ## Elevation & Depth
 
-Depth comes primarily from translucency, tonal layering and quiet borders. Glass containers and the sticky header blur what sits behind them (24px), while stronger header opacity keeps navigation steady. The default ground has no image; a chosen player background sits in a fixed cover layer, enlarged slightly (1.05), with a separate theme-aware dim veil. Background blur ranges from 0 to 48px and dim from 0 to 1; defaults are 0px and 0.76. Avoid turning these background controls into foreground blur.
+Depth comes primarily from translucency, tonal layering and quiet borders. Glass containers, the sticky header, sheets, select menus and the settings tab track share `backdrop-filter: blur(var(--panel-blur))`. Panel blur defaults to 8px and ranges from 0 to 48px. Panel opacity defaults to 55% and ranges from 0% to 100%, represented as 0–1 in preferences. The header's strong surface adds 0.15 to the same opacity and clamps the result to 0–1, giving a 70% default. Dark glass uses neutral 12/12/12 RGB; light glass uses white. Panel blur and opacity remain independent.
+
+The default ground has no image; a chosen player background sits in a fixed cover layer, enlarged slightly (1.05), with a separate theme-aware dim veil. Background blur ranges from 0 to 48px and dim from 0 to 1; defaults are 0px and 0.76. These scene controls remain separate from panel controls and do not blur readable foreground content.
 
 ### Shadow vocabulary
 
 - **Control seam:** the shadcn outline button and input carry the small Tailwind shadow (`0 1px 2px 0 rgb(0 0 0 / 0.05)`).
 - **Selected tab:** default tabs add Tailwind's small composite shadow (`0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)`).
-- **Sheet elevation:** sheets use the larger Tailwind composite shadow (`0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)`) above a half-black overlay.
+- **Sheet surface:** the sheet primitive declares a larger Tailwind shadow, but the shipped shared sheet/select rule overrides it with `box-shadow: none`. Sheets retain the half-black overlay and shared panel material.
 
-Glass panels have no default box shadow. Reuse their material and seams rather than applying sheet elevation to ordinary page sections.
+Glass panels, sheets and select menus have no default box shadow. Reuse their material and seams for container depth.
 
-**The Glass Before Shadow Rule.** Establish ordinary container depth through the shared translucent surface, blur and border; reserve the existing lifted shadow for overlays and small control states.
+**The Glass Before Shadow Rule.** Establish container depth through the shared translucent surface, panel blur and border; reserve the existing small shadows for control states.
+
+**The Independent Material Controls Rule.** Keep background blur and dim separate from panel blur and opacity; use the shared panel variables for every surface that carries the glass material.
 
 ## Shapes
 
@@ -274,9 +282,9 @@ Profiles use joined banner and identity containers with complementary top and bo
 
 ### Buttons
 
-Compact, clear actions with soft corners. The default size is 36px high with 8px vertical and 16px horizontal padding; icon-bearing buttons reduce horizontal padding to 12px. Large buttons are 40px high. Landing actions deliberately grow to 46px high with 24px horizontal padding, then 42px and 16px on small screens. Primary actions use the live accent with calculated contrasting text; secondary actions use their paired neutral roles.
+Compact, clear actions with soft corners. The default size is 36px high with 8px vertical and 16px horizontal padding; icon-bearing buttons reduce horizontal padding to 12px. Large buttons and landing actions are 40px high. Landing actions use 20px horizontal padding, reduced to 16px on small screens. Primary actions use the live accent with calculated contrasting text; secondary actions use their paired neutral roles.
 
-Computed native buttons inherit body type (15px, weight 400, line-height 1.7 on desktop; 14px on small screens). Link-rendered buttons retain the 14px, weight-500 utility type with 20px line-height. Feature styles add their own emphasis, such as the weight-800 landing actions. This native-versus-anchor distinction is an observed cascade effect, not a new hierarchy rule for future surfaces.
+Computed native buttons inherit body type (15px, weight 400, line-height 1.7 on desktop; 14px on small screens). Link-rendered buttons retain the 14px, weight-500 utility type with 20px line-height. Feature styles add their own emphasis, such as the weight-700 landing actions. This native-versus-anchor distinction is an observed cascade effect, not a new hierarchy rule for future surfaces.
 
 Primary hover reduces the fill opacity to 90%. Outline buttons use a quiet input-colored dark fill, a border and control seam; in light mode they use the opaque background role and accent hover. Ghost buttons are transparent at rest and acquire an accent-toned hover. Disabled controls lose pointer interaction and use 50% opacity. Destructive variants stay tied to destructive roles.
 
@@ -286,7 +294,7 @@ Secondary badges are compact pills (2px 8px padding), carrying map difficulty or
 
 ### Cards and containers
 
-The reusable glass material combines the `surface` role, a one-pixel `border` seam, the full live radius and 24px backdrop blur. Padding belongs to the content pattern: 24px for general panels, 36px for settings, and larger reading padding for articles. Map catalogues use divider-led rows with 18px gaps and a restrained accent mix on hover (4%); dense tables use a 3% row hover mix. Do not infer that every content group needs a glass box.
+The reusable glass material combines the live `surface` role, a one-pixel `border` seam, the full live radius and shared panel blur. Padding belongs to the content pattern: 24px for general panels, 36px for settings, and larger reading padding for articles. Map catalogues use divider-led rows with 18px gaps and a restrained accent mix on hover (4%); dense tables use a 3% row hover mix. Do not infer that every content group needs a glass box.
 
 ### Inputs and feedback
 
@@ -298,7 +306,7 @@ Focus combines a three-pixel half-opacity accent ring with the global two-pixel 
 
 The sticky header uses stronger glass, a bottom seam and compact tools. Desktop links use 14px, weight 700 and secondary text; hover and active links brighten to foreground, with a two-pixel accent underline for the active route. Mobile navigation uses a menu sheet with padded links and a secondary active fill. The shell includes a visible-on-focus skip link. Locale choices are Traditional Chinese, English and Japanese through next-intl; preserve the translated labels and accessible names.
 
-The appearance sheet is 390px wide, capped at the viewport, and scrolls vertically. It previews the whole site's material immediately, including theme, accent, radius and background dim; persistence and load errors remain visible. Standard sheets use the existing dialog primitives for dismissal and focus behavior. Their source declares 500ms opening and 300ms closing durations, but the stylesheet does not import an animation utility package; do not treat a slide animation as guaranteed by those class names alone.
+The appearance sheet is 390px wide, capped at the viewport, and scrolls vertically. It previews the whole site's material immediately, including theme, accent, background blur and dim, panel blur and opacity, and radius. Guests retain private appearance preferences in their browser; signed-in players explicitly save preferences to their account. Background upload requires an account. Persistence and load errors remain visible. Standard sheets use the existing dialog primitives for dismissal and focus behavior. Their source declares 500ms opening and 300ms closing durations, but the stylesheet does not import an animation utility package; do not treat a slide animation as guaranteed by those class names alone.
 
 ### Avatars, empty states and reading content
 
@@ -318,6 +326,8 @@ Motion follows state changes rather than decorating the ground: links change col
 - **Do** keep technical strings and mode labels intact in bounded, keyboard-accessible scroll regions.
 - **Do** carry explicit hover, focus, disabled and feedback states into new controls.
 - **Do** preserve the light-theme foreground pairs and the custom-accent contrast behavior.
+- **Do** keep panel blur and opacity independent from background blur and dim, with immediate preview and explicit account saving.
+- **Do** use direct, ordinary labels and explanatory copy for community tools and appearance controls.
 
 ### Don't:
 
@@ -327,3 +337,4 @@ Motion follows state changes rather than decorating the ground: links change col
 - **Don't** compress mobile reading tables into narrow, broken strings or split mode labels across lines.
 - **Don't** replace Lucide-style SVG icons with glyph characters or introduce an unrelated display font.
 - **Don't** turn compatibility status, empty states or activity figures into unsupported product claims.
+- **Don't** replace direct product labels with poetic marketing taglines.

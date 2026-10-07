@@ -59,6 +59,8 @@ pub struct Preferences {
     pub background_url: Option<String>,
     pub background_blur: u8,
     pub background_dim: f32,
+    pub panel_blur: u8,
+    pub panel_opacity: f32,
     pub border_radius: u8,
 }
 
@@ -71,6 +73,8 @@ impl Default for Preferences {
             background_url: None,
             background_blur: 0,
             background_dim: 0.76,
+            panel_blur: 8,
+            panel_opacity: 0.55,
             border_radius: 14,
         }
     }
@@ -88,9 +92,12 @@ impl Preferences {
             return Err("Accent color must be a six-digit hex color.");
         }
         if self.background_blur > 48
+            || self.panel_blur > 48
             || self.border_radius > 40
             || !self.background_dim.is_finite()
             || !(0.0..=1.0).contains(&self.background_dim)
+            || !self.panel_opacity.is_finite()
+            || !(0.0..=1.0).contains(&self.panel_opacity)
         {
             return Err("Theme values are outside their permitted range.");
         }
@@ -150,6 +157,53 @@ mod tests {
         p.background_url = None;
         p.background_dim = f32::NAN;
         assert!(p.validate().is_err());
+    }
+    #[test]
+    fn existing_preferences_keep_custom_values_and_gain_panel_defaults() {
+        let p: Preferences = serde_json::from_str(
+            r##"{"locale":"ja","mode":"light","accent_color":"#7dd8c5","background_url":"/media/backgrounds/player.webp","background_blur":12,"background_dim":0.4,"border_radius":20}"##,
+        )
+        .unwrap();
+        assert!(p.validate().is_ok());
+        assert_eq!(p.locale, "ja");
+        assert_eq!(p.mode, "light");
+        assert_eq!(p.accent_color, "#7dd8c5");
+        assert_eq!(
+            p.background_url.as_deref(),
+            Some("/media/backgrounds/player.webp")
+        );
+        assert_eq!(p.background_blur, 12);
+        assert_eq!(p.background_dim, 0.4);
+        assert_eq!(p.border_radius, 20);
+        assert_eq!(p.panel_blur, 8);
+        assert_eq!(p.panel_opacity, 0.55);
+    }
+    #[test]
+    fn panel_preferences_reject_invalid_values_and_preserve_endpoints() {
+        for opacity in [-0.01, 1.01, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let p = Preferences {
+                panel_opacity: opacity,
+                ..Preferences::default()
+            };
+            assert!(p.validate().is_err());
+        }
+        let p = Preferences {
+            panel_blur: 49,
+            ..Preferences::default()
+        };
+        assert!(p.validate().is_err());
+        for (panel_blur, panel_opacity) in [(0, 0.0), (48, 1.0)] {
+            let p = Preferences {
+                panel_blur,
+                panel_opacity,
+                ..Preferences::default()
+            };
+            assert!(p.validate().is_ok());
+            let restored: Preferences =
+                serde_json::from_value(serde_json::to_value(&p).unwrap()).unwrap();
+            assert_eq!(restored.panel_blur, panel_blur);
+            assert_eq!(restored.panel_opacity, panel_opacity);
+        }
     }
     #[test]
     fn usernames_cannot_inject_control_characters() {

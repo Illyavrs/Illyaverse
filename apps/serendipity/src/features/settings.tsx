@@ -1,6 +1,7 @@
 'use client';
-import { useState, type FormEvent } from 'react';
+import { Suspense, useState, type FormEvent } from 'react';
 import Image from 'next/image';
+import { useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { ImagePlus, RotateCcw, Check, LoaderCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -131,6 +132,8 @@ export function AppearanceControls({ compact = false }: { compact?: boolean }) {
         [
           { key: 'background_blur', label: 'blur', max: 48, unit: 'px' },
           { key: 'background_dim', label: 'dim', max: 100, unit: '%' },
+          { key: 'panel_blur', label: 'panelBlur', max: 48, unit: 'px' },
+          { key: 'panel_opacity', label: 'panelOpacity', max: 100, unit: '%' },
           { key: 'border_radius', label: 'radius', max: 40, unit: 'px' },
         ] as const
       ).map(({ key, label, max, unit }) => (
@@ -138,7 +141,7 @@ export function AppearanceControls({ compact = false }: { compact?: boolean }) {
           <div>
             <label htmlFor={`${compact ? 'quick-' : ''}${key}`}>{t(label)}</label>
             <output>
-              {key === 'background_dim' ? Math.round(p[key] * 100) : p[key]}
+              {unit === '%' ? Math.round(p[key] * 100) : p[key]}
               {unit}
             </output>
           </div>
@@ -147,14 +150,14 @@ export function AppearanceControls({ compact = false }: { compact?: boolean }) {
             min={0}
             max={max}
             step={1}
-            value={[key === 'background_dim' ? Math.round(p[key] * 100) : p[key]]}
-            onValueChange={([value]) =>
-              update({ [key]: key === 'background_dim' ? value / 100 : value })
-            }
+            value={[unit === '%' ? Math.round(p[key] * 100) : p[key]]}
+            onValueChange={([value]) => update({ [key]: unit === '%' ? value / 100 : value })}
             aria-label={t(label)}
+            aria-valuetext={`${unit === '%' ? Math.round(p[key] * 100) : p[key]}${unit}`}
           />
         </div>
       ))}
+      <p className="hint">{t('panelHint')}</p>
       <p className="hint">{user ? t('preview') : t('guest')}</p>
       {error && (
         <p className="form-error" role="alert">
@@ -367,17 +370,38 @@ function PasswordControls() {
   );
 }
 export function SettingsPage() {
+  return (
+    <Suspense fallback={<Loading />}>
+      <SettingsContent />
+    </Suspense>
+  );
+}
+
+function SettingsContent() {
   const t = useTranslations('settings');
   const social = useTranslations('social');
   const c = useTranslations('common');
   const current = useLocale();
   const { locale } = useAppearance();
   const { user } = useSession();
+  const search = useSearchParams();
+  const requestedTab = search.get('tab');
+  const tab = ['appearance', 'profile', 'account', 'social'].includes(requestedTab ?? '')
+    ? requestedTab!
+    : 'appearance';
   const [localeError, setLocaleError] = useState(false);
   return (
     <div className="page-container">
       <PageHeading title={t('title')} description={t('subtitle')} />
-      <Tabs defaultValue="appearance" className="settings-layout">
+      <Tabs
+        value={tab}
+        onValueChange={(value) => {
+          const query = new URLSearchParams(search.toString());
+          query.set('tab', value);
+          window.history.pushState(null, '', `?${query}`);
+        }}
+        className="settings-layout"
+      >
         <TabsList className="max-w-full flex-wrap h-auto!">
           <TabsTrigger value="appearance">{t('appearance')}</TabsTrigger>
           <TabsTrigger value="profile">{t('profile')}</TabsTrigger>

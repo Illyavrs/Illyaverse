@@ -25,6 +25,8 @@ export type Preferences = {
   background_url: string | null;
   background_blur: number;
   background_dim: number;
+  panel_blur: number;
+  panel_opacity: number;
   border_radius: number;
   locale?: string;
 };

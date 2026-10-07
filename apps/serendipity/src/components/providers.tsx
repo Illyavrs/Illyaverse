@@ -22,6 +22,8 @@ const defaults: Preferences = {
   background_url: null,
   background_blur: 0,
   background_dim: 0.76,
+  panel_blur: 8,
+  panel_opacity: 0.55,
   border_radius: 14,
   locale: 'zh-TW',
 };
@@ -75,6 +77,8 @@ function validate(value: Partial<Preferences>): Preferences {
         : null,
     background_blur: number(value.background_blur, 0, 48, 0),
     background_dim: number(value.background_dim, 0, 1, 0.76),
+    panel_blur: Math.round(number(value.panel_blur, 0, 48, defaults.panel_blur)),
+    panel_opacity: number(value.panel_opacity, 0, 1, defaults.panel_opacity),
     border_radius: number(value.border_radius, 0, 40, 14),
     locale: isLocale(value.locale) ? value.locale : 'zh-TW',
   };
@@ -136,10 +140,12 @@ function AppearanceProvider({ children }: { children: ReactNode }) {
       .map((v) => parseInt(v, 16) / 255)
       .map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
     const luminance = rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
-    root.style.setProperty('--primary-contrast', luminance > 0.179 ? '#111014' : '#ffffff');
+    root.style.setProperty('--primary-contrast', luminance > 0.179 ? '#111111' : '#ffffff');
     root.style.setProperty('--radius', `${preferences.border_radius}px`);
     root.style.setProperty('--scene-blur', `${preferences.background_blur}px`);
     root.style.setProperty('--scene-dim', String(preferences.background_dim));
+    root.style.setProperty('--panel-blur', `${preferences.panel_blur}px`);
+    root.style.setProperty('--panel-opacity', String(preferences.panel_opacity));
     localStorage.setItem('illya_appearance', JSON.stringify(preferences));
   }, [preferences]);
   const update = useCallback(

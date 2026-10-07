@@ -1,0 +1,42 @@
+{
+  "baseURL": "http://localhost:3000",
+  "checks": [
+    {
+      "name": "guest-defaults",
+      "detail": "{\"body\":\"rgb(0, 0, 0)\",\"panelBlur\":\"8px\",\"panelOpacity\":\"0.55\",\"cached\":\"{\\\"mode\\\":\\\"dark\\\",\\\"accent_color\\\":\\\"#f28eb6\\\",\\\"background_url\\\":null,\\\"background_blur\\\":0,\\\"background_dim\\\":0.76,\\\"panel_blur\\\":8,\\\"panel_opacity\\\":0.55,\\\"border_radius\\\":14,\\\"locale\\\":\\\"zh-TW\\\"}\",\"glass\":\"hero-cover glass\"}"
+    },
+    {
+      "name": "guest-mobile-auth-links",
+      "detail": ""
+    },
+    {
+      "name": "guest-sliders-localstorage",
+      "detail": "{\"sliderMeta\":[{\"id\":\"\",\"min\":\"0\",\"max\":\"48\",\"aria\":\"背景模糊\"},{\"id\":\"\",\"min\":\"0\",\"max\":\"100\",\"aria\":\"背景暗度\"},{\"id\":\"\",\"min\":\"0\",\"max\":\"48\",\"aria\":\"面板模糊\"},{\"id\":\"\",\"min\":\"0\",\"max\":\"100\",\"aria\":\"面板不透明度\"},{\"id\":\"\",\"min\":\"0\",\"max\":\"40\",\"aria\":\"圓角半徑\"}],\"persisted\":{\"mode\":\"dark\",\"accent_color\":\"#f28eb6\",\"background_url\":null,\"background_blur\":0,\"background_dim\":0.76,\"panel_blur\":24,\"panel_opacity\":0.35,\"border_radius\":14,\"locale\":\"zh-TW\"}}"
+    },
+    {
+      "name": "settings-tab-routing",
+      "detail": ""
+    },
+    {
+      "name": "authenticated-patch-roundtrip",
+      "detail": "{\"writes\":[{\"method\":\"PATCH\",\"pathname\":\"/me/preferences\",\"body\":{\"mode\":\"dark\",\"accent_color\":\"#f28eb6\",\"background_url\":\"/media/appearance-fixture.png\",\"background_blur\":0,\"background_dim\":0.35,\"panel_blur\":18,\"panel_opacity\":0.65,\"border_radius\":14,\"locale\":\"zh-TW\"}}],\"preferences\":{\"mode\":\"dark\",\"accent_color\":\"#f28eb6\",\"background_url\":\"/media/appearance-fixture.png\",\"background_blur\":0,\"background_dim\":0.35,\"panel_blur\":18,\"panel_opacity\":0.65,\"border_radius\":14,\"locale\":\"zh-TW\"}}"
+    },
+    {
+      "name": "visual-round",
+      "detail": "zh-TW homepage desktop/mobile plus settings light/dark; en/ja homepage render checks"
+    }
+  ],
+  "screenshots": [
+    "appearance-settings-uploaded-mobile.png",
+    "appearance-settings-uploaded-desktop.png",
+    "appearance-homepage-zhTW-desktop.png",
+    "appearance-homepage-user-1254.png",
+    "appearance-homepage-zhTW-mobile.png",
+    "appearance-homepage-en-mobile-menu.png",
+    "appearance-settings-ja-desktop.png",
+    "appearance-settings-guest-light.png",
+    "appearance-settings-guest-dark.png"
+  ],
+  "failures": [],
+  "generatedAt": "2026-10-07T11:30:13.606Z"
+}

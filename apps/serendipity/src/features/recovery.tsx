@@ -388,7 +388,7 @@ export function VerifyEmailPage() {
             {t('verifySuccess')}
           </p>
           <p className="auth-switch">
-            <Link href="/settings">{t('backToSettings')}</Link>
+            <Link href="/settings?tab=account">{t('backToSettings')}</Link>
           </p>
         </div>
       ) : token === null ? (
@@ -402,7 +402,7 @@ export function VerifyEmailPage() {
           </p>
           <p className="hint">{t('verificationInvalidHint')}</p>
           <p className="auth-switch">
-            <Link href="/settings">{t('backToSettings')}</Link>
+            <Link href="/settings?tab=account">{t('backToSettings')}</Link>
           </p>
         </div>
       ) : (
