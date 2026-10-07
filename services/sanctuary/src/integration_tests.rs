@@ -1068,7 +1068,7 @@ async fn score_scale_ingestion_recovery_and_privacy() {
         .split(';')
         .next()
         .unwrap();
-    let map:i64=sqlx::query_scalar("INSERT INTO beatmaps(title,artist,creator,version,mode,stars,max_combo,md5,osu_path) VALUES('Fixture','Illyaverse','Test','Two circles',0,1,2,'recovery-fixture','fixture.osu') RETURNING id").fetch_one(&db).await.unwrap();
+    let map:i64=sqlx::query_scalar("INSERT INTO beatmaps(title,artist,creator,version,mode,stars,max_combo,md5,osu_path) VALUES('Fixture','Illyaverse','Test','Two circles',0,1,2,$1,'fixture.osu') RETURNING id").bind(format!("{:x}",md5::compute("recovery-fixture"))).fetch_one(&db).await.unwrap();
     let context = json!({"ruleset_id":0,"passed":true,"total_score":1000000,"total_score_without_mods":1000000,"accuracy":1.0,"max_combo":2,"rank":"X","mods":[],"statistics":{"great":2},"maximum_statistics":{"great":2},"pauses":[]});
     let native = json!({"user_id":user,"beatmap_id":map,"mode":0,"score":1000000,"accuracy":100,"max_combo":2,"mods":0,"api_mods":[],"hit_counts":{"n300":2},"client":"lazer","native_submission":context,"ingestion_key":"lazer:scale-context"});
     let (status, stored) = internal_score(&app, &state, native.clone()).await;

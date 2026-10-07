@@ -322,6 +322,26 @@ impl Fixture {
             .bind(hash).bind(archive).fetch_one(&self.state.pool).await.unwrap()
     }
 
+    async fn public_ids(&self, internal: i64) -> (i64, i64) {
+        let row = sqlx::query("SELECT native_id,native_set_id FROM beatmaps WHERE id=$1")
+            .bind(internal)
+            .fetch_one(&self.state.pool)
+            .await
+            .unwrap();
+        (row.get("native_id"), row.get("native_set_id"))
+    }
+
+    async fn package_maps(&self, hashes: &[String]) -> Vec<i64> {
+        let mut manifest = hashes.to_vec();
+        manifest.sort();
+        let package: uuid::Uuid = sqlx::query_scalar("INSERT INTO beatmap_packages(kind,member_md5,archive_path,legacy) VALUES('osz',$1,'local.osz',true) RETURNING id").bind(manifest).fetch_one(&self.state.pool).await.unwrap();
+        let mut maps = Vec::new();
+        for (index, hash) in hashes.iter().enumerate() {
+            maps.push(sqlx::query_scalar("INSERT INTO beatmaps(local_package_id,title,artist,creator,version,mode,status,stars,md5,osu_path,archive_path) VALUES($1,'Package grouping','Fixture','Fixture',$2,0,'loved',1,$3,'fixture.osu','local.osz') RETURNING id").bind(package).bind(format!("Difficulty {index}")).bind(hash).fetch_one(&self.state.pool).await.unwrap());
+        }
+        maps
+    }
+
     async fn room_token(&self, map: i64) -> i64 {
         let room: i64 = sqlx::query_scalar(
             "INSERT INTO lazer_rooms(host_id,settings) VALUES($1,'{}') RETURNING id",
@@ -624,19 +644,24 @@ fixture_test!(
         f.local_map(HASHES[6], Some(OFFICIAL_ID + 6), Some(SET_ID + 6), None)
             .await;
         assert_ne!(imported, collision);
+        let (local_native, local_set) = f.public_ids(collision).await;
+        let (fallback_native, fallback_set) = f.public_ids(fallback).await;
+        assert_ne!(local_native, collision);
         f.backend.status.store(404, Ordering::SeqCst);
         let local_search = body(
             f.get("/api/v2/beatmapsets/search?q=Local").await,
             StatusCode::OK,
         )
         .await;
-        assert_eq!(local_search["total"], 1);
+        assert_eq!(local_search["total"], 2);
         assert_eq!(local_search["cursor_string"], Value::Null);
         let local_sets = local_search["beatmapsets"].as_array().unwrap();
-        assert_eq!(local_sets.len(), 1);
-        assert_eq!(local_sets[0]["id"], fallback);
+        assert_eq!(local_sets.len(), 2);
+        assert_eq!(local_sets[0]["id"], fallback_set);
+        assert_eq!(local_sets[0]["beatmaps"][0]["id"], fallback_native);
         assert_eq!(local_sets[0]["beatmaps"][0]["checksum"], HASHES[5]);
-        assert_eq!(local_sets[0]["beatmaps"][0]["version"], "Local");
+        assert_eq!(local_sets[1]["id"], local_set);
+        assert_eq!(local_sets[1]["beatmaps"][0]["checksum"], HASHES[4]);
         let imported_search = body(
             f.get("/api/v2/beatmapsets/search?q=Imported").await,
             StatusCode::OK,
@@ -671,12 +696,27 @@ fixture_test!(
         .await;
         assert_eq!(lookup["checksum"], HASHES[0]);
         let local = body(
-            f.get(&format!("/api/v2/beatmaps/{fallback}")).await,
+            f.get(&format!("/api/v2/beatmaps/{fallback_native}")).await,
             StatusCode::OK,
         )
         .await;
-        assert_eq!(local["id"], fallback);
+        assert_eq!(local["id"], fallback_native);
         assert_eq!(local["checksum"], HASHES[5]);
+        let collision_local = body(
+            f.get(&format!("/api/v2/beatmaps/{local_native}")).await,
+            StatusCode::OK,
+        )
+        .await;
+        assert_eq!(collision_local["checksum"], HASHES[4]);
+        assert_eq!(collision_local["beatmapset_id"], local_set);
+        assert_eq!(
+            body(
+                f.get(&format!("/api/v2/beatmapsets/{local_set}")).await,
+                StatusCode::OK
+            )
+            .await["beatmaps"][0]["checksum"],
+            HASHES[4]
+        );
         for path in [
             format!("/api/v2/beatmapsets/lookup?beatmap_id={collision}"),
             format!("/api/v2/beatmapsets/{collision}"),
@@ -975,5 +1015,113 @@ fixture_test!(
         );
         assert_eq!(f.backend.ingested.lock().await.len(), 1);
         assert_eq!(f.backend.calls.lock().await.len(), 1);
+    }
+);
+
+fixture_test!(
+    lazer_local_package_groups_all_difficulties_and_uses_canonical_tokens,
+    f,
+    {
+        // Exceed the former 256-row response limit without exceeding upload's 512
+        // entries, so a complete immutable package cannot be silently truncated.
+        let hashes: Vec<String> = (0..300).map(|n| format!("a{n:031x}")).collect();
+        let maps = f.package_maps(&hashes).await;
+        let (native, set) = f.public_ids(maps[0]).await;
+        let (sibling, sibling_set) = f.public_ids(maps[299]).await;
+        assert_ne!(native, maps[0]);
+        assert_ne!(native, sibling);
+        assert_eq!(set, sibling_set);
+        let details = body(
+            f.get(&format!("/api/v2/beatmapsets/{set}")).await,
+            StatusCode::OK,
+        )
+        .await;
+        assert_eq!(details["beatmaps"].as_array().unwrap().len(), 300);
+        assert_eq!(details["beatmaps"][299]["id"], sibling);
+        assert_eq!(details["beatmaps"][299]["checksum"], hashes[299]);
+        let lookup = body(
+            f.get(&format!("/api/v2/beatmapsets/lookup?beatmap_id={sibling}"))
+                .await,
+            StatusCode::OK,
+        )
+        .await;
+        assert_eq!(lookup["id"], set);
+        assert_eq!(lookup["beatmaps"].as_array().unwrap().len(), 300);
+        let search = body(
+            f.get("/api/v2/beatmapsets/search?q=Package%20grouping")
+                .await,
+            StatusCode::OK,
+        )
+        .await;
+        assert_eq!(search["total"], 1);
+        assert_eq!(search["beatmapsets"].as_array().unwrap().len(), 1);
+        assert_eq!(search["beatmapsets"][0]["id"], set);
+        let archive = f.get(&format!("/api/v2/beatmapsets/{set}/download")).await;
+        assert_eq!(archive.status(), StatusCode::OK);
+        assert_eq!(
+            archive.bytes().await.unwrap().as_ref(),
+            b"original local archive"
+        );
+        let token = body(f.token(native, &hashes[0], 0).await, StatusCode::OK).await["id"]
+            .as_i64()
+            .unwrap();
+        let bound: i64 =
+            sqlx::query_scalar("SELECT beatmap_id FROM lazer_score_tokens WHERE id=$1")
+                .bind(token)
+                .fetch_one(&f.state.pool)
+                .await
+                .unwrap();
+        assert_eq!(bound, maps[0]);
+        assert_eq!(
+            f.submit(maps[0], token, 0, submission()).await.status(),
+            StatusCode::NOT_FOUND
+        );
+        let score = body(
+            f.submit(native, token, 0, submission()).await,
+            StatusCode::OK,
+        )
+        .await;
+        assert_eq!(score["beatmap_id"], native);
+        assert_eq!(f.backend.ingested.lock().await[0]["beatmap_id"], maps[0]);
+        assert!(f.backend.calls.lock().await.is_empty());
+    }
+);
+
+fixture_test!(
+    lazer_reserved_native_misses_and_overflow_never_discover,
+    f,
+    {
+        let reserved = i64::from(i32::MAX);
+        for path in [
+            format!("/api/v2/beatmaps/{reserved}"),
+            format!(
+                "/api/v2/beatmaps/lookup?id={reserved}&checksum={}",
+                HASHES[0]
+            ),
+            format!("/api/v2/beatmapsets/lookup?beatmap_id={reserved}"),
+            format!("/api/v2/beatmaps/{reserved}/scores"),
+        ] {
+            assert_eq!(f.get(&path).await.status(), StatusCode::NOT_FOUND);
+        }
+        assert_eq!(
+            f.token(reserved, HASHES[0], 0).await.status(),
+            StatusCode::NOT_FOUND
+        );
+        for invalid in [i64::from(i32::MAX) + 1, i64::MAX] {
+            for path in [
+                format!("/api/v2/beatmaps/{invalid}"),
+                format!("/api/v2/beatmaps/lookup?id={invalid}"),
+                format!("/api/v2/beatmapsets/{invalid}"),
+                format!("/api/v2/beatmapsets/{invalid}/download"),
+            ] {
+                assert_eq!(f.get(&path).await.status(), StatusCode::BAD_REQUEST);
+            }
+            assert_eq!(
+                f.token(invalid, HASHES[0], 0).await.status(),
+                StatusCode::BAD_REQUEST
+            );
+        }
+        assert!(f.backend.calls.lock().await.is_empty());
+        assert!(f.backend.ingested.lock().await.is_empty());
     }
 );

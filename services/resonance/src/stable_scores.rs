@@ -522,11 +522,11 @@ async fn submit_inner(state: AppState, multipart: Multipart) -> Result<Response,
     else {
         return Ok("error: beatmap".into_response());
     };
-    let map = sqlx::query("SELECT id,mode,official_id,official_set_id FROM beatmaps WHERE id=$1")
+    let map = sqlx::query("SELECT id,mode,native_id,native_set_id FROM beatmaps WHERE id=$1")
         .bind(map_id)
         .fetch_one(&state.pool)
         .await?;
-    let public_map_id = map.get::<Option<i64>, _>("official_id").unwrap_or(map_id);
+    let (public_map_id, set_id) = crate::native_maps::row_ids(&map)?;
     if state.service_key.len() < 32 {
         return Err(ApiError(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -624,9 +624,6 @@ async fn submit_inner(state: AppState, multipart: Multipart) -> Result<Response,
     if !submission.passed {
         return Ok("error: no".into_response());
     }
-    let set_id = map
-        .get::<Option<i64>, _>("official_set_id")
-        .unwrap_or(map_id);
     // Pending scores do not update ranked totals or placement. This chart still
     // gives stable the persistent online score ID for its local score/replay.
     let body = format!(

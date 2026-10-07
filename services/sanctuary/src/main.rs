@@ -8,6 +8,8 @@ mod legacy_scoring;
 mod mail_delivery;
 #[cfg(test)]
 mod mail_queue_tests;
+#[cfg(test)]
+mod map_package_migration_tests;
 mod maps;
 #[cfg(test)]
 mod native_map_tests;

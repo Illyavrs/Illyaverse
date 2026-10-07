@@ -99,6 +99,9 @@ struct Fixture {
     users: Vec<i64>,
     tokens: Vec<String>,
     map: i64,
+    native_map: i64,
+    sibling: i64,
+    native_sibling: i64,
 }
 
 impl Fixture {
@@ -189,7 +192,19 @@ impl Fixture {
             users.push(id);
             tokens.push(token);
         }
-        let map = sqlx::query_scalar("INSERT INTO beatmaps(official_set_id,title,artist,creator,version,mode,stars,md5,osu_path) VALUES(701,'Original fixture','Artist','Mapper','Round',0,1.5,$1,'unused.osu') RETURNING id").bind(HASH).fetch_one(&pool).await.unwrap();
+        let package: uuid::Uuid = sqlx::query_scalar("INSERT INTO beatmap_packages(kind,member_md5,archive_path,legacy) VALUES('osz',$1,'fixture.osz',true) RETURNING id").bind(vec![HASH,"1123456789abcdef0123456789abcdef"]).fetch_one(&pool).await.unwrap();
+        let map: i64 = sqlx::query_scalar("INSERT INTO beatmaps(local_package_id,title,artist,creator,version,mode,stars,md5,osu_path,archive_path) VALUES($1,'Original fixture','Artist','Mapper','Round',0,1.5,$2,'unused.osu','fixture.osz') RETURNING id").bind(package).bind(HASH).fetch_one(&pool).await.unwrap();
+        let sibling: i64 = sqlx::query_scalar("INSERT INTO beatmaps(local_package_id,title,artist,creator,version,mode,stars,md5,osu_path,archive_path) VALUES($1,'Original fixture','Artist','Mapper','Sibling',0,2.5,'1123456789abcdef0123456789abcdef','sibling.osu','fixture.osz') RETURNING id").bind(package).fetch_one(&pool).await.unwrap();
+        let native_map = sqlx::query_scalar("SELECT native_id FROM beatmaps WHERE id=$1")
+            .bind(map)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        let native_sibling = sqlx::query_scalar("SELECT native_id FROM beatmaps WHERE id=$1")
+            .bind(sibling)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
         Self {
             control,
             state,
@@ -205,6 +220,9 @@ impl Fixture {
             users,
             tokens,
             map,
+            native_map,
+            sibling,
+            native_sibling,
         }
     }
 
@@ -231,7 +249,7 @@ impl Fixture {
                 .post(self.url(&format!("/api/v2/rooms/{room}/playlist/{item}/scores")))
                 .bearer_auth(&self.tokens[user])
                 .form(&[
-                    ("beatmap_id", self.map.to_string()),
+                    ("beatmap_id", self.native_map.to_string()),
                     ("beatmap_hash", HASH.into()),
                     ("version_hash", VERSION.into()),
                     ("ruleset_id", "0".into()),
@@ -270,7 +288,7 @@ impl Fixture {
     }
 
     fn playlist(&self, item: i64) -> Value {
-        json!({"id":item,"ownerID":self.users[0],"beatmapID":self.map,"beatmapChecksum":HASH,"rulesetID":0,"requiredMods":[],"allowedMods":[],"expired":false,"playlistOrder":item,"playedAt":null,"starRating":1.5,"freestyle":false})
+        json!({"id":item,"ownerID":self.users[0],"beatmapID":self.native_map,"beatmapChecksum":HASH,"rulesetID":0,"requiredMods":[],"allowedMods":[],"expired":false,"playlistOrder":item,"playedAt":null,"starRating":1.5,"freestyle":false})
     }
 
     async fn room(&self, members: &[usize]) -> i64 {
@@ -439,6 +457,119 @@ async fn body(response: reqwest::Response, expected: u16) -> Value {
 
 fn submission(total: i64) -> Value {
     json!({"ruleset_id":0,"passed":true,"total_score":total,"total_score_without_mods":total,"accuracy":1.0,"max_combo":2,"rank":"X","mods":[],"statistics":{"great":2},"maximum_statistics":{"great":2},"pauses":[]})
+}
+
+#[tokio::test]
+#[ignore = "requires ILLYA_TEST_DATABASE_URL pointing at disposable local PostgreSQL"]
+async fn room_processed_legacy_receipt_retries_exact_payload_after_native_id_upgrade() {
+    let f = Fixture::new().await;
+    let result = std::panic::AssertUnwindSafe(async {
+        let room = f.room(&[0,1]).await;
+        let round = f.round(room,1,&[0,1]).await;
+        let (token, score) = f.seed_processed((room,1,round),0,600,true,1.0).await;
+        f.finish(round).await;
+        // Model a receipt accepted before0016: the durable FK still addresses
+        // the same difficulty, but its saved public ID is the former local PK.
+        assert_ne!(f.map,f.native_map);
+        let mut original = submission(600);
+        original["beatmap_id"] = json!(f.map);
+        original["beatmap_hash"] = json!(HASH);
+        original["version_hash"] = json!(VERSION);
+        original["user_id"] = json!(f.users[0]);
+        original["client_note"] = json!("original accepted legacy extension");
+        let sha = format!("{:x}",Sha256::digest(serde_json::to_vec(&original).unwrap()));
+        sqlx::query("UPDATE lazer_score_tokens SET submission=$2,submission_sha256=$3 WHERE id=$1")
+            .bind(token).bind(&original).bind(&sha).execute(&f.state.pool).await.unwrap();
+        let accepted = f.put(0,room,1,token,&original,200).await;
+        assert_eq!(accepted["id"],score);
+        assert_eq!(accepted["beatmap_id"],f.native_map);
+        assert_eq!(f.put(0,room,1,token,&original,200).await["id"],score);
+        let mut changed_id = original.clone();
+        changed_id["beatmap_id"] = json!(f.native_map);
+        assert_eq!(f.put(0,room,1,token,&changed_id,409).await["error"],"score_token_already_used");
+        let mut changed_body = original.clone();
+        changed_body["client_note"] = json!("changed legacy extension");
+        assert_eq!(f.put(0,room,1,token,&changed_body,409).await["error"],"score_token_already_used");
+        f.put(1,room,1,token,&original,404).await;
+        // The receipt exception bypasses only the retired public ID. A broken
+        // frozen checksum remains a rejection despite exact JSON and digest.
+        sqlx::query("UPDATE lazer_room_round_participants SET beatmap_checksum=$3 WHERE round_id=$1 AND user_id=$2")
+            .bind(round).bind(f.users[0]).bind("ffffffffffffffffffffffffffffffff").execute(&f.state.pool).await.unwrap();
+        assert_eq!(f.put(0,room,1,token,&original,400).await["error"],"room_score_context_mismatch");
+        sqlx::query("UPDATE lazer_room_round_participants SET beatmap_checksum=$3 WHERE round_id=$1 AND user_id=$2")
+            .bind(round).bind(f.users[0]).bind(HASH).execute(&f.state.pool).await.unwrap();
+        let receipt = sqlx::query("SELECT t.submission,t.submission_sha256,t.beatmap_id,t.score_id,p.beatmap_id frozen_map,s.beatmap_id score_map FROM lazer_score_tokens t JOIN lazer_room_round_participants p ON p.round_id=t.round_id AND p.user_id=t.user_id JOIN scores s ON s.id=t.score_id WHERE t.id=$1")
+            .bind(token).fetch_one(&f.state.pool).await.unwrap();
+        assert_eq!(receipt.get::<Value,_>("submission"),original);
+        assert_eq!(receipt.get::<String,_>("submission_sha256"),sha);
+        assert_eq!(receipt.get::<i64,_>("score_id"),score);
+        for key in ["beatmap_id","frozen_map","score_map"] { assert_eq!(receipt.get::<i64,_>(key),f.map); }
+        assert_eq!(f.count("SELECT count(*) FROM scores").await,1);
+        assert_eq!(f.ingress.calls.load(Ordering::SeqCst),0);
+        // An issued token still cannot accept the same retired public alias.
+        let next = f.round(room,2,&[0,1]).await;
+        let issued = f.token(0,room,2).await;
+        f.finish(next).await;
+        let mut new_submission = submission(600);
+        new_submission["beatmap_id"] = json!(f.map);
+        assert_eq!(f.put(0,room,2,issued,&new_submission,400).await["error"],"room_score_context_mismatch");
+    }).catch_unwind().await;
+    f.cleanup().await;
+    if let Err(error) = result {
+        std::panic::resume_unwind(error);
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires ILLYA_TEST_DATABASE_URL pointing at disposable local PostgreSQL"]
+async fn room_local_package_freestyle_and_tokens_bind_canonical_native_ids() {
+    let f = Fixture::new().await;
+    let result = std::panic::AssertUnwindSafe(async {
+        assert_ne!(f.map, f.native_map);
+        assert_ne!(f.sibling, f.native_sibling);
+        let room = f.room(&[0, 1]).await;
+        sqlx::query("UPDATE lazer_room_members SET beatmap_id=$2 WHERE room_id=$1 AND user_id=$3")
+            .bind(room).bind(f.native_sibling).bind(f.users[1]).execute(&f.state.pool).await.unwrap();
+        let mut snapshot = f.playlist(1);
+        let mut tx = f.state.pool.begin().await.unwrap();
+        let denied = room_rounds::freeze_round(&mut tx, room, &snapshot, &f.users[..2]).await.unwrap_err();
+        assert_eq!(denied.1, "room_beatmap_not_allowed");
+        tx.rollback().await.unwrap();
+        snapshot["freestyle"] = json!(true);
+        let mut tx = f.state.pool.begin().await.unwrap();
+        let round = room_rounds::freeze_round(&mut tx, room, &snapshot, &f.users[..2]).await.unwrap();
+        sqlx::query("UPDATE lazer_rooms SET state=1 WHERE id=$1").bind(room).execute(&mut *tx).await.unwrap();
+        sqlx::query("UPDATE lazer_room_members SET state=2 WHERE room_id=$1").bind(room).execute(&mut *tx).await.unwrap();
+        tx.commit().await.unwrap();
+        let frozen: i64 = sqlx::query_scalar("SELECT beatmap_id FROM lazer_room_round_participants WHERE round_id=$1 AND user_id=$2")
+            .bind(round).bind(f.users[1]).fetch_one(&f.state.pool).await.unwrap();
+        assert_eq!(frozen, f.sibling);
+        let context = json!({"beatmap_id":f.native_sibling,"beatmap_hash":"1123456789abcdef0123456789abcdef","version_hash":VERSION,"ruleset_id":0});
+        let token = body(f.http.post(f.url(&format!("/api/v2/rooms/{room}/playlist/1/scores"))).bearer_auth(&f.tokens[1]).json(&context).send().await.unwrap(),200).await["id"].as_i64().unwrap();
+        let internal: i64 = sqlx::query_scalar("SELECT beatmap_id FROM lazer_score_tokens WHERE id=$1").bind(token).fetch_one(&f.state.pool).await.unwrap();
+        assert_eq!(internal, f.sibling);
+        let mut old_alias = context;
+        old_alias["beatmap_id"] = json!(f.sibling);
+        let rejected = body(f.http.post(f.url(&format!("/api/v2/rooms/{room}/playlist/1/scores"))).bearer_auth(&f.tokens[1]).json(&old_alias).send().await.unwrap(),400).await;
+        assert_eq!(rejected["error"], "room_score_context_mismatch");
+        sqlx::query("UPDATE lazer_rooms SET state=2 WHERE id=$1").bind(room).execute(&f.state.pool).await.unwrap();
+        sqlx::query("UPDATE lazer_room_members SET state=4 WHERE room_id=$1").bind(room).execute(&f.state.pool).await.unwrap();
+        sqlx::query("UPDATE lazer_room_rounds SET status='playing' WHERE id=$1").bind(round).execute(&f.state.pool).await.unwrap();
+        let mut score = submission(600);
+        score["beatmap_id"] = json!(f.sibling);
+        assert_eq!(f.put(1,room,1,token,&score,400).await["error"],"room_score_context_mismatch");
+        score["beatmap_id"] = json!(f.native_sibling);
+        let submitted = f.put(1,room,1,token,&score,200).await;
+        assert_eq!(submitted["beatmap_id"], f.native_sibling);
+        let stored: i64 = sqlx::query_scalar("SELECT beatmap_id FROM scores WHERE id=$1").bind(submitted["id"].as_i64().unwrap()).fetch_one(&f.state.pool).await.unwrap();
+        assert_eq!(stored, f.sibling);
+        let read = f.get(1,&format!("/api/v2/rooms/{room}/playlist/1/scores"),200).await;
+        assert_eq!(read["scores"][0]["beatmap_id"],f.native_sibling);
+    }).catch_unwind().await;
+    f.cleanup().await;
+    if let Err(error) = result {
+        std::panic::resume_unwind(error);
+    }
 }
 
 fn frames(total: i64) -> Value {
@@ -632,7 +763,7 @@ async fn room_round_lifecycle_tokens_history_and_http_results() {
         let guest_token=f.token(1,room,1).await;
         assert_ne!(token,guest_token);
         f.get(2,&format!("/api/v2/rooms/{room}/playlist/1/scores"),404).await;
-        let invalid=body(f.http.post(f.url(&format!("/api/v2/rooms/{room}/playlist/2/scores"))).bearer_auth(&f.tokens[0]).json(&json!({"beatmap_id":f.map,"beatmap_hash":HASH,"version_hash":VERSION,"ruleset_id":0})).send().await.unwrap(),400).await;
+        let invalid=body(f.http.post(f.url(&format!("/api/v2/rooms/{room}/playlist/2/scores"))).bearer_auth(&f.tokens[0]).json(&json!({"beatmap_id":f.native_map,"beatmap_hash":HASH,"version_hash":VERSION,"ruleset_id":0})).send().await.unwrap(),400).await;
         assert_eq!(invalid["error"],"room_loading_participant_required");
         for c in [&mut host,&mut guest] {c.ok("ChangeState",vec![json!(3)]).await;c.ok("ChangeState",vec![json!(4)]).await;}
         host.event("GameplayStarted").await;guest.event("GameplayStarted").await;
@@ -642,7 +773,7 @@ async fn room_round_lifecycle_tokens_history_and_http_results() {
         assert_eq!(stats[0][1],json!([0,0,0,0,0,0,0,0,0,0,0,0,0]));
         let mut player=Client::open(&f,0,"spectator",true).await;
         let mut same_user_other=Client::open(&f,0,"spectator",false).await;
-        player.ok("BeginPlaySessionV2",vec![json!(token),json!([f.map,0,[],1,{"5":2}])]).await;
+        player.ok("BeginPlaySessionV2",vec![json!(token),json!([f.native_map,0,[],1,{"5":2}])]).await;
         player.ok("SendFrameDataV2",vec![json!(token),frames(1_000_000)]).await;
         let input=submission(1_000_000);
         let accepted=f.put(0,room,1,token,&input,200).await;
@@ -661,8 +792,8 @@ async fn room_round_lifecycle_tokens_history_and_http_results() {
         assert_eq!(f.put(0,room,1,token,&input,200).await["id"],score);
         let mut changed=input.clone();changed["total_score"]=json!(999_999);f.put(0,room,1,token,&changed,409).await;
         f.put(1,room,1,token,&input,404).await;
-        body(f.http.put(f.url(&format!("/api/v2/beatmaps/{}/solo/scores/{token}",f.map))).bearer_auth(&f.tokens[0]).json(&input).send().await.unwrap(),404).await;
-        let solo=body(f.http.post(f.url(&format!("/api/v2/beatmaps/{}/solo/scores",f.map))).bearer_auth(&f.tokens[0]).json(&json!({"beatmap_hash":HASH,"version_hash":VERSION,"ruleset_id":0})).send().await.unwrap(),200).await["id"].as_i64().unwrap();
+        body(f.http.put(f.url(&format!("/api/v2/beatmaps/{}/solo/scores/{token}",f.native_map))).bearer_auth(&f.tokens[0]).json(&input).send().await.unwrap(),404).await;
+        let solo=body(f.http.post(f.url(&format!("/api/v2/beatmaps/{}/solo/scores",f.native_map))).bearer_auth(&f.tokens[0]).json(&json!({"beatmap_hash":HASH,"version_hash":VERSION,"ruleset_id":0})).send().await.unwrap(),200).await["id"].as_i64().unwrap();
         f.put(0,room,1,solo,&input,404).await;
         host.ok("ChangeState",vec![json!(6)]).await;guest.ok("ChangeState",vec![json!(6)]).await;
         host.event("ResultsReady").await;
@@ -748,7 +879,7 @@ async fn room_score_receipts_recover_and_recheck_revoked_sessions() {
         let round6=f.round(room,2,&[0,1]).await;let rejected_token=f.token(0,room,2).await;
         sqlx::query("UPDATE lazer_room_members SET state=4 WHERE room_id=$1").bind(room).execute(&f.state.pool).await.unwrap();
         let mut player=Client::open(&f,0,"spectator",true).await;
-        player.ok("BeginPlaySessionV2",vec![json!(rejected_token),json!([f.map,0,[],1,{"5":2}])]).await;
+        player.ok("BeginPlaySessionV2",vec![json!(rejected_token),json!([f.native_map,0,[],1,{"5":2}])]).await;
         player.ok("SendFrameDataV2",vec![json!(rejected_token),frames(600_000)]).await;
         let rejected=f.put(0,room,2,rejected_token,&submission(600_000),200).await["id"].as_i64().unwrap();
         sqlx::query("UPDATE scores SET verification='rejected' WHERE id=$1").bind(rejected).execute(&f.state.pool).await.unwrap();

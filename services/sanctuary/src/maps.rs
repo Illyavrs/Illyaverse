@@ -8,9 +8,10 @@ use axum::{
 use illya_domain::Pagination;
 use serde::Deserialize;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use sqlx::Row;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     io::{Cursor, Read},
     sync::{Arc, Weak},
     time::{Duration, Instant},
@@ -47,6 +48,30 @@ impl Default for OfficialState {
 
 const MAX_RESOLUTION_KEYS: usize = 512;
 const MAX_OSU_BYTES: usize = 8 * 1024 * 1024;
+const MAX_OFFICIAL_ID: i64 = 1_999_999_999;
+
+fn package_conflict(message: impl Into<String>) -> ApiError {
+    ApiError(StatusCode::CONFLICT, "map_package_conflict", message.into())
+}
+
+fn official_namespace_conflict() -> ApiError {
+    ApiError(
+        StatusCode::CONFLICT,
+        "official_namespace_conflict",
+        "This official identity overlaps the managed local beatmap namespace.".into(),
+    )
+}
+
+const PUBLIC_MAP: &str = r#"to_jsonb(b)-'osu_path'-'archive_path' || jsonb_build_object(
+    'play_count',(SELECT count(*) FROM scores s WHERE s.beatmap_id=b.id AND verification='verified'),
+    'download_url','/api/v1/beatmaps/'||b.id||'/download',
+    'package',(SELECT jsonb_build_object(
+        'id',p.id,'native_set_id',p.native_set_id,'kind',p.kind,'legacy',p.legacy,
+        'difficulty_count',cardinality(p.member_md5),
+        'beatmap_ids',(SELECT jsonb_agg(m.id ORDER BY m.id) FROM beatmaps m WHERE m.local_package_id=p.id),
+        'download_url','/api/v1/beatmaps/'||(SELECT min(m.id) FROM beatmaps m WHERE m.local_package_id=p.id)||'/download'
+    ) FROM beatmap_packages p WHERE p.id=b.local_package_id)
+)"#;
 
 fn commit_error_confirms_rollback(severity: sqlx::postgres::PgSeverity, code: &str) -> bool {
     severity == sqlx::postgres::PgSeverity::Error
@@ -161,11 +186,27 @@ async fn list_inner(state: &AppState, filter: Filter) -> ApiResult {
     .bounds();
     let q = filter.q.map(|q| format!("%{q}%"));
     let total:i64=sqlx::query_scalar("SELECT count(*) FROM beatmaps WHERE ($1::text IS NULL OR title ILIKE $1 OR artist ILIKE $1 OR creator ILIKE $1) AND ($2::smallint IS NULL OR mode=$2) AND ($3::text IS NULL OR source=$3) AND ($4::text IS NULL OR status=$4)").bind(&q).bind(filter.mode).bind(&filter.source).bind(&filter.status).fetch_one(&state.db).await?;
-    let items=sqlx::query_scalar::<_,Value>("SELECT to_jsonb(b)-'osu_path'-'archive_path' || jsonb_build_object('play_count',(SELECT count(*) FROM scores s WHERE s.beatmap_id=b.id AND verification='verified')) FROM beatmaps b WHERE ($1::text IS NULL OR title ILIKE $1 OR artist ILIKE $1 OR creator ILIKE $1) AND ($2::smallint IS NULL OR mode=$2) AND ($3::text IS NULL OR source=$3) AND ($4::text IS NULL OR status=$4) ORDER BY b.created_at DESC,b.id DESC LIMIT $5 OFFSET $6").bind(q).bind(filter.mode).bind(filter.source).bind(filter.status).bind(size).bind(offset).fetch_all(&state.db).await?;
+    let query = format!(
+        "SELECT {PUBLIC_MAP} FROM beatmaps b WHERE ($1::text IS NULL OR title ILIKE $1 OR artist ILIKE $1 OR creator ILIKE $1) AND ($2::smallint IS NULL OR mode=$2) AND ($3::text IS NULL OR source=$3) AND ($4::text IS NULL OR status=$4) ORDER BY b.created_at DESC,b.id DESC LIMIT $5 OFFSET $6"
+    );
+    let items = sqlx::query_scalar::<_, Value>(&query)
+        .bind(q)
+        .bind(filter.mode)
+        .bind(filter.source)
+        .bind(filter.status)
+        .bind(size)
+        .bind(offset)
+        .fetch_all(&state.db)
+        .await?;
     Ok(page(items, total, p, size))
 }
 pub async fn get(state: &AppState, id: i64) -> ApiResult<Value> {
-    sqlx::query_scalar("SELECT to_jsonb(b)-'osu_path'-'archive_path' || jsonb_build_object('play_count',(SELECT count(*) FROM scores s WHERE s.beatmap_id=b.id AND verification='verified'),'download_url','/api/v1/beatmaps/'||b.id||'/download') FROM beatmaps b WHERE id=$1").bind(id).fetch_optional(&state.db).await?.ok_or_else(ApiError::missing)
+    let query = format!("SELECT {PUBLIC_MAP} FROM beatmaps b WHERE id=$1");
+    sqlx::query_scalar(&query)
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(ApiError::missing)
 }
 pub async fn detail(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult {
     Ok(Json(get(&state, id).await?))
@@ -326,6 +367,7 @@ pub fn unpack_archive(bytes: &[u8]) -> ApiResult<Vec<Vec<u8>>> {
     }
     let mut total = 0_u64;
     let mut maps = Vec::new();
+    let mut paths = HashSet::new();
     for index in 0..archive.len() {
         let mut entry = archive
             .by_index(index)
@@ -339,6 +381,17 @@ pub fn unpack_archive(bytes: &[u8]) -> ApiResult<Vec<Vec<u8>>> {
             return Err(ApiError::bad(
                 "Archive contains an unsafe path or symbolic link.",
             ));
+        }
+        // Compare extracted paths after slash/segment normalization and Unicode
+        // lowercase, so case variants cannot overwrite another package member.
+        let normalized = name
+            .split('/')
+            .filter(|part| !part.is_empty() && *part != ".")
+            .collect::<Vec<_>>()
+            .join("/")
+            .to_lowercase();
+        if !paths.insert(normalized) {
+            return Err(ApiError::bad("Archive contains duplicate file paths."));
         }
         total = total
             .checked_add(entry.size())
@@ -369,6 +422,160 @@ pub fn unpack_archive(bytes: &[u8]) -> ApiResult<Vec<Vec<u8>>> {
     }
     Ok(maps)
 }
+
+fn package_write_error(error: sqlx::Error) -> ApiError {
+    if error
+        .as_database_error()
+        .is_some_and(|error| error.is_unique_violation())
+    {
+        package_conflict(
+            "A difficulty or package already exists. Upload the original complete package to retry.",
+        )
+    } else {
+        error.into()
+    }
+}
+
+async fn write_owned_map_file(
+    path: std::path::PathBuf,
+    bytes: &[u8],
+    owned_files: &mut Vec<std::path::PathBuf>,
+) -> ApiResult<()> {
+    use tokio::io::AsyncWriteExt;
+    let mut file = tokio::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .await?;
+    owned_files.push(path);
+    file.write_all(bytes).await?;
+    file.sync_all().await?;
+    Ok(())
+}
+
+async fn lock_package_checksums(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    manifest: &[String],
+) -> ApiResult<()> {
+    // All local uploaders acquire the actual advisory keys in the same order,
+    // including the unlikely case of two checksum strings hashing to one key.
+    // Authority locks are already held; row insertion also follows MD5 order.
+    let locks = sqlx::query_scalar::<_, i64>(
+        "SELECT DISTINCT hashtextextended('illyaverse:local-map:'||checksum,0) AS lock_key FROM unnest($1::text[]) AS checksums(checksum) ORDER BY lock_key",
+    ).bind(manifest).fetch_all(&mut **tx).await?;
+    for key in locks {
+        sqlx::query("SELECT pg_advisory_xact_lock($1)")
+            .bind(key)
+            .execute(&mut **tx)
+            .await?;
+    }
+    Ok(())
+}
+
+struct Fingerprint<'a> {
+    kind: &'a str,
+    sha256: &'a str,
+    byte_length: i64,
+}
+
+async fn retry_local_package(
+    state: &AppState,
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    actor: &auth::MutationActor,
+    existing: &[sqlx::postgres::PgRow],
+    manifest: &[String],
+    fingerprint: &Fingerprint<'_>,
+) -> ApiResult<Vec<i64>> {
+    let kind = fingerprint.kind;
+    let sha256 = fingerprint.sha256;
+    let byte_length = fingerprint.byte_length;
+    let conflict = || {
+        package_conflict(
+            "Existing difficulties belong to a different, incomplete or changed package. Upload its original complete file.",
+        )
+    };
+    if existing.len() != manifest.len() {
+        return Err(conflict());
+    }
+    let package_id = existing[0]
+        .get::<Option<Uuid>, _>("local_package_id")
+        .ok_or_else(conflict)?;
+    if existing.iter().any(|row| {
+        row.get::<Option<Uuid>, _>("local_package_id") != Some(package_id)
+            || row.get::<Option<i64>, _>("uploaded_by") != Some(actor.id)
+            || row.get::<String, _>("source") != "local"
+    }) {
+        return Err(conflict());
+    }
+    let package = sqlx::query("SELECT * FROM beatmap_packages WHERE id=$1 FOR UPDATE")
+        .bind(package_id)
+        .fetch_optional(&mut **tx)
+        .await?
+        .ok_or_else(conflict)?;
+    let members = sqlx::query_scalar::<_, String>(
+        "SELECT md5 FROM beatmaps WHERE local_package_id=$1 ORDER BY md5",
+    )
+    .bind(package_id)
+    .fetch_all(&mut **tx)
+    .await?;
+    if package.get::<Option<i64>, _>("uploaded_by") != Some(actor.id)
+        || package.get::<String, _>("kind") != kind
+        || package.get::<Vec<String>, _>("member_md5") != manifest
+        || members != manifest
+        || existing.iter().any(|row| {
+            row.get::<Option<String>, _>("archive_path")
+                != package.get::<Option<String>, _>("archive_path")
+        })
+    {
+        return Err(conflict());
+    }
+    match package.get::<Option<String>, _>("sha256") {
+        Some(stored)
+            if stored == sha256
+                && package.get::<Option<i64>, _>("byte_length") == Some(byte_length) => {}
+        Some(_) => return Err(conflict()),
+        None => {
+            if !package.get::<bool, _>("legacy") {
+                return Err(conflict());
+            }
+            let retained = if kind == "osz" {
+                package
+                    .get::<Option<String>, _>("archive_path")
+                    .ok_or_else(conflict)?
+            } else {
+                existing[0].get::<String, _>("osu_path")
+            };
+            let stored_path = std::path::Path::new(&retained);
+            if stored_path.is_absolute() || retained.contains("..") {
+                return Err(conflict());
+            }
+            let path = state.maps_root.join(stored_path);
+            let metadata = tokio::fs::symlink_metadata(&path)
+                .await
+                .map_err(|_| conflict())?;
+            if !metadata.is_file() || metadata.len() != byte_length as u64 {
+                return Err(conflict());
+            }
+            let bytes = tokio::fs::read(path).await.map_err(|_| conflict())?;
+            if format!("{:x}", Sha256::digest(&bytes)) != sha256 {
+                return Err(conflict());
+            }
+            // A migration never invents this fingerprint. Only an exact read of
+            // the retained original payload can establish it on a legacy retry.
+            sqlx::query(
+                "UPDATE beatmap_packages SET sha256=$2,byte_length=$3,legacy=false WHERE id=$1",
+            )
+            .bind(package_id)
+            .bind(sha256)
+            .bind(byte_length)
+            .execute(&mut **tx)
+            .await
+            .map_err(package_write_error)?;
+        }
+    }
+    Ok(existing.iter().map(|row| row.get("id")).collect())
+}
+
 pub async fn upload(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -385,6 +592,9 @@ pub async fn upload(
     {
         if field.name() != Some("file") {
             continue;
+        }
+        if upload.is_some() {
+            return Err(ApiError::bad("Attach exactly one beatmap file or archive."));
         }
         let filename = field.file_name().unwrap_or("").to_ascii_lowercase();
         if !filename.ends_with(".osu") && !filename.ends_with(".osz") {
@@ -405,12 +615,15 @@ pub async fn upload(
     }
     let (filename, bytes) = upload.ok_or_else(|| ApiError::bad("Attach a file."))?;
     let is_archive = filename.ends_with(".osz");
+    let kind = if is_archive { "osz" } else { "osu" };
+    let sha256 = format!("{:x}", Sha256::digest(&bytes));
+    let byte_length = bytes.len() as i64;
     let archive_bytes = if is_archive {
         Some(bytes.clone())
     } else {
         None
     };
-    let parsed = tokio::task::spawn_blocking(move || -> ApiResult<Vec<ParsedMap>> {
+    let mut parsed = tokio::task::spawn_blocking(move || -> ApiResult<Vec<ParsedMap>> {
         let inputs = if is_archive {
             unpack_archive(&bytes)?
         } else {
@@ -420,58 +633,91 @@ pub async fn upload(
     })
     .await
     .map_err(ApiError::internal)??;
-    let package = Uuid::new_v4().to_string();
+    parsed.sort_unstable_by(|left, right| left.md5.cmp(&right.md5));
+    if parsed.windows(2).any(|pair| pair[0].md5 == pair[1].md5) {
+        return Err(ApiError::bad(
+            "An archive must contain each difficulty checksum only once.",
+        ));
+    }
+    let manifest: Vec<String> = parsed.iter().map(|map| map.md5.clone()).collect();
+    let package_id = Uuid::new_v4();
+    let package = package_id.to_string();
     let directory = state.maps_root.join(&package);
     tokio::fs::create_dir(&directory).await?;
     let archive_path = archive_bytes
         .as_ref()
         .map(|_| format!("{package}/package.osz"));
     let mut owned_files = Vec::new();
-    let mut commit_attempted = false;
-    let outcome: ApiResult<Vec<i64>> = async {
+    let mut retain_files = false;
+    let outcome: ApiResult<(Vec<i64>, bool)> = async {
         // Finish the unique, unreferenced package before taking authority locks.
         if let Some(bytes) = archive_bytes {
             let path = state.maps_root.join(archive_path.as_ref().unwrap());
-            owned_files.push(path.clone());
-            tokio::fs::write(path, bytes).await?;
+            write_owned_map_file(path, &bytes, &mut owned_files).await?;
         }
         for map in &parsed {
             let path = directory.join(format!("{}.osu", map.md5));
-            owned_files.push(path.clone());
-            tokio::fs::write(path, &map.bytes).await?;
+            write_owned_map_file(path, &map.bytes, &mut owned_files).await?;
         }
         let mut tx = state.db.begin().await?;
         let actor = auth::mutation_actor(&mut tx, &user, &[], auth::MutationScope::Permissions).await?;
         actor.require("beatmaps.upload")?;
+        lock_package_checksums(&mut tx, &manifest).await?;
+        let existing = sqlx::query("SELECT id,md5,source,uploaded_by,local_package_id,archive_path,osu_path FROM beatmaps WHERE md5=ANY($1) ORDER BY md5 FOR UPDATE")
+            .bind(&manifest).fetch_all(&mut *tx).await?;
+        if !existing.is_empty() {
+            let fingerprint = Fingerprint { kind, sha256: &sha256, byte_length };
+            let ids = retry_local_package(&state, &mut tx, &actor, &existing, &manifest, &fingerprint).await?;
+            auth::ensure_mutation_actor(&mut tx, &actor).await?;
+            tx.commit().await?;
+            return Ok((ids, true));
+        }
+        if parsed.iter().any(|map| map.official_id.is_some_and(|id| id > 0)
+            || map.official_set_id.is_some_and(|id| id > 0)) {
+            return Err(ApiError(
+                StatusCode::BAD_REQUEST,
+                "official_beatmap_requires_import",
+                "This file contains an official beatmap or set ID. Use official beatmap import instead of local upload.".into(),
+            ));
+        }
+        sqlx::query("INSERT INTO beatmap_packages(id,uploaded_by,kind,sha256,byte_length,member_md5,archive_path) VALUES($1,$2,$3,$4,$5,$6,$7)")
+            .bind(package_id).bind(actor.id).bind(kind).bind(&sha256).bind(byte_length).bind(&manifest).bind(&archive_path).execute(&mut *tx).await.map_err(package_write_error)?;
         let mut ids = Vec::new();
         for map in parsed {
             let path = format!("{package}/{}.osu", map.md5);
-            let id:i64=sqlx::query_scalar("INSERT INTO beatmaps(uploaded_by,title,artist,creator,version,mode,stars,bpm,length_seconds,max_combo,md5,osu_path,archive_path) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id").bind(actor.id).bind(map.title).bind(map.artist).bind(map.creator).bind(map.version).bind(map.mode).bind(map.stars).bind(map.bpm).bind(map.length).bind(map.max_combo).bind(map.md5).bind(path).bind(&archive_path).fetch_one(&mut *tx).await?;
+            let id:i64=sqlx::query_scalar("INSERT INTO beatmaps(uploaded_by,title,artist,creator,version,mode,stars,bpm,length_seconds,max_combo,md5,osu_path,archive_path,local_package_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id").bind(actor.id).bind(map.title).bind(map.artist).bind(map.creator).bind(map.version).bind(map.mode).bind(map.stars).bind(map.bpm).bind(map.length).bind(map.max_combo).bind(map.md5).bind(path).bind(&archive_path).bind(package_id).fetch_one(&mut *tx).await.map_err(package_write_error)?;
             ids.push(id);
         }
         sqlx::query("INSERT INTO audit_events(actor_id,action,target_type,target_id,details) VALUES($1,'beatmaps.upload','beatmap_package',$2,$3)")
             .bind(actor.id).bind(&package).bind(json!({"beatmap_ids":ids})).execute(&mut *tx).await?;
         auth::ensure_mutation_actor(&mut tx, &actor).await?;
         // Keep the complete package if COMMIT was sent but its outcome is unknown.
-        commit_attempted = true;
+        retain_files = true;
         if let Err(error) = tx.commit().await {
-            commit_attempted = !commit_definitely_rolled_back(&error);
+            retain_files = !commit_definitely_rolled_back(&error);
             return Err(error.into());
         }
-        Ok(ids)
+        Ok((ids, false))
     }.await;
-    if !commit_attempted {
+    if !retain_files {
         for path in owned_files {
             let _ = tokio::fs::remove_file(path).await;
         }
         let _ = tokio::fs::remove_dir(directory).await;
     }
-    let ids = outcome?;
+    let (ids, idempotent) = outcome?;
     let mut items = Vec::new();
     for id in ids {
         items.push(get(&state, id).await?);
     }
-    Ok(Json(json!({"items":items})))
+    let package = items
+        .first()
+        .and_then(|item| item.get("package"))
+        .cloned()
+        .ok_or_else(|| ApiError::internal("uploaded package has no public metadata"))?;
+    Ok(Json(
+        json!({"items":items,"package":package,"idempotent":idempotent}),
+    ))
 }
 
 async fn throttle(official: &mut OfficialState) {
@@ -745,6 +991,7 @@ impl Resolve {
             (Some(checksum), None) if valid_checksum(checksum) => {
                 Ok(MapSelector::Checksum(checksum.to_ascii_lowercase()))
             }
+            (None, Some(id)) if id > MAX_OFFICIAL_ID => Err(official_namespace_conflict()),
             (None, Some(id)) if id > 0 => Ok(MapSelector::OfficialId(id)),
             _ => Err(ApiError::bad(
                 "Supply exactly one 32-character hexadecimal checksum or positive official_id.",
@@ -803,7 +1050,7 @@ async fn stored_map<'e>(
         MapSelector::Checksum(checksum) => (Some(checksum.as_str()), None),
         MapSelector::OfficialId(id) => (None, Some(*id)),
     };
-    Ok(sqlx::query_scalar("SELECT jsonb_build_object('id',id,'official_id',official_id,'official_set_id',official_set_id,'md5',md5,'status',status,'source',source,'mode',mode) FROM beatmaps WHERE ($1::text IS NOT NULL AND md5=$1) OR ($2::bigint IS NOT NULL AND official_id=$2)")
+    Ok(sqlx::query_scalar("SELECT jsonb_build_object('id',id,'native_id',native_id,'native_set_id',native_set_id,'official_id',official_id,'official_set_id',official_set_id,'md5',md5,'status',status,'source',source,'mode',mode) FROM beatmaps WHERE ($1::text IS NOT NULL AND md5=$1) OR ($2::bigint IS NOT NULL AND official_id=$2)")
         .bind(checksum).bind(official_id).fetch_optional(executor).await?)
 }
 
@@ -854,6 +1101,9 @@ async fn fetch_official_map(state: &AppState, selector: &MapSelector) -> ApiResu
         .as_i64()
         .filter(|&id| id > 0)
         .ok_or_else(invalid_identity)?;
+    if id > MAX_OFFICIAL_ID || set_id > MAX_OFFICIAL_ID {
+        return Err(official_namespace_conflict());
+    }
     let mode = metadata["mode_int"]
         .as_i64()
         .filter(|mode| (0..=3).contains(mode))
@@ -1174,6 +1424,9 @@ pub async fn import(
     if input.official_id <= 0 {
         return Err(ApiError::bad("Enter a positive official beatmap ID."));
     }
+    if input.official_id > MAX_OFFICIAL_ID {
+        return Err(official_namespace_conflict());
+    }
     let resolved = resolve_map_as(
         &state,
         user.id,
@@ -1192,6 +1445,10 @@ pub async fn import(
 pub(crate) mod map_mutation_tests;
 
 #[cfg(test)]
+#[path = "map_package_tests.rs"]
+mod map_package_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     fn archive(name: &str, data: &[u8]) -> Vec<u8> {
@@ -1206,6 +1463,28 @@ mod tests {
         assert!(unpack_archive(&archive("../evil.osu", b"x")).is_err());
         assert!(unpack_archive(&archive("C:/evil.osu", b"x")).is_err());
         assert!(unpack_archive(&archive("..\\evil.osu", b"x")).is_err());
+    }
+    #[test]
+    fn archive_rejects_normalized_duplicate_paths_with_different_contents() {
+        let first = b"first difficulty";
+        let second = b"second difficulty";
+        assert_ne!(md5::compute(first), md5::compute(second));
+        for names in [
+            ["Maps\\Easy.osu", "maps/easy.OSU"],
+            ["maps/./Easy.osu", "maps//easy.osu"],
+            ["Maps/Éasy.osu", "maps/éasy.OSU"],
+        ] {
+            let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+            for (name, bytes) in names.into_iter().zip([first.as_slice(), second.as_slice()]) {
+                zip.start_file(name, zip::write::SimpleFileOptions::default())
+                    .unwrap();
+                std::io::Write::write_all(&mut zip, bytes).unwrap();
+            }
+            let bytes = zip.finish().unwrap().into_inner();
+            let error = unpack_archive(&bytes).unwrap_err();
+            assert_eq!(error.0, StatusCode::BAD_REQUEST);
+            assert!(error.2.contains("duplicate file paths"));
+        }
     }
     #[test]
     fn invalid_maps_are_rejected() {

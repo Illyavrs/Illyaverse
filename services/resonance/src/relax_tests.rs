@@ -220,6 +220,8 @@ async fn relax_partitions_native_profiles_boards_rankings_and_replays() {
         let restricted=user(pool,"RelaxRestricted","TW",true).await;
         let map0=map(pool,0,"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa").await;
         let map1=map(pool,1,"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb").await;
+        let native0:i64=sqlx::query_scalar("SELECT native_id FROM beatmaps WHERE id=$1").bind(map0).fetch_one(pool).await.unwrap();
+        assert_ne!(map0,native0);
         let mk=|user,map,mode,mods,score,pp,accuracy,client,verification,passed,eligible,grade|Play{user,map,mode,mods,score,pp,accuracy,client,verification,passed,eligible,grade};
         let av=play(pool,mk(a,map0,0,0,10000,200.0,100.0,"stable","verified",true,true,"X")).await;
         let ar=play(pool,mk(a,map0,0,128,20000,20.0,70.0,"stable","verified",true,true,"A")).await;
@@ -268,15 +270,15 @@ async fn relax_partitions_native_profiles_boards_rankings_and_replays() {
             assert_eq!(empty["ranking"],json!([]),"{path}");
             assert_eq!(empty["total"],total,"{path}");
         }
-        let bv=json_get(&router,&format!("/api/v2/beatmaps/{map0}/scores"),&token).await;
-        let rx=json_get(&router,&format!("/api/v2/beatmaps/{map0}/scores?variant=relax"),&token).await;
+        let bv=json_get(&router,&format!("/api/v2/beatmaps/{native0}/scores"),&token).await;
+        let rx=json_get(&router,&format!("/api/v2/beatmaps/{native0}/scores?variant=relax"),&token).await;
         assert_eq!(bv["scores"][0]["id"],av);assert_eq!(rx["scores"][0]["id"],br);assert_eq!(rx["scores"][1]["id"],ar);
         assert_eq!(rx["score_count"],2);assert_eq!(rx["scores"][0]["ruleset_id"],0);assert_eq!(rx["scores"][0]["score_variant"],"relax");
         assert_eq!(rx["scores"][0]["total_score"],0);assert_eq!(rx["scores"][0]["legacy_total_score"],5000);
         assert!(rx["scores"][0]["classic_total_score"].is_null());assert_eq!(rx["scores"][0]["score_scale_status"],"unavailable");
-        let filtered=json_get(&router,&format!("/api/v2/beatmaps/{map0}/scores?mods%5B%5D=RX"),&token).await;
+        let filtered=json_get(&router,&format!("/api/v2/beatmaps/{native0}/scores?mods%5B%5D=RX"),&token).await;
         assert_eq!(filtered["scores"][0]["id"],bn);assert_eq!(filtered["score_variant"],"relax");
-        assert_eq!(get(&router,&format!("/api/v2/beatmaps/{map0}/scores?variant=vanilla&mods%5B%5D=RX"),&token).await.0,StatusCode::BAD_REQUEST);
+        assert_eq!(get(&router,&format!("/api/v2/beatmaps/{native0}/scores?variant=vanilla&mods%5B%5D=RX"),&token).await.0,StatusCode::BAD_REQUEST);
         let best=json_get(&router,&format!("/api/v2/users/{b}/scores/best?mode=osu&variant=relax"),&token).await;
         assert_eq!(best.as_array().unwrap().len(),1);assert_eq!(best[0]["id"],br);
         let default=json_get(&router,&format!("/api/v2/users/{a}/scores/recent?mode=osu"),&token).await;

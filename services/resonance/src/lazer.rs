@@ -473,19 +473,7 @@ async fn beatmap(
     ))
 }
 pub(crate) async fn map_json(state: &AppState, id: i64) -> Result<Value, ApiError> {
-    let row = sqlx::query("SELECT * FROM beatmaps WHERE id=$1")
-        .bind(id)
-        .fetch_optional(&state.pool)
-        .await?
-        .ok_or(ApiError(StatusCode::NOT_FOUND, "beatmap_not_found"))?;
-    let status: String = row.get("status");
-    let mode = row.get::<i16, _>("mode") as usize;
-    let archive: Option<String> = row.get("archive_path");
-    let native_id = row.get::<Option<i64>, _>("official_id").unwrap_or(id);
-    let set_id = row.get::<Option<i64>, _>("official_set_id").unwrap_or(id);
-    Ok(
-        json!({"id":native_id,"beatmapset_id":set_id,"checksum":row.get::<String,_>("md5"),"version":row.get::<String,_>("version"),"mode":(["osu","taiko","fruits","mania"][mode]),"mode_int":mode,"status":status,"ranked":if status=="ranked"{1}else if status=="loved"{4}else{0},"difficulty_rating":row.get::<f64,_>("stars"),"bpm":row.get::<f64,_>("bpm"),"total_length":row.get::<i32,_>("length_seconds"),"hit_length":row.get::<i32,_>("length_seconds"),"max_combo":row.get::<i32,_>("max_combo"),"user_id":row.get::<Option<i64>,_>("uploaded_by").unwrap_or(0),"is_scoreable":true,"url":format!("/beatmaps/{id}"),"beatmapset":{"id":set_id,"artist":row.get::<String,_>("artist"),"artist_unicode":row.get::<String,_>("artist"),"title":row.get::<String,_>("title"),"title_unicode":row.get::<String,_>("title"),"creator":row.get::<String,_>("creator"),"status":status,"user_id":row.get::<Option<i64>,_>("uploaded_by").unwrap_or(0),"covers":{"cover":"","cover@2x":"","card":"","card@2x":"","list":"","list@2x":"","slimcover":"","slimcover@2x":""},"preview_url":"","download_disabled":archive.is_none(),"video":false,"storyboard":false,"availability":{"download_disabled":archive.is_none(),"more_information":null},"beatmaps":[]}}),
-    )
+    crate::native_maps::map_json(state, id).await
 }
 async fn create_score(
     State(state): State<AppState>,
@@ -496,20 +484,19 @@ async fn create_score(
     let player = common::bearer(&state, &headers).await?;
     let input: ScoreTokenRequest = native_form(request).await?;
     input.validate()?;
-    if id <= 0 {
+    if !crate::native_maps::valid_id(id) {
         return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_beatmap_id"));
     }
     common::rate_limit(&state, format!("score-token:{}", player.id), 60).await?;
-    let internal = crate::native_maps::resolve_checksum(&state, player.id, &input.beatmap_hash)
+    let internal =
+        crate::native_maps::resolve_checksum_for_id(&state, player.id, &input.beatmap_hash, id)
+            .await?
+            .ok_or(ApiError(StatusCode::NOT_FOUND, "beatmap_not_found"))?;
+    let map = sqlx::query("SELECT id,native_id,md5,mode FROM beatmaps WHERE id=$1")
+        .bind(internal)
+        .fetch_optional(&state.pool)
         .await?
         .ok_or(ApiError(StatusCode::NOT_FOUND, "beatmap_not_found"))?;
-    let map = sqlx::query(
-        "SELECT id,COALESCE(official_id,id) native_id,md5,mode FROM beatmaps WHERE id=$1",
-    )
-    .bind(internal)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or(ApiError(StatusCode::NOT_FOUND, "beatmap_not_found"))?;
     if map.get::<i64, _>("native_id") != id {
         return Err(ApiError(StatusCode::BAD_REQUEST, "beatmap_id_mismatch"));
     }
@@ -551,7 +538,7 @@ async fn submit_score(
 ) -> Result<Json<Value>, ApiError> {
     let player = common::bearer(&state, &headers).await?;
     input.validate()?;
-    if map_id <= 0 || token_id <= 0 {
+    if !crate::native_maps::valid_id(map_id) || token_id <= 0 {
         return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_score_token"));
     }
     let mods = illya_domain::score_mods::ValidatedMods::parse(input.ruleset_id, &json!(input.mods))
@@ -564,7 +551,7 @@ async fn submit_score(
         ));
     }
     let mut tx = state.pool.begin().await?;
-    let token=sqlx::query("SELECT t.* FROM lazer_score_tokens t JOIN beatmaps b ON b.id=t.beatmap_id WHERE t.id=$1 AND t.user_id=$2 AND t.scope='solo' AND COALESCE(b.official_id,b.id)=$3 AND (t.expires_at>now() OR t.score_id IS NOT NULL) FOR UPDATE OF t").bind(token_id).bind(player.id).bind(map_id).fetch_optional(&mut *tx).await?.ok_or(ApiError(StatusCode::NOT_FOUND,"invalid_score_token"))?;
+    let token=sqlx::query("SELECT t.* FROM lazer_score_tokens t JOIN beatmaps b ON b.id=t.beatmap_id WHERE t.id=$1 AND t.user_id=$2 AND t.scope='solo' AND b.native_id=$3 AND (t.expires_at>now() OR t.score_id IS NOT NULL) FOR UPDATE OF t").bind(token_id).bind(player.id).bind(map_id).fetch_optional(&mut *tx).await?.ok_or(ApiError(StatusCode::NOT_FOUND,"invalid_score_token"))?;
     let map_id: i64 = token.get("beatmap_id");
     if token.get::<i16, _>("ruleset_id") != i16::from(input.ruleset_id) {
         return Err(ApiError(StatusCode::BAD_REQUEST, "score_ruleset_mismatch"));
@@ -625,7 +612,7 @@ pub(crate) async fn score_json(
     player: &Account,
 ) -> Result<Value, ApiError> {
     let row =
-        sqlx::query("SELECT s.*,COALESCE(b.official_id,b.id) native_map_id,b.status map_status FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id WHERE s.id=$1 AND (s.verification='verified' OR s.user_id=$2)")
+        sqlx::query("SELECT s.*,b.native_id native_map_id,b.status map_status FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id WHERE s.id=$1 AND (s.verification='verified' OR s.user_id=$2)")
             .bind(id)
             .bind(player.id)
             .fetch_optional(&state.pool)

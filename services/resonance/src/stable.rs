@@ -744,13 +744,9 @@ pub async fn beatmap_archive(
         .trim_end_matches('n')
         .parse()
         .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_beatmap_id"))?;
-    let path =
-        sqlx::query_scalar::<_, Option<String>>("SELECT archive_path FROM beatmaps WHERE id=$1")
-            .bind(id)
-            .fetch_optional(&state.pool)
-            .await?
-            .flatten()
-            .ok_or(ApiError(StatusCode::NOT_FOUND, "archive_not_available"))?;
+    let path = crate::native_maps::archive_path(&state, id)
+        .await?
+        .ok_or(ApiError(StatusCode::NOT_FOUND, "archive_not_available"))?;
     let bytes = common::stored_file(&state, &path, "maps", 104_857_600).await?;
     Ok((
         [
@@ -795,8 +791,12 @@ async fn leaderboard(
     let Some(id) = crate::native_maps::resolve_checksum(&state, player.id, md5).await? else {
         return Ok("-1|false|0|0|0|0|\n0\nUnknown beatmap\n0\n\n".into());
     };
-    let map = sqlx::query("SELECT id,official_id,official_set_id,title,artist,version,status FROM beatmaps WHERE id=$1")
-        .bind(id).fetch_one(&state.pool).await?;
+    let map = sqlx::query(
+        "SELECT id,native_id,native_set_id,title,artist,version,status FROM beatmaps WHERE id=$1",
+    )
+    .bind(id)
+    .fetch_one(&state.pool)
+    .await?;
     let friend_filter = if leaderboard_type == 4 {
         let mut ids = common::friend_ids(&state, player.id)
             .await?
@@ -816,8 +816,7 @@ async fn leaderboard(
         "loved" => 5,
         _ => 0,
     };
-    let set_id: i64 = map.get::<Option<i64>, _>("official_set_id").unwrap_or(id);
-    let public_id = map.get::<Option<i64>, _>("official_id").unwrap_or(id);
+    let (public_id, set_id) = crate::native_maps::row_ids(&map)?;
     let map_name = clean(&format!(
         "{} - {} [{}]",
         map.get::<String, _>("artist"),
@@ -886,10 +885,17 @@ async fn search(
         .unwrap_or(0)
         .clamp(0, 1000);
     let mode: i16 = query.get("m").and_then(|v| v.parse().ok()).unwrap_or(-1);
-    let rows = sqlx::query("SELECT * FROM beatmaps WHERE archive_path IS NOT NULL AND ($1=-1 OR mode=$1) AND (title ILIKE $2 OR artist ILIKE $2 OR creator ILIKE $2) ORDER BY created_at DESC LIMIT 100 OFFSET $3").bind(mode).bind(format!("%{search}%")).bind(page*100).fetch_all(&state.pool).await?;
-    let mut output = format!("{}\n", rows.len());
-    for row in rows {
-        output.push_str(&direct_line(&row));
+    if !(-1..=3).contains(&mode) {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_mode"));
+    }
+    let sets = sqlx::query_scalar::<_, i64>("SELECT b.native_set_id FROM beatmaps b LEFT JOIN beatmap_packages p ON p.id=b.local_package_id WHERE COALESCE(p.archive_path,b.archive_path) IS NOT NULL AND ($1=-1 OR b.mode=$1) AND (b.title ILIKE $2 OR b.artist ILIKE $2 OR b.creator ILIKE $2) GROUP BY b.native_set_id ORDER BY max(b.created_at) DESC,b.native_set_id DESC LIMIT 100 OFFSET $3").bind(mode).bind(format!("%{search}%")).bind(page*100).fetch_all(&state.pool).await?;
+    let mut output = format!("{}\n", sets.len());
+    for set in sets {
+        output.push_str(
+            &direct_set_line(&state, set)
+                .await?
+                .ok_or(ApiError(StatusCode::NOT_FOUND, "archive_not_available"))?,
+        );
         output.push('\n');
     }
     Ok(output)
@@ -899,43 +905,77 @@ async fn search_set(
     Query(query): Query<HashMap<String, String>>,
 ) -> Result<String, ApiError> {
     web_auth(&state, &query).await?;
-    let id: Option<i64> = query
-        .get("b")
-        .or_else(|| query.get("s"))
-        .and_then(|v| v.parse().ok());
-    let row = if let Some(id) = id {
-        sqlx::query("SELECT * FROM beatmaps WHERE id=$1 AND archive_path IS NOT NULL")
-            .bind(id)
-            .fetch_optional(&state.pool)
-            .await?
+    let set = if let Some(raw) = query.get("b") {
+        let id = raw
+            .parse::<i64>()
+            .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_beatmap_id"))?;
+        let internal = crate::native_maps::known_id(&state, id).await?;
+        if let Some(internal) = internal {
+            sqlx::query_scalar("SELECT native_set_id FROM beatmaps WHERE id=$1")
+                .bind(internal)
+                .fetch_optional(&state.pool)
+                .await?
+        } else {
+            None
+        }
+    } else if let Some(raw) = query.get("s") {
+        let set = raw
+            .parse::<i64>()
+            .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_beatmapset_id"))?;
+        crate::native_maps::require_id(set)?;
+        Some(set)
     } else if let Some(md5) = query.get("c") {
-        sqlx::query("SELECT * FROM beatmaps WHERE md5=$1 AND archive_path IS NOT NULL")
-            .bind(md5)
+        if !wire::is_md5(md5) {
+            return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_beatmap_hash"));
+        }
+        sqlx::query_scalar("SELECT native_set_id FROM beatmaps WHERE md5=$1")
+            .bind(md5.to_ascii_lowercase())
             .fetch_optional(&state.pool)
             .await?
     } else {
         None
     };
-    Ok(row.map(|r| direct_line(&r)).unwrap_or_default())
+    match set {
+        Some(set) => Ok(direct_set_line(&state, set).await?.unwrap_or_default()),
+        None => Ok(String::new()),
+    }
 }
-fn direct_line(row: &sqlx::postgres::PgRow) -> String {
-    let id: i64 = row.get("id");
+async fn direct_set_line(state: &AppState, id: i64) -> Result<Option<String>, ApiError> {
+    if crate::native_maps::archive_path(state, id).await?.is_none() {
+        return Ok(None);
+    }
+    let rows = sqlx::query("SELECT * FROM beatmaps WHERE native_set_id=$1 ORDER BY mode,stars,id")
+        .bind(id)
+        .fetch_all(&state.pool)
+        .await?;
+    let Some(row) = rows.first() else {
+        return Ok(None);
+    };
     let status = match row.get::<String, _>("status").as_str() {
         "ranked" => 1,
         "loved" => 4,
         _ => 0,
     };
-    format!(
-        "{id}.osz|{}|{}|{}|{status}|0|{}|{id}|0|0|0|0|[{}*] {}@{}",
+    let difficulties = rows
+        .iter()
+        .map(|row| {
+            format!(
+                "[{}*] {}@{}",
+                row.get::<f64, _>("stars"),
+                clean(&row.get::<String, _>("version")).replace(',', " "),
+                row.get::<i16, _>("mode")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    Ok(Some(format!(
+        "{id}.osz|{}|{}|{}|{status}|0|{}|{id}|0|0|0|0|{difficulties}",
         clean(&row.get::<String, _>("artist")),
         clean(&row.get::<String, _>("title")),
         clean(&row.get::<String, _>("creator")),
         row.get::<chrono::DateTime<Utc>, _>("created_at")
             .format("%Y-%m-%d %H:%M:%S"),
-        row.get::<f64, _>("stars"),
-        clean(&row.get::<String, _>("version")),
-        row.get::<i16, _>("mode")
-    )
+    )))
 }
 
 #[derive(Deserialize)]
@@ -960,23 +1000,21 @@ async fn beatmap_info(
         let Some(local_id) = crate::native_maps::known_id(&state, id).await? else {
             continue;
         };
-        if let Some(row) = sqlx::query(
-            "SELECT id,official_id,official_set_id,md5,status FROM beatmaps WHERE id=$1",
-        )
-        .bind(local_id)
-        .fetch_optional(&state.pool)
-        .await?
+        if let Some(row) =
+            sqlx::query("SELECT id,native_id,native_set_id,md5,status FROM beatmaps WHERE id=$1")
+                .bind(local_id)
+                .fetch_optional(&state.pool)
+                .await?
         {
             let status = match row.get::<String, _>("status").as_str() {
                 "ranked" => 1,
                 "loved" => 4,
                 _ => 0,
             };
-            let public_id = row.get::<Option<i64>, _>("official_id").unwrap_or(local_id);
+            let (public_id, set_id) = crate::native_maps::row_ids(&row)?;
             lines.push(format!(
                 "{index}|{public_id}|{}|{}|{status}|N|N|N|N",
-                row.get::<Option<i64>, _>("official_set_id")
-                    .unwrap_or(local_id),
+                set_id,
                 row.get::<String, _>("md5")
             ));
         }

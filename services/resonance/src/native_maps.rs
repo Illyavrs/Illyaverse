@@ -7,6 +7,75 @@ use serde::Deserialize;
 use serde_json::json;
 use sqlx::Row;
 
+pub(crate) const LOCAL_ID_MIN: i64 = 2_000_000_000;
+pub(crate) const MAX_NATIVE_ID: i64 = i32::MAX as i64;
+
+/// Both native clients store online beatmap and set identities in signed ints.
+pub(crate) fn valid_id(id: i64) -> bool {
+    (1..=MAX_NATIVE_ID).contains(&id)
+}
+
+pub(crate) fn require_id(id: i64) -> Result<(), ApiError> {
+    if valid_id(id) {
+        Ok(())
+    } else {
+        Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid_beatmap_identity",
+        ))
+    }
+}
+
+/// Internal row keys never enter the native identity namespace.
+pub(crate) fn row_ids(row: &sqlx::postgres::PgRow) -> Result<(i64, i64), ApiError> {
+    let id: i64 = row.get("native_id");
+    let set: i64 = row.get("native_set_id");
+    if !valid_id(id) || !valid_id(set) {
+        return Err(ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "invalid_stored_native_identity",
+        ));
+    }
+    Ok((id, set))
+}
+
+/// Local downloads belong to the immutable upload package. Official maps may
+/// have a retained official archive; ordinary API discovery has none.
+pub(crate) async fn archive_path(state: &AppState, set: i64) -> Result<Option<String>, ApiError> {
+    require_id(set)?;
+    if set >= LOCAL_ID_MIN {
+        return Ok(sqlx::query_scalar(
+            "SELECT archive_path FROM beatmap_packages WHERE native_set_id=$1",
+        )
+        .bind(set)
+        .fetch_optional(&state.pool)
+        .await?
+        .flatten());
+    }
+    Ok(sqlx::query_scalar("SELECT archive_path FROM beatmaps WHERE native_set_id=$1 AND official_set_id IS NOT NULL AND archive_path IS NOT NULL ORDER BY id LIMIT 1")
+        .bind(set).fetch_optional(&state.pool).await?)
+}
+
+/// One serializer is shared by map lookup and room playlists. Its argument is
+/// an internal FK, while every identity it advertises is a canonical native ID.
+pub(crate) async fn map_json(
+    state: &AppState,
+    internal: i64,
+) -> Result<serde_json::Value, ApiError> {
+    let row = sqlx::query("SELECT * FROM beatmaps WHERE id=$1")
+        .bind(internal)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or(ApiError(StatusCode::NOT_FOUND, "beatmap_not_found"))?;
+    let (id, set) = row_ids(&row)?;
+    let status: String = row.get("status");
+    let mode = row.get::<i16, _>("mode") as usize;
+    let disabled = archive_path(state, set).await?.is_none();
+    Ok(
+        json!({"id":id,"beatmapset_id":set,"checksum":row.get::<String,_>("md5"),"version":row.get::<String,_>("version"),"mode":(["osu","taiko","fruits","mania"][mode]),"mode_int":mode,"status":status,"ranked":if status=="ranked"{1}else if status=="loved"{4}else{0},"difficulty_rating":row.get::<f64,_>("stars"),"bpm":row.get::<f64,_>("bpm"),"total_length":row.get::<i32,_>("length_seconds"),"hit_length":row.get::<i32,_>("length_seconds"),"max_combo":row.get::<i32,_>("max_combo"),"user_id":row.get::<Option<i64>,_>("uploaded_by").unwrap_or(0),"is_scoreable":true,"url":format!("/beatmaps/{internal}"),"beatmapset":{"id":set,"artist":row.get::<String,_>("artist"),"artist_unicode":row.get::<String,_>("artist"),"title":row.get::<String,_>("title"),"title_unicode":row.get::<String,_>("title"),"creator":row.get::<String,_>("creator"),"status":status,"user_id":row.get::<Option<i64>,_>("uploaded_by").unwrap_or(0),"covers":{"cover":"","cover@2x":"","card":"","card@2x":"","list":"","list@2x":"","slimcover":"","slimcover@2x":""},"preview_url":"","download_disabled":disabled,"video":false,"storyboard":false,"availability":{"download_disabled":disabled,"more_information":null},"beatmaps":[]}}),
+    )
+}
+
 #[derive(Debug, Deserialize, PartialEq)]
 struct Identity {
     id: i64,
@@ -48,8 +117,12 @@ impl Identity {
 
     fn valid_for(&self, selector: &Selector<'_>) -> bool {
         self.id > 0
-            && self.official_id.is_none_or(|id| id > 0)
-            && self.official_set_id.is_none_or(|id| id > 0)
+            && self
+                .official_id
+                .is_none_or(|id| (1..LOCAL_ID_MIN).contains(&id))
+            && self
+                .official_set_id
+                .is_none_or(|id| (1..LOCAL_ID_MIN).contains(&id))
             && is_md5(&self.md5)
             && match selector {
                 Selector::Checksum(checksum) => self.md5 == *checksum,
@@ -67,14 +140,19 @@ impl Identity {
 /// Resolve public difficulty IDs without allowing an imported row's internal
 /// primary key to masquerade as a different official difficulty.
 pub async fn known_id(state: &AppState, id: i64) -> Result<Option<i64>, ApiError> {
-    Ok(sqlx::query_scalar("SELECT id FROM beatmaps WHERE official_id=$1 OR (official_id IS NULL AND id=$1) ORDER BY (official_id=$1) DESC NULLS LAST LIMIT 1")
-        .bind(id).fetch_optional(&state.pool).await?)
+    require_id(id)?;
+    Ok(
+        sqlx::query_scalar("SELECT id FROM beatmaps WHERE native_id=$1")
+            .bind(id)
+            .fetch_optional(&state.pool)
+            .await?,
+    )
 }
 
 /// Resolve a public ID only after native bearer authentication. A local-only
 /// map keeps its own public ID; an unknown ID is looked up as an official ID.
 pub async fn resolve_id(state: &AppState, user_id: i64, id: i64) -> Result<Option<i64>, ApiError> {
-    if user_id <= 0 || id <= 0 {
+    if user_id <= 0 || !valid_id(id) {
         return Err(ApiError(
             StatusCode::BAD_REQUEST,
             "invalid_beatmap_identity",
@@ -82,6 +160,9 @@ pub async fn resolve_id(state: &AppState, user_id: i64, id: i64) -> Result<Optio
     }
     if let Some(known) = known_id(state, id).await? {
         return Ok(Some(known));
+    }
+    if id >= LOCAL_ID_MIN {
+        return Ok(None);
     }
     discover(state, user_id, Selector::OfficialId(id)).await
 }
@@ -108,6 +189,48 @@ pub async fn resolve_checksum(
         return Ok(Some(id));
     }
     discover(state, user_id, Selector::Checksum(&checksum)).await
+}
+
+/// A supplied ID and checksum must identify the same immutable difficulty.
+/// Reserved local misses are terminal, even when a checksum is also supplied.
+pub(crate) async fn resolve_checksum_for_id(
+    state: &AppState,
+    user_id: i64,
+    checksum: &str,
+    native_id: i64,
+) -> Result<Option<i64>, ApiError> {
+    require_id(native_id)?;
+    if user_id <= 0 || !is_md5(checksum) {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid_beatmap_identity",
+        ));
+    }
+    let known = known_id(state, native_id).await?;
+    if let Some(internal) = known {
+        let hash: String = sqlx::query_scalar("SELECT md5 FROM beatmaps WHERE id=$1")
+            .bind(internal)
+            .fetch_one(&state.pool)
+            .await?;
+        if !hash.eq_ignore_ascii_case(checksum) {
+            return Err(ApiError(StatusCode::BAD_REQUEST, "beatmap_id_mismatch"));
+        }
+        return Ok(Some(internal));
+    }
+    if native_id >= LOCAL_ID_MIN {
+        return Ok(None);
+    }
+    let Some(internal) = resolve_checksum(state, user_id, checksum).await? else {
+        return Ok(None);
+    };
+    let actual: i64 = sqlx::query_scalar("SELECT native_id FROM beatmaps WHERE id=$1")
+        .bind(internal)
+        .fetch_one(&state.pool)
+        .await?;
+    if actual != native_id {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "beatmap_id_mismatch"));
+    }
+    Ok(Some(internal))
 }
 
 async fn discover(
@@ -200,6 +323,16 @@ async fn discover(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_identity_has_a_signed_client_boundary() {
+        for id in [1, LOCAL_ID_MIN - 1, LOCAL_ID_MIN, MAX_NATIVE_ID] {
+            assert!(valid_id(id));
+        }
+        for id in [i64::MIN, -1, 0, MAX_NATIVE_ID + 1, i64::MAX] {
+            assert!(!valid_id(id));
+        }
+    }
 
     #[test]
     fn resolution_reply_must_match_the_requested_selector() {

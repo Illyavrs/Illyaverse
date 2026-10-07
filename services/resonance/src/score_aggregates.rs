@@ -116,7 +116,7 @@ mod tests {
             .unwrap();
         sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
         let user: i64 = sqlx::query_scalar("INSERT INTO users(username,email,password_hash,password_md5_hash) VALUES('Scale fixture','scales@invalid.test','fixture','fixture') RETURNING id").fetch_one(&pool).await.unwrap();
-        let map: i64 = sqlx::query_scalar("INSERT INTO beatmaps(title,artist,creator,version,mode,status,stars,md5,osu_path) VALUES('Scale fixture','Illyaverse','Fixture','Two circles',0,'ranked',1,'scale-fixture','fixture.osu') RETURNING id").fetch_one(&pool).await.unwrap();
+        let map: i64 = sqlx::query_scalar("INSERT INTO beatmaps(title,artist,creator,version,mode,status,stars,md5,osu_path) VALUES('Scale fixture','Illyaverse','Fixture','Two circles',0,'ranked',1,'0123456789abcdef0123456789abcdef','fixture.osu') RETURNING id").fetch_one(&pool).await.unwrap();
         // A longer raw legacy number loses to the native standardized result.
         // PP's winning play is a third result; it must not choose ranked score.
         for (raw, standardised, display, pp, client, review) in [

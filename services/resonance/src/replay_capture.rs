@@ -107,7 +107,7 @@ async fn capture_token(
     token: i64,
     consumed: bool,
 ) -> Result<PgRow, ApiError> {
-    sqlx::query("SELECT t.*,b.official_id FROM lazer_score_tokens t JOIN beatmaps b ON b.id=t.beatmap_id JOIN users u ON u.id=t.user_id WHERE t.id=$1 AND t.user_id=$2 AND NOT u.is_restricted AND (t.expires_at>clock_timestamp() OR ($3 AND t.score_id IS NOT NULL)) FOR UPDATE OF t")
+    sqlx::query("SELECT t.*,b.native_id FROM lazer_score_tokens t JOIN beatmaps b ON b.id=t.beatmap_id JOIN users u ON u.id=t.user_id WHERE t.id=$1 AND t.user_id=$2 AND NOT u.is_restricted AND (t.expires_at>clock_timestamp() OR ($3 AND t.score_id IS NOT NULL)) FOR UPDATE OF t")
         .bind(token).bind(uid).bind(consumed).fetch_optional(&mut **tx).await?
         .ok_or(error("invalid_score_token"))
 }
@@ -159,11 +159,7 @@ pub async fn begin(
         .ok_or(error("user_restricted"))?;
     let row = capture_token(&mut tx, uid, token, false).await?;
     if initial["rulesetID"].as_i64() != Some(i64::from(row.get::<i16, _>("ruleset_id")))
-        || ![
-            Some(row.get::<i64, _>("beatmap_id")),
-            row.get::<Option<i64>, _>("official_id"),
-        ]
-        .contains(&initial["beatmapID"].as_i64())
+        || initial["beatmapID"].as_i64() != Some(row.get::<i64, _>("native_id"))
     {
         return Err(error("score_token_beatmap_mismatch"));
     }

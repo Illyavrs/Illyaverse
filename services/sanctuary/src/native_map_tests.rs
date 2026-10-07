@@ -441,7 +441,8 @@ async fn wait_for_queued_resolution(db: &PgPool, application: &str) {
     .expect("queued resolver must finish its initial active-user and stored-map reads");
 }
 
-fn assert_resolved(
+async fn assert_resolved(
+    db: &PgPool,
     value: &Value,
     checksum: &str,
     official_id: Option<i64>,
@@ -453,11 +454,13 @@ fn assert_resolved(
         .expect("resolver success must be an object");
     assert_eq!(
         keys.len(),
-        7,
+        9,
         "resolver must only return native beatmap identity"
     );
     for key in [
         "id",
+        "native_id",
+        "native_set_id",
         "official_id",
         "official_set_id",
         "md5",
@@ -469,6 +472,43 @@ fn assert_resolved(
     }
     assert!(value["id"].as_i64().is_some_and(|id| id > 0));
     assert_eq!(value["official_id"], json!(official_id));
+    for (native_key, official_key) in [
+        ("native_id", "official_id"),
+        ("native_set_id", "official_set_id"),
+    ] {
+        let native = value[native_key]
+            .as_i64()
+            .unwrap_or_else(|| panic!("{native_key} must be a signed integer: {value}"));
+        assert!((1..=i64::from(i32::MAX)).contains(&native));
+        if let Some(official) = value[official_key].as_i64() {
+            assert!((1..=1_999_999_999).contains(&official));
+            assert_eq!(
+                native, official,
+                "canonical {native_key} must use its official ID"
+            );
+        } else {
+            assert!((2_000_000_000..=i64::from(i32::MAX)).contains(&native));
+        }
+    }
+    let canonical: (i64, i64) =
+        sqlx::query_as("SELECT native_id,native_set_id FROM beatmaps WHERE id=$1")
+            .bind(value["id"].as_i64().unwrap())
+            .fetch_one(db)
+            .await
+            .unwrap();
+    assert_eq!(value["native_id"], canonical.0);
+    assert_eq!(value["native_set_id"], canonical.1);
+    for private_key in [
+        "osu_path",
+        "archive_path",
+        "uploaded_by",
+        "local_package_id",
+    ] {
+        assert!(
+            !keys.contains_key(private_key),
+            "private field {private_key}: {value}"
+        );
+    }
     assert_eq!(value["md5"], checksum);
     assert_eq!(value["status"], status);
     assert_eq!(value["source"], source);
@@ -567,7 +607,7 @@ async fn native_map_resolution_imports_cache_and_integrity() {
         )
         .await;
         assert_eq!(status, StatusCode::OK, "{imported}");
-        assert_resolved(&imported, &checksum, Some(100), "ranked", "official");
+        assert_resolved(&pool, &imported, &checksum, Some(100), "ranked", "official").await;
         assert_eq!(imported["official_set_id"], 1100);
         let row = sqlx::query("SELECT uploaded_by,osu_path FROM beatmaps WHERE id=$1")
             .bind(imported["id"].as_i64().unwrap())
@@ -606,7 +646,7 @@ async fn native_map_resolution_imports_cache_and_integrity() {
         ] {
             let (status, value) = resolve(&app, body).await;
             assert_eq!(status, StatusCode::OK, "{value}");
-            assert_resolved(&value, &private_md5, Some(101), "pending", "local");
+            assert_resolved(&pool, &value, &private_md5, Some(101), "pending", "local").await;
             assert_eq!(value["id"], private_id);
         }
         assert_eq!(server.counters(), before);
@@ -626,7 +666,7 @@ async fn native_map_resolution_imports_cache_and_integrity() {
         for request in requests {
             let (status, value) = request.await.unwrap();
             assert_eq!(status, StatusCode::OK, "{value}");
-            assert_resolved(&value, &concurrent_md5, Some(102), "loved", "official");
+            assert_resolved(&pool, &value, &concurrent_md5, Some(102), "loved", "official").await;
             assert_eq!(
                 *concurrent_id.get_or_insert(value["id"].clone()),
                 value["id"]
@@ -706,7 +746,7 @@ async fn native_map_resolution_imports_cache_and_integrity() {
         let before = server.counters();
         let (status, value) = resolve(&app, json!({"user_id":user,"checksum":missing_md5})).await;
         assert_eq!(status, StatusCode::OK, "{value}");
-        assert_resolved(&value, &missing_md5, None, "pending", "local");
+        assert_resolved(&pool, &value, &missing_md5, None, "pending", "local").await;
         assert_eq!(value["id"], missing_local_id);
         assert_eq!(server.counters(), before);
 
@@ -825,7 +865,7 @@ async fn native_map_resolution_imports_cache_and_integrity() {
         .await
         .unwrap();
         assert_eq!(status, StatusCode::OK, "{value}");
-        assert_resolved(&value, &retry_md5, Some(104), "ranked", "official");
+        assert_resolved(&pool, &value, &retry_md5, Some(104), "ranked", "official").await;
         assert_eq!(
             server.counters(),
             [before[0] + 1, before[1] + 2, before[2], before[3] + 1],

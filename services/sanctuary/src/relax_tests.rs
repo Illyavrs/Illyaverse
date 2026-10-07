@@ -113,8 +113,8 @@ async fn relax_scores_statistics_and_recalculation_are_partitioned() {
         let alice=users[0];let bob=users[1];let hidden=users[2];
         let mut maps=Vec::new();
         for (name,mode,status) in [("First",0_i16,"ranked"),("Second",0,"ranked"),("Taiko",1,"ranked"),("Mania",3,"ranked"),("Unranked",0,"unranked")] {
-            let id:i64=sqlx::query_scalar("INSERT INTO beatmaps(title,artist,creator,version,mode,status,stars,md5,osu_path) VALUES($1,'Fixture','Illyaverse','Two circles',$2,$3,1,$1,'fixture.osu') RETURNING id")
-                .bind(name).bind(mode).bind(status).fetch_one(&db).await.unwrap();maps.push(id);
+            let id:i64=sqlx::query_scalar("INSERT INTO beatmaps(title,artist,creator,version,mode,status,stars,md5,osu_path) VALUES($1,'Fixture','Illyaverse','Two circles',$2,$3,1,$4,'fixture.osu') RETURNING id")
+                .bind(name).bind(mode).bind(status).bind(format!("{:x}",md5::compute(name))).fetch_one(&db).await.unwrap();maps.push(id);
         }
         let first=maps[0];let second=maps[1];
         let nm_a=score(&db,alice,first,0,0,100.0,90.0,true,"verified",true,Some(500000),"A").await;
@@ -266,7 +266,7 @@ async fn relax_migration_preserves_review_and_explicit_exclusions() {
             sqlx::raw_sql(&migration.sql).execute(&db).await.unwrap();
         }
         let user:i64=sqlx::query_scalar("INSERT INTO users(username,email,password_hash,password_md5_hash) VALUES('HistoricalRX','historicalrx@example.invalid','fixture','fixture') RETURNING id").fetch_one(&db).await.unwrap();
-        let map:i64=sqlx::query_scalar("INSERT INTO beatmaps(title,artist,creator,version,mode,status,stars,md5,osu_path) VALUES('Historical RX','Fixture','Illyaverse','Migration',0,'ranked',1,'historical-relax-map','fixture.osu') RETURNING id").fetch_one(&db).await.unwrap();
+        let map:i64=sqlx::query_scalar("INSERT INTO beatmaps(title,artist,creator,version,mode,status,stars,md5,osu_path) VALUES('Historical RX','Fixture','Illyaverse','Migration',0,'ranked',1,$1,'fixture.osu') RETURNING id").bind(format!("{:x}",md5::compute("historical-relax-map"))).fetch_one(&db).await.unwrap();
         let mut expectations=Vec::new();
         for (index,(mode,mods,was_eligible,review,da)) in [(0_i16,128_i64,false,"pending",false),(1,128,true,"verified",false),(2,128,true,"verified",false),(3,128,true,"verified",false),(0,128|8192,true,"verified",false),(0,128|2048,true,"verified",false),(0,128,true,"verified",true),(0,0,true,"verified",false)].into_iter().enumerate() {
             let raw=10000+index as i64;let pp=100.0+index as f64;

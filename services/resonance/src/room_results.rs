@@ -388,7 +388,7 @@ pub(crate) async fn playlist_stats(
     }).collect::<Vec<_>>()))
 }
 
-const SCORE_SQL: &str = "SELECT s.*,COALESCE(b.official_id,b.id) native_map_id,b.status map_status,t.id room_token_id \
+const SCORE_SQL: &str = "SELECT s.*,b.native_id native_map_id,b.status map_status,t.id room_token_id \
     FROM lazer_score_tokens t \
     JOIN lazer_room_rounds r ON r.id=t.round_id AND r.room_id=t.room_id AND r.playlist_item_id=t.playlist_item_id \
     JOIN lazer_room_round_participants p ON p.round_id=r.id AND p.user_id=t.user_id AND p.beatmap_id=t.beatmap_id AND p.ruleset_id=t.ruleset_id \

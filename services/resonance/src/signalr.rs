@@ -320,21 +320,17 @@ async fn rest_room(
     let mut stars = Vec::<f64>::new();
     let mut rulesets = HashSet::new();
     for item in playlist.as_array().into_iter().flatten() {
-        let map = sqlx::query(
-            "SELECT * FROM beatmaps WHERE id=$1 OR official_id=$1 ORDER BY (official_id=$1) DESC LIMIT 1",
-        )
-        .bind(item["beatmapID"].as_i64().unwrap_or(0))
-        .fetch_optional(&state.pool)
-        .await?;
+        let map = sqlx::query("SELECT * FROM beatmaps WHERE native_id=$1")
+            .bind(item["beatmapID"].as_i64().unwrap_or(0))
+            .fetch_optional(&state.pool)
+            .await?;
         let Some(map) = map else {
             continue;
         };
-        let id = item["beatmapID"].clone();
-        let mode: usize = map.get::<i16, _>("mode") as usize;
         let rating = map.get::<f64, _>("stars");
         stars.push(rating);
         rulesets.insert(item["rulesetID"].as_i64().unwrap_or(0));
-        let beatmap = json!({"id":id,"beatmapset_id":map.get::<Option<i64>,_>("official_set_id").unwrap_or(map.get("id")),"checksum":map.get::<String,_>("md5"),"version":map.get::<String,_>("version"),"mode":(["osu","taiko","fruits","mania"][mode]),"mode_int":mode,"difficulty_rating":rating,"bpm":map.get::<f64,_>("bpm"),"total_length":map.get::<i32,_>("length_seconds"),"hit_length":map.get::<i32,_>("length_seconds"),"max_combo":map.get::<i32,_>("max_combo"),"status":map.get::<String,_>("status"),"beatmapset":{"id":map.get::<Option<i64>,_>("official_set_id").unwrap_or(map.get("id")),"title":map.get::<String,_>("title"),"artist":map.get::<String,_>("artist"),"creator":map.get::<String,_>("creator"),"covers":{},"status":map.get::<String,_>("status")}});
+        let beatmap = crate::native_maps::map_json(state, map.get("id")).await?;
         let attempts = if let Some(id) = item["id"].as_i64() {
             if crate::room_results::item_history_authorized(state, viewer, room, id).await? {
                 crate::room_results::item_attempts(state, viewer, room, id).await?
@@ -855,16 +851,20 @@ async fn playlist_item(
     owner: i64,
 ) -> Result<Value, &'static str> {
     let beatmap_id = integer(field(value, "beatmapID", 2))?;
+    if !crate::native_maps::valid_id(beatmap_id) {
+        return Err("invalid_beatmap_identity");
+    }
     let ruleset = integer(field(value, "rulesetID", 4))?;
     if !(0..=3).contains(&ruleset) {
         return Err("invalid_ruleset");
     }
     let checksum = text(field(value, "beatmapChecksum", 3), 32)?;
-    let row = sqlx::query("SELECT md5,mode,stars FROM beatmaps WHERE id=$1 OR official_id=$1 ORDER BY (official_id=$1) DESC LIMIT 1")
+    let row = sqlx::query("SELECT md5,mode,stars FROM beatmaps WHERE native_id=$1")
         .bind(beatmap_id)
         .fetch_optional(&mut **tx)
         .await
-        .map_err(db)?.ok_or("beatmap_not_found")?;
+        .map_err(db)?
+        .ok_or("beatmap_not_found")?;
     let mapmode: i16 = row.get("mode");
     if mapmode != 0 && i64::from(mapmode) != ruleset {
         return Err("invalid_ruleset_conversion");
@@ -1342,6 +1342,9 @@ async fn multiplayer(
         "ChangeUserStyle" => {
             let beatmap = argument(args, 0)?.as_i64();
             let ruleset = argument(args, 1)?.as_i64();
+            if beatmap.is_some_and(|id| !crate::native_maps::valid_id(id)) {
+                return Err("invalid_beatmap_identity");
+            }
             if ruleset.is_some_and(|r| !(0..=3).contains(&r)) {
                 return Err("invalid_ruleset");
             }
@@ -2203,7 +2206,7 @@ fn spectator_state(value: &Value) -> Result<Value, &'static str> {
     let ruleset = field(value, "rulesetID", 1);
     let status = integer(field(value, "state", 3))?;
     if !(0..=5).contains(&status)
-        || (!beatmap.is_null() && beatmap.as_i64().is_none())
+        || (!beatmap.is_null() && beatmap.as_i64().is_none_or(|id| i32::try_from(id).is_err()))
         || (!ruleset.is_null() && !ruleset.as_i64().is_some_and(|r| (0..=3).contains(&r)))
     {
         return Err("invalid_spectator_state");
@@ -2316,14 +2319,14 @@ async fn token_owned(
     let Some(token) = token else {
         return Ok(());
     };
-    let row=sqlx::query("SELECT t.user_id,t.ruleset_id,b.id,b.official_id FROM lazer_score_tokens t JOIN beatmaps b ON b.id=t.beatmap_id WHERE t.id=$1 AND t.expires_at>now() AND t.revoked_at IS NULL").bind(token).fetch_optional(&state.pool).await.map_err(db)?.ok_or("invalid_score_token")?;
+    let row=sqlx::query("SELECT t.user_id,t.ruleset_id,b.native_id FROM lazer_score_tokens t JOIN beatmaps b ON b.id=t.beatmap_id WHERE t.id=$1 AND t.expires_at>now() AND t.revoked_at IS NULL").bind(token).fetch_optional(&state.pool).await.map_err(db)?.ok_or("invalid_score_token")?;
     if row.get::<i64, _>("user_id") != uid
         || spectator["rulesetID"] != i64::from(row.get::<i16, _>("ruleset_id"))
     {
         return Err("score_token_owner_mismatch");
     }
     let beatmap = spectator["beatmapID"].as_i64();
-    if beatmap != Some(row.get("id")) && beatmap != row.get::<Option<i64>, _>("official_id") {
+    if beatmap != Some(row.get("native_id")) {
         return Err("score_token_beatmap_mismatch");
     }
     Ok(())
@@ -3478,7 +3481,7 @@ mod tests {
                 sqlx::query("INSERT INTO user_roles SELECT $1,id FROM roles WHERE name='player'").bind(id).execute(&pool).await.unwrap();let token=common::secret();
                 sqlx::query("INSERT INTO lazer_sessions(id,user_id,access_hash,refresh_hash,access_expires_at,refresh_expires_at) VALUES($1,$2,$3,$4,now()+interval '1 hour',now()+interval '1 day')").bind(uuid::Uuid::new_v4()).bind(id).bind(common::token_hash(&token)).bind(common::secret()).execute(&pool).await.unwrap();ids.push(id);tokens.push(token);
             }
-            let map:i64=sqlx::query_scalar("INSERT INTO beatmaps(official_set_id,title,artist,creator,version,mode,stars,md5,osu_path) VALUES(101,'Fixture','Artist','Mapper','Test',0,1.5,'0123456789abcdef0123456789abcdef','unused.osu') RETURNING id").fetch_one(&pool).await.unwrap();
+            let map:i64=sqlx::query_scalar("INSERT INTO beatmaps(official_set_id,title,artist,creator,version,mode,stars,md5,osu_path) VALUES(101,'Fixture','Artist','Mapper','Test',0,1.5,'0123456789abcdef0123456789abcdef','unused.osu') RETURNING native_id").fetch_one(&pool).await.unwrap();
             let client=reqwest::Client::new();
             assert_eq!(client.post(format!("{base}/multiplayer/negotiate")).send().await.unwrap().status(),StatusCode::UNAUTHORIZED);
             assert_eq!(client.post(format!("{base}/multiplayer/negotiate")).bearer_auth(&tokens[0]).header("Origin","https://untrusted.example").send().await.unwrap().status(),StatusCode::FORBIDDEN);

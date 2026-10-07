@@ -691,7 +691,7 @@ async fn stable_action_status_and_presence_reuse_one_connection_and_preserve_rx_
             (target, 2, 128, 6789, 65.5),
         ] {
             let map: i64 = sqlx::query_scalar("INSERT INTO beatmaps(title,artist,creator,version,mode,status,stars,md5,osu_path) VALUES('Status fixture','Illyaverse','Fixture','Partition',$1,'ranked',1,$2,'fixture.osu') RETURNING id")
-                .bind(mode).bind(format!("status-{id}-{mode}-{mods}")).fetch_one(&database.pool).await.unwrap();
+                .bind(mode).bind(format!("{:x}",md5::compute(format!("status-{id}-{mode}-{mods}")))).fetch_one(&database.pool).await.unwrap();
             let vanilla = mods & 128 == 0;
             sqlx::query("INSERT INTO scores(user_id,beatmap_id,mode,mods,score,pp,accuracy,max_combo,client,verification,passed,pp_eligible,score_variant,standardised_score,classic_score,score_scale_status) VALUES($1,$2,$3,$4,$5,$6,98,2,'stable','verified',true,true,$7,$8,$9,$10)")
                 .bind(id).bind(map).bind(mode).bind(mods).bind(score).bind(pp)

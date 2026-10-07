@@ -78,7 +78,7 @@ async fn create(
         ruleset_id: input.ruleset_id,
     }
     .validate()?;
-    if input.beatmap_id <= 0 || room <= 0 || item <= 0 {
+    if !crate::native_maps::valid_id(input.beatmap_id) || room <= 0 || item <= 0 {
         return Err(invalid("invalid_room_score_context"));
     }
     common::rate_limit(&state, format!("room-score-token:{}", player.id), 60).await?;
@@ -88,15 +88,14 @@ async fn create(
     let round = current
         .get::<Option<i64>, _>("current_round_id")
         .ok_or(invalid("room_round_required"))?;
-    let participant = sqlx::query("SELECT p.*,b.official_id,b.md5,r.expires_at FROM lazer_room_round_participants p JOIN lazer_room_rounds r ON r.id=p.round_id JOIN beatmaps b ON b.id=p.beatmap_id JOIN lazer_room_members m ON m.room_id=r.room_id AND m.user_id=p.user_id WHERE p.round_id=$1 AND p.user_id=$2 AND r.room_id=$3 AND r.playlist_item_id=$4 AND r.status='loading' AND r.expires_at>now() AND p.aborted_at IS NULL AND m.state=2")
+    let participant = sqlx::query("SELECT p.*,b.native_id,b.md5,r.expires_at FROM lazer_room_round_participants p JOIN lazer_room_rounds r ON r.id=p.round_id JOIN beatmaps b ON b.id=p.beatmap_id JOIN lazer_room_members m ON m.room_id=r.room_id AND m.user_id=p.user_id WHERE p.round_id=$1 AND p.user_id=$2 AND r.room_id=$3 AND r.playlist_item_id=$4 AND r.status='loading' AND r.expires_at>now() AND p.aborted_at IS NULL AND m.state=2")
         .bind(round).bind(player.id).bind(room).bind(item).fetch_optional(&mut *tx).await?
         .ok_or(invalid("room_loading_participant_required"))?;
     if current.get::<i16, _>("state") != 1 {
         return Err(invalid("room_loading_participant_required"));
     }
     let map: i64 = participant.get("beatmap_id");
-    if ![Some(map), participant.get::<Option<i64>, _>("official_id")]
-        .contains(&Some(input.beatmap_id))
+    if participant.get::<i64, _>("native_id") != input.beatmap_id
         || participant.get::<i16, _>("ruleset_id") != i16::from(input.ruleset_id)
         || !participant
             .get::<String, _>("beatmap_checksum")
@@ -137,7 +136,7 @@ async fn bound_token(
     token: i64,
     uid: i64,
 ) -> Result<PgRow, ApiError> {
-    sqlx::query("SELECT t.*,p.beatmap_id frozen_map,p.ruleset_id frozen_ruleset,p.beatmap_checksum,p.mods frozen_mods,p.aborted_at participant_aborted,r.status round_status,r.expires_at round_expires,b.md5,b.official_id FROM lazer_score_tokens t JOIN lazer_room_rounds r ON r.id=t.round_id AND r.room_id=t.room_id AND r.playlist_item_id=t.playlist_item_id JOIN lazer_room_round_participants p ON p.round_id=t.round_id AND p.user_id=t.user_id JOIN beatmaps b ON b.id=t.beatmap_id WHERE t.id=$1 AND t.user_id=$2 AND t.scope='room' AND t.room_id=$3 AND t.playlist_item_id=$4 FOR UPDATE OF t")
+    sqlx::query("SELECT t.*,p.beatmap_id frozen_map,p.ruleset_id frozen_ruleset,p.beatmap_checksum,p.mods frozen_mods,p.aborted_at participant_aborted,r.status round_status,r.expires_at round_expires,b.md5,b.native_id FROM lazer_score_tokens t JOIN lazer_room_rounds r ON r.id=t.round_id AND r.room_id=t.room_id AND r.playlist_item_id=t.playlist_item_id JOIN lazer_room_round_participants p ON p.round_id=t.round_id AND p.user_id=t.user_id JOIN beatmaps b ON b.id=t.beatmap_id WHERE t.id=$1 AND t.user_id=$2 AND t.scope='room' AND t.room_id=$3 AND t.playlist_item_id=$4 FOR UPDATE OF t")
         .bind(token).bind(uid).bind(room).bind(item).fetch_optional(&mut **tx).await?
         .ok_or(ApiError(StatusCode::NOT_FOUND, "invalid_room_score_token"))
 }
@@ -146,6 +145,15 @@ fn validate_binding(
     row: &PgRow,
     payload: &Value,
     input: &SoloScoreSubmission,
+) -> Result<(), ApiError> {
+    validate_binding_with_receipt(row, payload, input, false)
+}
+
+fn validate_binding_with_receipt(
+    row: &PgRow,
+    payload: &Value,
+    input: &SoloScoreSubmission,
+    exact_processed_receipt: bool,
 ) -> Result<(), ApiError> {
     if row.get::<i64, _>("beatmap_id") != row.get::<i64, _>("frozen_map")
         || row.get::<i16, _>("ruleset_id") != row.get::<i16, _>("frozen_ruleset")
@@ -172,14 +180,11 @@ fn validate_binding(
             return Err(invalid("room_score_context_mismatch"));
         }
     }
-    if payload.get("beatmap_id").is_some_and(|value| {
-        !value.is_null()
-            && ![
-                Some(row.get::<i64, _>("beatmap_id")),
-                row.get::<Option<i64>, _>("official_id"),
-            ]
-            .contains(&value.as_i64())
-    }) {
+    if !exact_processed_receipt
+        && payload.get("beatmap_id").is_some_and(|value| {
+            !value.is_null() && value.as_i64() != Some(row.get::<i64, _>("native_id"))
+        })
+    {
         return Err(invalid("room_score_context_mismatch"));
     }
     for key in ["beatmap_hash", "beatmap_checksum"] {
@@ -261,7 +266,19 @@ async fn preflight(
     lock_room(&mut tx, room).await?;
     common::lazer_account_in_tx(&mut tx, headers, uid).await?;
     let row = bound_token(&mut tx, room, item, token, uid).await?;
-    validate_binding(&row, payload, input)?;
+    let processed = row.get::<String, _>("processing_status") == "processed"
+        && row.get::<Option<i64>, _>("score_id").is_some();
+    if processed
+        && (row.get::<Option<Value>, _>("submission").as_ref() != Some(payload)
+            || row.get::<Option<String>, _>("submission_sha256").as_deref() != Some(sha))
+    {
+        return Err(ApiError(StatusCode::CONFLICT, "score_token_already_used"));
+    }
+    // An accepted receipt can retain its old public ID across a namespace
+    // migration. Exact stored JSON and digest above prove it is the same
+    // request; all durable/user/checksum/ruleset/mod bindings still apply.
+    // New/received intents use the canonical public ID without this exception.
+    validate_binding_with_receipt(&row, payload, input, processed)?;
     if row
         .get::<Option<Value>, _>("submission")
         .as_ref()
@@ -273,9 +290,7 @@ async fn preflight(
     {
         return Err(ApiError(StatusCode::CONFLICT, "score_token_already_used"));
     }
-    if row.get::<String, _>("processing_status") == "processed"
-        && row.get::<Option<i64>, _>("score_id").is_some()
-    {
+    if processed {
         tx.commit().await?;
         return Ok(Preflight::Done);
     }

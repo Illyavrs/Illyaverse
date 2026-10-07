@@ -118,12 +118,16 @@ pub(crate) async fn freeze_round(
     let default_map = snapshot["beatmapID"]
         .as_i64()
         .ok_or_else(|| invalid("invalid_playlist_map"))?;
+    crate::native_maps::require_id(default_map)?;
     let default_ruleset = snapshot["rulesetID"]
         .as_u64()
         .filter(|mode| *mode <= 3)
         .ok_or_else(|| invalid("invalid_ruleset"))? as u8;
-    let map = sqlx::query("SELECT id,md5,mode,official_set_id,archive_path FROM beatmaps WHERE official_id=$1 OR id=$1 ORDER BY (official_id=$1) DESC LIMIT 1")
-        .bind(default_map).fetch_optional(&mut **tx).await?.ok_or_else(|| invalid("beatmap_not_found"))?;
+    let map = sqlx::query("SELECT id,md5,mode,native_set_id FROM beatmaps WHERE native_id=$1")
+        .bind(default_map)
+        .fetch_optional(&mut **tx)
+        .await?
+        .ok_or_else(|| invalid("beatmap_not_found"))?;
     let checksum: String = map.get("md5");
     if snapshot["beatmapChecksum"] != checksum {
         return Err(invalid("beatmap_checksum_mismatch"));
@@ -156,18 +160,16 @@ pub(crate) async fn freeze_round(
         {
             return Err(invalid("room_style_not_allowed"));
         }
-        let actual = sqlx::query("SELECT id,md5,mode,official_set_id,archive_path FROM beatmaps WHERE official_id=$1 OR id=$1 ORDER BY (official_id=$1) DESC LIMIT 1")
-            .bind(selected_map).fetch_optional(&mut **tx).await?.ok_or_else(|| invalid("beatmap_not_found"))?;
+        crate::native_maps::require_id(selected_map)?;
+        let actual =
+            sqlx::query("SELECT id,md5,mode,native_set_id FROM beatmaps WHERE native_id=$1")
+                .bind(selected_map)
+                .fetch_optional(&mut **tx)
+                .await?
+                .ok_or_else(|| invalid("beatmap_not_found"))?;
         let same_map = actual.get::<i64, _>("id") == map.get::<i64, _>("id");
-        let same_set = map
-            .get::<Option<i64>, _>("official_set_id")
-            .is_some_and(|set| actual.get::<Option<i64>, _>("official_set_id") == Some(set));
-        let same_archive = map
-            .get::<Option<String>, _>("archive_path")
-            .is_some_and(|path| {
-                actual.get::<Option<String>, _>("archive_path").as_ref() == Some(&path)
-            });
-        if !same_map && !(freestyle && (same_set || same_archive)) {
+        let same_set = map.get::<i64, _>("native_set_id") == actual.get::<i64, _>("native_set_id");
+        if !(same_map || freestyle && same_set) {
             return Err(invalid("room_beatmap_not_allowed"));
         }
         let original_mode: i16 = actual.get("mode");

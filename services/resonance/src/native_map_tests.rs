@@ -11,7 +11,7 @@ use futures_util::FutureExt;
 use resonance_protocol::submission::{StableSubmission, decrypt_score_field};
 use serde_json::{Value, json};
 use sqlx::{
-    PgPool,
+    PgPool, Row,
     postgres::{PgConnectOptions, PgPoolOptions},
 };
 use std::{
@@ -528,9 +528,14 @@ async fn native_map_info_prefers_official_identity_and_does_not_discover_batches
         let local: i64 = sqlx::query_scalar("INSERT INTO beatmaps(title,artist,creator,version,mode,status,stars,md5,osu_path) VALUES('Local','Fixture','Fixture','Local',0,'pending',1,'11111111111111111111111111111111','fixture.osu') RETURNING id").fetch_one(&f.state.pool).await.unwrap();
         let imported: i64 = sqlx::query_scalar("INSERT INTO beatmaps(official_id,official_set_id,title,artist,creator,version,mode,status,source,stars,md5,osu_path) VALUES($1,9,'Official','Fixture','Fixture','Official',0,'loved','official',1,$2,'fixture.osu') RETURNING id").bind(local).bind(HASH).fetch_one(&f.state.pool).await.unwrap();
         let fallback: i64 = sqlx::query_scalar("INSERT INTO beatmaps(title,artist,creator,version,mode,status,stars,md5,osu_path) VALUES('Fallback','Fixture','Fixture','Fallback',0,'ranked',1,'22222222222222222222222222222222','fixture.osu') RETURNING id").fetch_one(&f.state.pool).await.unwrap();
-        let info = f.info(json!({"Ids":[local,imported,fallback,OFFICIAL_ID],"Filenames":["Fixture - Local (Fixture) [Local].osu"]})).await;
+        let row = sqlx::query("SELECT native_id,native_set_id FROM beatmaps WHERE id=$1").bind(fallback).fetch_one(&f.state.pool).await.unwrap();
+        let fallback_native: i64 = row.get("native_id");
+        let fallback_set: i64 = row.get("native_set_id");
+        let local_native: i64 = sqlx::query_scalar("SELECT native_id FROM beatmaps WHERE id=$1").bind(local).fetch_one(&f.state.pool).await.unwrap();
+        let local_set: i64 = sqlx::query_scalar("SELECT native_set_id FROM beatmaps WHERE id=$1").bind(local).fetch_one(&f.state.pool).await.unwrap();
+        let info = f.info(json!({"Ids":[local,imported,fallback_native,OFFICIAL_ID,local_native],"Filenames":["Fixture - Local (Fixture) [Local].osu"]})).await;
         assert_eq!(info.status(),StatusCode::OK);
-        assert_eq!(info.text().await.unwrap(),format!("0|{local}|9|{HASH}|4|N|N|N|N\n2|{fallback}|{fallback}|22222222222222222222222222222222|1|N|N|N|N"));
+        assert_eq!(info.text().await.unwrap(),format!("0|{local}|9|{HASH}|4|N|N|N|N\n2|{fallback_native}|{fallback_set}|22222222222222222222222222222222|1|N|N|N|N\n4|{local_native}|{local_set}|11111111111111111111111111111111|0|N|N|N|N"));
         assert!(f.backend.calls.lock().await.is_empty());
         let board = f.board(HASH).await;
         assert!(board.text().await.unwrap().starts_with(&format!("5|false|{local}|9|")));
@@ -549,5 +554,67 @@ async fn native_map_info_prefers_official_identity_and_does_not_discover_batches
     f.cleanup().await;
     if let Err(panic) = result {
         std::panic::resume_unwind(panic);
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires ILLYA_TEST_DATABASE_URL; creates and removes an isolated schema"]
+async fn stable_local_package_direct_download_and_score_use_canonical_ids() {
+    let f = Fixture::new().await;
+    let result = std::panic::AssertUnwindSafe(async {
+        let sibling_hash = "11111111111111111111111111111111";
+        let archive = b"complete original package bytes including assets";
+        tokio::fs::write(f.storage.join("maps/package.osz"), archive).await.unwrap();
+        let mut manifest = vec![HASH, sibling_hash];
+        manifest.sort();
+        let package: uuid::Uuid = sqlx::query_scalar("INSERT INTO beatmap_packages(kind,member_md5,archive_path,legacy) VALUES('osz',$1,'package.osz',true) RETURNING id")
+            .bind(manifest).fetch_one(&f.state.pool).await.unwrap();
+        let mut ids = Vec::new();
+        for (hash, version) in [(HASH,"Primary"),(sibling_hash,"Sibling")] {
+            let row = sqlx::query("INSERT INTO beatmaps(local_package_id,title,artist,creator,version,mode,status,stars,max_combo,md5,osu_path,archive_path) VALUES($1,'Complete package fixture','Fixture','Fixture',$2,0,'loved',1,2,$3,'fixture.osu','package.osz') RETURNING id,native_id,native_set_id")
+                .bind(package).bind(version).bind(hash).fetch_one(&f.state.pool).await.unwrap();
+            ids.push((row.get::<i64,_>("id"), row.get::<i64,_>("native_id"), row.get::<i64,_>("native_set_id")));
+        }
+        let (internal, native, set) = ids[0];
+        assert_ne!(native, internal);
+        assert_eq!(set, ids[1].2);
+        let mut search = f.auth();
+        search.push(("q", "Complete package fixture".into()));
+        let listing = f.state.http.get(format!("{}/web/osu-search.php",f.base)).query(&search).send().await.unwrap();
+        assert_eq!(listing.status(), StatusCode::OK);
+        let text = listing.text().await.unwrap();
+        assert_eq!(text.lines().count(),2);
+        assert!(text.starts_with(&format!("1\n{set}.osz|")));
+        assert!(text.contains("Primary@0") && text.contains("Sibling@0"));
+        for (selector, value) in [("b",native),("b",ids[1].1),("s",set)] {
+            let mut query = f.auth(); query.push((selector,value.to_string()));
+            let row = f.state.http.get(format!("{}/web/osu-search-set.php",f.base)).query(&query).send().await.unwrap();
+            assert_eq!(row.status(),StatusCode::OK);
+            assert!(row.text().await.unwrap().starts_with(&format!("{set}.osz|")));
+        }
+        let download = f.state.http.get(format!("{}/d/{set}",f.base)).send().await.unwrap();
+        assert_eq!(download.status(),StatusCode::OK);
+        assert_eq!(download.bytes().await.unwrap().as_ref(),archive);
+        let file = f.state.http.get(format!("{}/osu/{native}",f.base)).send().await.unwrap();
+        assert_eq!(file.status(),StatusCode::OK);
+        assert_eq!(file.bytes().await.unwrap().as_ref(),b"original fixture map content");
+        let info = f.info(json!({"Ids":[native,ids[1].1]})).await.text().await.unwrap();
+        assert!(info.starts_with(&format!("0|{native}|{set}|{HASH}|")));
+        assert!(info.contains(&format!("1|{}|{set}|{sibling_hash}|",ids[1].1)));
+        assert!(f.board(HASH).await.text().await.unwrap().starts_with(&format!("5|false|{native}|{set}|")));
+        let submitted = f.submit(ENVELOPE).await;
+        assert_eq!(submitted.status(),StatusCode::OK);
+        assert!(submitted.text().await.unwrap().starts_with(&format!("beatmapId:{native}|beatmapSetId:{set}|")));
+        assert_eq!(f.backend.ingested.lock().await[0]["beatmap_id"],internal);
+        let old = f.state.http.get(format!("{}/osu/{internal}",f.base)).send().await.unwrap();
+        assert_eq!(old.status(),StatusCode::NOT_FOUND);
+        for path in ["/osu/2147483648","/d/2147483648"] {
+            assert_eq!(f.state.http.get(format!("{}{path}",f.base)).send().await.unwrap().status(),StatusCode::BAD_REQUEST);
+        }
+        assert!(f.backend.calls.lock().await.is_empty());
+    }).catch_unwind().await;
+    f.cleanup().await;
+    if let Err(error) = result {
+        std::panic::resume_unwind(error);
     }
 }
