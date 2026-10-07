@@ -1,6 +1,6 @@
 use crate::common::{self, ApiError, AppState};
 use axum::{
-    extract::{Multipart, State},
+    extract::{Multipart, State, multipart::MultipartError},
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
 };
@@ -285,13 +285,27 @@ fn reject_score_upload(
     error
 }
 
+fn score_multipart_error(error: MultipartError) -> ApiError {
+    // Preserve Axum's trusted classification without serializing parser errors,
+    // which may contain untrusted field names, headers, or payload details.
+    let status = error.status();
+    ApiError(
+        status,
+        if status == StatusCode::PAYLOAD_TOO_LARGE {
+            "score_upload_too_large"
+        } else {
+            "invalid_score_multipart"
+        },
+    )
+}
+
 async fn read_score_upload(mut multipart: Multipart) -> Result<ScoreUpload, ApiError> {
     let mut fields = HashMap::new();
     let mut envelope = None;
     let mut replay = None;
     let mut total = 0usize;
     let mut part_index = 0usize;
-    while let Some(mut field) = multipart.next_field().await.map_err(|_| {
+    while let Some(mut field) = multipart.next_field().await.map_err(|error| {
         reject_score_upload(
             &UploadPartMetadata {
                 category: "unavailable",
@@ -313,7 +327,7 @@ async fn read_score_upload(mut multipart: Multipart) -> Result<ScoreUpload, ApiE
             0,
             total,
             "multipart_next_field",
-            ApiError(StatusCode::BAD_REQUEST, "invalid_score_multipart"),
+            score_multipart_error(error),
         )
     })? {
         part_index = part_index.saturating_add(1);
@@ -373,13 +387,13 @@ async fn read_score_upload(mut multipart: Multipart) -> Result<ScoreUpload, ApiE
         metadata.resolved_name_length = name.len();
         metadata.score_name_case_variant = name != "score" && name.eq_ignore_ascii_case("score");
         metadata.limit = limit;
-        while let Some(chunk) = field.chunk().await.map_err(|_| {
+        while let Some(chunk) = field.chunk().await.map_err(|error| {
             reject_score_upload(
                 &metadata,
                 bytes.len(),
                 total,
                 "multipart_chunk",
-                ApiError(StatusCode::BAD_REQUEST, "invalid_score_multipart"),
+                score_multipart_error(error),
             )
         })? {
             total = total.saturating_add(chunk.len());

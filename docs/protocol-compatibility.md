@@ -58,6 +58,8 @@ The current combined source gate passed 175 unit/CLI tests, 30 ignored Resonance
 
 The score cipher fixture is independently encrypted by the test-only Python `py3rijndael` library. The Rust implementation uses `simple-rijndael` for the block primitive and original framing/CBC/validation code. This prevents the test from merely encrypting and decrypting with the same implementation.
 
+Stable multipart read failures preserve the pinned Axum 0.8.9 [MultipartError status contract](https://docs.rs/axum/latest/axum/extract/multipart/struct.MultipartError.html#method.status) in both initial-field and field-chunk reads. Framework body limits use 413 `score_upload_too_large`; malformed/truncated input uses 400 `invalid_score_multipart`; other framework stream failures keep their provided status with the same static generic code. Raw parser details never become response/log text. Existing scalar, replay, aggregate and framed-body limits remain unchanged. The actual recorded part-14 scalar-limit 413 has a separate, still-pending native diagnostic; status preservation alone does not establish a successful real-client submission.
+
 Run codec/model tests:
 
 ```powershell

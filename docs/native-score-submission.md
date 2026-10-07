@@ -8,6 +8,8 @@ Content-Disposition 的 `name`、`filename` 參數名稱以 ASCII 大小寫不�
 
 限制為一般欄位 32 KiB、壓縮 replay 16 MiB、所有欄位內容合計 20 MiB、單一 disposition header 8 KiB、解碼後欄位名稱 128 bytes。HTTP request body 上限為 20 MiB（包含 multipart framing），內容須留出標頭與 boundary 空間。沒有 name 的 filename 附件不會被猜測為 replay，也不會放寬加密文字欄位限制。
 
+Multipart 開始讀取與欄位內容讀取失敗時，保留 Axum 的 HTTP 狀態：框架 request-body 上限回覆 413 `score_upload_too_large`，畸形或截斷內容回覆 400 `invalid_score_multipart`，其他底層讀取失敗保留框架的 500。回應使用固定 error/message，不輸出解析器原始錯誤。這依循 [Axum MultipartError.status()](https://docs.rs/axum/latest/axum/extract/multipart/struct.MultipartError.html#method.status)；已固定的依賴版本為 0.8.9。這項狀態保留與先前第 14 個未知欄位的 scalar 413 是不同情況，不能視為真人送分問題已修好。
+
 Multer 3.1 的內建參數辨識區分大小寫，會漏認 `Name`／`FileName`；Resonance 使用原創、有限制的 header resolver 處理這個差異。Multer 會在把 HeaderMap 提供給 handler 前合併重複 header lines，目前無法聲稱已拒絕所有原始 wire-level 重複 Content-Disposition lines。RFC 的大小寫規則參考 [RFC 2045 §5.1](https://www.rfc-editor.org/rfc/rfc2045#section-5.1)；未複製第三方解析器程式碼。
 
 ## 診斷與確認送分

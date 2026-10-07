@@ -31,6 +31,9 @@ import zlib
 from py3rijndael import Pkcs7Padding, RijndaelCbc
 
 
+STABLE_SCORE_REQUEST_CAP_BYTES = 20 * 1024 * 1024
+
+
 class Client:
     request_count = 0
 
@@ -518,6 +521,29 @@ def run():
         assert "Set-Cookie" not in response_headers
     assert admin.json("GET", "/api/v1/status")["registered_players"] == player_count
     admin.json("POST", "/api/v1/auth/login", {"username": admin_name, "password": admin_password})
+
+    # Run before publishing any fixture scores. These bodies contain no parts,
+    # so neither a scalar nor a replay can reach the application's per-part cap.
+    # The parser must consume an opaque preamble while searching for a boundary.
+    boundary_initial_requests = Client.request_count
+    boundary_scores_before = admin.json("GET", "/api/v1/scores?page_size=1")["total"]
+    attacker_marker = b"ORIGINAL_OPAQUE_MULTIPART_MARKER_" + uuid.uuid4().hex.encode()
+    malformed_upload = attacker_marker + b"\r\nopaque preamble without any multipart delimiter\r\n"
+    oversized_upload = malformed_upload + b"x" * (STABLE_SCORE_REQUEST_CAP_BYTES + 1 - len(malformed_upload))
+    boundary_headers = {"Content-Type": "multipart/form-data; boundary=OriginalRequestBoundaryFixture"}
+    for request_body, status, code in [(malformed_upload, 400, "invalid_score_multipart"),
+                                       (oversized_upload, 413, "score_upload_too_large")]:
+        denial, _ = gateway.request("POST", "/web/osu-submit-modular-selector.php",
+                                    request_body, boundary_headers, expected=status)
+        assert json.loads(denial) == {"error": code, "message": code}
+        assert attacker_marker not in denial and b"opaque preamble" not in denial
+    assert admin.json("GET", "/api/v1/scores?page_size=1")["total"] == boundary_scores_before
+    upload_boundary = {"request_cap_bytes": STABLE_SCORE_REQUEST_CAP_BYTES,
+                       "malformed_request_bytes": len(malformed_upload),
+                       "oversized_request_bytes": len(oversized_upload),
+                       "http_requests": Client.request_count - boundary_initial_requests,
+                       "scope": "disposable_release_image_http"}
+    del oversized_upload, request_body
 
     # An original 2x2 PNG exercises publication on the Docker media volume.
     # It is synthetic test material, never a default website image.
@@ -1176,7 +1202,8 @@ def run():
                    "availability restoration preserves map IDs, bytes, score receipts and PP",
                    "uncached official set terminal withdrawal without upstream discovery",
                    "stable same-checksum changed-judgement retry conflict before/after withdrawal"])
-    print(json.dumps({"status": "passed", "beatmap_id": primary_map_id, "rx_beatmap_id": map_id, "stable_score_id": stable_id, "lazer_score_id": lazer["id"], "rx_stable_score_id": rx_stable_id, "rx_lazer_score_id": rx_lazer["id"], "rx_converted_score_ids": rx_converted_ids, "room_scores": room_scores, "withdrawal": withdrawal, "http_requests": Client.request_count, "check_count": len(checks), "checks": checks}))
+    checks.append("stable multipart request boundary preserves 400/413 static errors without payload leakage or publication")
+    print(json.dumps({"status": "passed", "beatmap_id": primary_map_id, "rx_beatmap_id": map_id, "stable_score_id": stable_id, "lazer_score_id": lazer["id"], "rx_stable_score_id": rx_stable_id, "rx_lazer_score_id": rx_lazer["id"], "rx_converted_score_ids": rx_converted_ids, "room_scores": room_scores, "withdrawal": withdrawal, "upload_boundary": upload_boundary, "http_requests": Client.request_count, "check_count": len(checks), "checks": checks}))
 
 
 if __name__ == "__main__":

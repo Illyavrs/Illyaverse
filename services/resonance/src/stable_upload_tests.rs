@@ -5,9 +5,10 @@ use super::{
 use crate::common::ApiError;
 use axum::{
     Router,
-    body::Body,
+    body::{Body, to_bytes},
     extract::{DefaultBodyLimit, Multipart},
     http::{HeaderMap, HeaderValue, Request, StatusCode, header},
+    response::{IntoResponse, Response},
     routing::post,
 };
 use std::{
@@ -15,6 +16,7 @@ use std::{
     io::Write,
     process::Command,
     sync::{Arc, Mutex},
+    task::Poll,
 };
 use tokio::sync::oneshot;
 use tower::ServiceExt;
@@ -23,6 +25,7 @@ const BOUNDARY: &str = "illyaverse-stable-upload-fixture";
 const SCALAR_BYTES: usize = 32 * 1024;
 const REPLAY_BYTES: usize = 16 * 1024 * 1024;
 const TOTAL_BYTES: usize = 20 * 1024 * 1024;
+const FRAMEWORK_BODY_LIMIT: usize = 512;
 
 // Serialize the large payload fixtures so their buffers have a bounded peak.
 static UPLOAD_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
@@ -127,7 +130,54 @@ fn chunked_body(bytes: Vec<u8>) -> Body {
     Body::from_stream(futures_util::stream::iter(chunks))
 }
 
+fn headers_then_body(mut bytes: Vec<u8>) -> Body {
+    let header_end = bytes
+        .windows(4)
+        .position(|bytes| bytes == b"\r\n\r\n")
+        .unwrap()
+        + 4;
+    let remaining = bytes.split_off(header_end);
+    let mut chunks = [bytes, remaining].into_iter();
+    let mut pause = false;
+    Body::from_stream(futures_util::stream::poll_fn(move |context| {
+        // Multer drains ready frames before parsing them. Pause after headers so
+        // next_field succeeds and the following frame is read by Field.chunk.
+        if pause {
+            pause = false;
+            context.waker().wake_by_ref();
+            return Poll::Pending;
+        }
+        let chunk = chunks.next();
+        pause = chunk.is_some();
+        Poll::Ready(chunk.map(Ok::<_, Infallible>))
+    }))
+}
+
+fn untrusted_multipart_body(payload: Vec<u8>) -> Vec<u8> {
+    let mut part = Part::file(
+        "UNTRUSTED_FIELD_MARKER",
+        "UNTRUSTED_FILENAME_MARKER.bin",
+        payload,
+    );
+    part.content_type = "application/octet-stream; note=UNTRUSTED_MIME_MARKER".into();
+    multipart_bytes(vec![part])
+}
+
 async fn read_body(bytes: Vec<u8>, chunked: bool) -> (StatusCode, Result<ScoreUpload, ApiError>) {
+    let body = if chunked {
+        chunked_body(bytes)
+    } else {
+        Body::from(bytes)
+    };
+    // Exercise this reader's limits independently of Axum's default 2 MiB limit.
+    let (response, parsed) = read_request_body(body, DefaultBodyLimit::disable()).await;
+    (response.status(), parsed)
+}
+
+async fn read_request_body(
+    body: Body,
+    body_limit: DefaultBodyLimit,
+) -> (Response, Result<ScoreUpload, ApiError>) {
     let (sender, mut receiver) = oneshot::channel();
     let capture = Arc::new(Mutex::new(Some(sender)));
     let app = Router::new()
@@ -137,23 +187,17 @@ async fn read_body(bytes: Vec<u8>, chunked: bool) -> (StatusCode, Result<ScoreUp
                 let capture = capture.clone();
                 async move {
                     let parsed = read_score_upload(multipart).await;
-                    let status = match &parsed {
-                        Ok(_) => StatusCode::OK,
-                        Err(error) => error.0,
+                    let response = match &parsed {
+                        Ok(_) => StatusCode::OK.into_response(),
+                        Err(error) => ApiError(error.0, error.1).into_response(),
                     };
                     let sender = capture.lock().unwrap().take().unwrap();
                     assert!(sender.send(parsed).is_ok());
-                    status
+                    response
                 }
             }),
         )
-        // Exercise this reader's limits independently of Axum's default 2 MiB limit.
-        .layer(DefaultBodyLimit::disable());
-    let body = if chunked {
-        chunked_body(bytes)
-    } else {
-        Body::from(bytes)
-    };
+        .layer(body_limit);
     let response = app
         .oneshot(
             Request::builder()
@@ -171,7 +215,7 @@ async fn read_body(bytes: Vec<u8>, chunked: bool) -> (StatusCode, Result<ScoreUp
     let parsed = receiver
         .try_recv()
         .expect("the Multipart extractor must pass the body to the reader");
-    (response.status(), parsed)
+    (response, parsed)
 }
 
 async fn upload(parts: Vec<Part>, chunked: bool) -> (StatusCode, Result<ScoreUpload, ApiError>) {
@@ -193,6 +237,60 @@ fn rejected(result: (StatusCode, Result<ScoreUpload, ApiError>), status: StatusC
             assert_eq!(error.1, code);
         }
         Ok(_) => panic!("multipart reader unexpectedly accepted the body"),
+    }
+}
+
+async fn rejected_request(
+    result: (Response, Result<ScoreUpload, ApiError>),
+    status: StatusCode,
+    code: &str,
+) -> String {
+    let (response, parsed) = result;
+    let response_status = response.status();
+    assert_eq!(response.headers()[header::CONTENT_TYPE], "application/json");
+    let bytes = to_bytes(response.into_body(), 1024).await.unwrap();
+    let body = String::from_utf8(bytes.to_vec()).unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&body).unwrap(),
+        serde_json::json!({"error": code, "message": code}),
+    );
+    rejected((response_status, parsed), status, code);
+    body
+}
+
+fn assert_untrusted_multipart_redacted(body: &str, event: &str) {
+    for marker in [
+        "UNTRUSTED_FIELD_MARKER",
+        "UNTRUSTED_FILENAME_MARKER",
+        "UNTRUSTED_MIME_MARKER",
+        "UNTRUSTED_PAYLOAD_MARKER",
+        "UNTRUSTED_HEADER_MARKER",
+        "UNTRUSTED_STREAM_MARKER",
+    ] {
+        assert!(
+            !body.contains(marker) && !event.contains(marker),
+            "untrusted multipart values must not enter responses or diagnostics",
+        );
+    }
+}
+
+#[tokio::test]
+async fn score_upload_valid_request_under_framework_limit() {
+    let _guard = UPLOAD_TEST_LOCK.lock().await;
+    let envelope = "fixture-envelope";
+    let replay = vec![0x00, 0xff, 0x81];
+    let bytes = multipart_bytes(vec![
+        Part::text("score", envelope.as_bytes().to_vec()),
+        Part::file("score", "fixture.osr", replay.clone()),
+    ]);
+    assert!(bytes.len() <= FRAMEWORK_BODY_LIMIT);
+    for body in [Body::from(bytes.clone()), headers_then_body(bytes)] {
+        let (response, parsed) =
+            read_request_body(body, DefaultBodyLimit::max(FRAMEWORK_BODY_LIMIT)).await;
+        let parsed = accepted((response.status(), parsed));
+        assert_eq!(parsed.envelope.as_deref(), Some(envelope));
+        assert_eq!(parsed.replay.as_deref(), Some(replay.as_slice()));
+        assert!(parsed.fields.is_empty());
     }
 }
 
@@ -599,6 +697,156 @@ async fn diagnostic_body(
     let result = read_body(bytes, true).await;
     let event = String::from_utf8(captured.0.lock().unwrap().clone()).unwrap();
     (result, event)
+}
+
+async fn diagnostic_limited_body(
+    body: Body,
+    captured: &CapturedLogs,
+) -> ((Response, Result<ScoreUpload, ApiError>), String) {
+    captured.0.lock().unwrap().clear();
+    let result = read_request_body(body, DefaultBodyLimit::max(FRAMEWORK_BODY_LIMIT)).await;
+    let event = String::from_utf8(captured.0.lock().unwrap().clone()).unwrap();
+    (result, event)
+}
+
+#[tokio::test]
+async fn score_upload_framework_limit_next_field_preserves_status_and_redacts() {
+    if diagnostic_runs_in_child(
+        "stable_scores::upload_tests::score_upload_framework_limit_next_field_preserves_status_and_redacts",
+    ) {
+        return;
+    }
+    let _guard = UPLOAD_TEST_LOCK.lock().await;
+    let captured = diagnostic_capture();
+    let payload = b"UNTRUSTED_PAYLOAD_MARKER".repeat(32);
+    assert!(payload.len() < SCALAR_BYTES);
+    let bytes = untrusted_multipart_body(payload);
+    assert!(bytes.len() > FRAMEWORK_BODY_LIMIT);
+    // The single over-limit frame fails before the parser can expose a field.
+    // This framework limit is independent of the reader's explicit part caps.
+    let (result, event) = diagnostic_limited_body(Body::from(bytes), &captured).await;
+    let body = rejected_request(
+        result,
+        StatusCode::PAYLOAD_TOO_LARGE,
+        "score_upload_too_large",
+    )
+    .await;
+    assert_untrusted_multipart_redacted(&body, &event);
+    for expected in [
+        "stable score multipart rejected",
+        "field_category=\"unavailable\"",
+        "parser_field_category=\"unavailable\"",
+        "part_index=1",
+        "part_bytes=0",
+        "total_bytes=0",
+        "rejection_stage=\"multipart_next_field\"",
+    ] {
+        assert!(
+            event.contains(expected),
+            "missing diagnostic {expected}: {event}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn score_upload_framework_limit_chunk_preserves_status_and_redacts() {
+    if diagnostic_runs_in_child(
+        "stable_scores::upload_tests::score_upload_framework_limit_chunk_preserves_status_and_redacts",
+    ) {
+        return;
+    }
+    let _guard = UPLOAD_TEST_LOCK.lock().await;
+    let captured = diagnostic_capture();
+    let payload = b"UNTRUSTED_PAYLOAD_MARKER".repeat(32);
+    assert!(payload.len() < SCALAR_BYTES);
+    let bytes = untrusted_multipart_body(payload);
+    let header_end = bytes
+        .windows(4)
+        .position(|bytes| bytes == b"\r\n\r\n")
+        .unwrap()
+        + 4;
+    assert!(header_end < FRAMEWORK_BODY_LIMIT);
+    assert!(bytes.len() > FRAMEWORK_BODY_LIMIT);
+    let (result, event) = diagnostic_limited_body(headers_then_body(bytes), &captured).await;
+    let body = rejected_request(
+        result,
+        StatusCode::PAYLOAD_TOO_LARGE,
+        "score_upload_too_large",
+    )
+    .await;
+    assert_untrusted_multipart_redacted(&body, &event);
+    for expected in [
+        "stable score multipart rejected",
+        "field_category=\"unknown\"",
+        "parser_field_category=\"unknown\"",
+        "resolved_name_present=true",
+        "resolved_filename_present=true",
+        "parser_name_matches_resolved=true",
+        "content_type_category=\"octet-stream\"",
+        "part_index=1",
+        "part_bytes=0",
+        "total_bytes=0",
+        "part_limit=32768",
+        "rejection_stage=\"multipart_chunk\"",
+    ] {
+        assert!(
+            event.contains(expected),
+            "missing diagnostic {expected}: {event}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn score_upload_malformed_request_preserves_status_and_redacts() {
+    if diagnostic_runs_in_child(
+        "stable_scores::upload_tests::score_upload_malformed_request_preserves_status_and_redacts",
+    ) {
+        return;
+    }
+    let _guard = UPLOAD_TEST_LOCK.lock().await;
+    let captured = diagnostic_capture();
+    let malformed = format!(
+        "--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"UNTRUSTED_FIELD_MARKER\"; filename=\"UNTRUSTED_FILENAME_MARKER.bin\"\r\nContent-Type: application/octet-stream; note=UNTRUSTED_MIME_MARKER\r\nInvalid Header: UNTRUSTED_HEADER_MARKER\r\n\r\nUNTRUSTED_PAYLOAD_MARKER\r\n--{BOUNDARY}--\r\n"
+    )
+    .into_bytes();
+    let mut truncated = untrusted_multipart_body(b"UNTRUSTED_PAYLOAD_MARKER".to_vec());
+    let closing_boundary_bytes = format!("\r\n--{BOUNDARY}--\r\n").len();
+    truncated.truncate(truncated.len() - closing_boundary_bytes);
+    for (bytes, stage) in [
+        (malformed, "multipart_next_field"),
+        (truncated, "multipart_chunk"),
+    ] {
+        assert!(bytes.len() <= FRAMEWORK_BODY_LIMIT);
+        let (result, event) = diagnostic_limited_body(Body::from(bytes), &captured).await;
+        let body =
+            rejected_request(result, StatusCode::BAD_REQUEST, "invalid_score_multipart").await;
+        assert_untrusted_multipart_redacted(&body, &event);
+        assert!(event.contains("stable score multipart rejected"));
+        assert!(event.contains(&format!("rejection_stage=\"{stage}\"")));
+    }
+}
+
+#[tokio::test]
+async fn score_upload_stream_failure_preserves_status_and_redacts() {
+    if diagnostic_runs_in_child(
+        "stable_scores::upload_tests::score_upload_stream_failure_preserves_status_and_redacts",
+    ) {
+        return;
+    }
+    let _guard = UPLOAD_TEST_LOCK.lock().await;
+    let captured = diagnostic_capture();
+    let body = Body::from_stream(futures_util::stream::iter([Err::<Vec<u8>, _>(
+        std::io::Error::other("UNTRUSTED_STREAM_MARKER"),
+    )]));
+    let (result, event) = diagnostic_limited_body(body, &captured).await;
+    let body = rejected_request(
+        result,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "invalid_score_multipart",
+    )
+    .await;
+    assert_untrusted_multipart_redacted(&body, &event);
+    assert!(event.contains("rejection_stage=\"multipart_next_field\""));
 }
 
 #[tokio::test]
