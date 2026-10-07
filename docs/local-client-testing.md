@@ -157,11 +157,13 @@ docker compose --env-file .env.client-test.local -p illyaverse-client-test -f co
 
 已存在且可見、但沒有頭像的帳號，會回傳原創的不透明純黑 64×64 PNG，並支援 ETag/304；未知或受限制帳號回傳 404。
 
-最新的隔離映像測試通過 308 個 HTTP requests、34 類檢查；Sanctuary image digest 是 `sha256:64bed401ce2c54d3257f961b0954286fb8e4b0def30d5811a22af5e7a935066c`，Resonance image digest 是 `sha256:54ed7af26c1544e97f3156b72a2c4ecd235d14a6b40dcb5beeaf4497a4263429`。完整原始碼檢查另通過 157 個 unit/CLI tests、18 個 Resonance 加 10 個 Sanctuary ignored tests，以及 fmt 與 warnings denied 的 Clippy。僅供本機查看、被 Git 忽略的記錄保存在 `data-room-score-work/appearance-protocol-image-smoke.log` 與 `data-room-score-work/combined-source-gate.log`。
+登入修正當時的隔離映像測試通過 308 個 HTTP requests、34 類檢查；Sanctuary image digest 是 `sha256:64bed401ce2c54d3257f961b0954286fb8e4b0def30d5811a22af5e7a935066c`，Resonance image digest 是 `sha256:54ed7af26c1544e97f3156b72a2c4ecd235d14a6b40dcb5beeaf4497a4263429`。當時完整原始碼檢查另通過 157 個 unit/CLI tests、18 個 Resonance 加 10 個 Sanctuary ignored tests，以及 fmt 與 warnings denied 的 Clippy。僅供本機查看、被 Git 忽略的記錄保存在 `data-room-score-work/appearance-protocol-image-smoke.log` 與 `data-room-score-work/combined-source-gate.log`。後續官方圖譜辨識改動通過 160 個 unit/CLI、33 個隔離 PostgreSQL、兩個既有原生計算向量，以及 310 個 HTTP requests；新映像與證據見[驗證紀錄](verification.md#native-map-discovery-checkpoint)。
 
 使用者已重現正式簽章 stable 在 `-devserver illya.test` 登入後退出。修正前的安全 Caddy 摘要在約 3 秒內有 44 個 7-byte 回應；其長度與當時程式產生的 `PONG` 相符，seasonal、probe 與 avatar 請求則回傳 404。這些資料不足以判定原生 AccessViolation 的原因。修正後已更新本機兩組 Docker 服務，既有帳號與資料保留，並驗證上述三個 HTTPS 端點均回傳 200。仍需使用者重新測試原生登入；自動測試沒有啟動真實遊戲。
 
 ## 原生客戶端測試入口
+
+官方圖譜首次選取的 checksum 辨識使用 `.env.client-test.local` 的 `OSU_CLIENT_ID` 與 `OSU_CLIENT_SECRET`。尚未收錄的圖譜會自動取得官方 metadata 和 `.osu`，後續使用本機資料；[圖譜辨識文件](native-beatmap-discovery.md)記錄錯誤、版本限制和逐步測試。請先確認 Ranked／Loved 狀態顯示，再實際完成一局確認提交；這兩項需要分別測試。
 
 請先到 `https://illya.test/register` 建立獨立測試帳號。遊戲內註冊入口會提示改到這個網站；它不會建立帳號。接著才在 stable／lazer 輸入測試帳號登入。
 

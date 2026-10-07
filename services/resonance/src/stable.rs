@@ -725,6 +725,9 @@ pub async fn beatmap_file(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> Result<Response, ApiError> {
+    let id = crate::native_maps::known_id(&state, id)
+        .await?
+        .ok_or(ApiError(StatusCode::NOT_FOUND, "beatmap_not_found"))?;
     let path: String = sqlx::query_scalar("SELECT osu_path FROM beatmaps WHERE id=$1")
         .bind(id)
         .fetch_optional(&state.pool)
@@ -773,16 +776,6 @@ async fn leaderboard(
         .and_then(|s| s.parse().ok())
         .filter(|m| (0..=3).contains(m))
         .ok_or(ApiError(StatusCode::BAD_REQUEST, "invalid_mode"))?;
-    let Some(map) = sqlx::query(
-        "SELECT id,official_set_id,title,artist,version,status FROM beatmaps WHERE md5=$1",
-    )
-    .bind(md5)
-    .fetch_optional(&state.pool)
-    .await?
-    else {
-        return Ok("-1|false|0|0|0|0|\n0\nUnknown beatmap\n0\n\n".into());
-    };
-    let id: i64 = map.get("id");
     let leaderboard_type: u8 = query.get("v").and_then(|s| s.parse().ok()).unwrap_or(1);
     if !(1..=4).contains(&leaderboard_type) {
         return Err(ApiError(
@@ -799,6 +792,11 @@ async fn leaderboard(
     let variant = ScoreVariant::from_legacy(mode as u8, requested_mods)
         .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_score_variant"))?;
     let requested_mods = i64::from(requested_mods);
+    let Some(id) = crate::native_maps::resolve_checksum(&state, player.id, md5).await? else {
+        return Ok("-1|false|0|0|0|0|\n0\nUnknown beatmap\n0\n\n".into());
+    };
+    let map = sqlx::query("SELECT id,official_id,official_set_id,title,artist,version,status FROM beatmaps WHERE id=$1")
+        .bind(id).fetch_one(&state.pool).await?;
     let friend_filter = if leaderboard_type == 4 {
         let mut ids = common::friend_ids(&state, player.id)
             .await?
@@ -819,6 +817,7 @@ async fn leaderboard(
         _ => 0,
     };
     let set_id: i64 = map.get::<Option<i64>, _>("official_set_id").unwrap_or(id);
+    let public_id = map.get::<Option<i64>, _>("official_id").unwrap_or(id);
     let map_name = clean(&format!(
         "{} - {} [{}]",
         map.get::<String, _>("artist"),
@@ -836,7 +835,7 @@ async fn leaderboard(
         .map(|row| score_line(row, row.get::<i64, _>("placement") as usize))
         .unwrap_or_default();
     Ok(format!(
-        "{status}|false|{id}|{set_id}|{}|0|\n0\n{map_name}\n0\n{personal}\n{}\n",
+        "{status}|false|{public_id}|{set_id}|{}|0|\n0\n{map_name}\n0\n{personal}\n{}\n",
         lines.len(),
         lines.join("\n")
     ))
@@ -958,20 +957,26 @@ async fn beatmap_info(
     }
     let mut lines = Vec::new();
     for (index, id) in request.ids.into_iter().enumerate() {
-        if let Some(row) =
-            sqlx::query("SELECT id,official_set_id,md5,status FROM beatmaps WHERE id=$1")
-                .bind(id)
-                .fetch_optional(&state.pool)
-                .await?
+        let Some(local_id) = crate::native_maps::known_id(&state, id).await? else {
+            continue;
+        };
+        if let Some(row) = sqlx::query(
+            "SELECT id,official_id,official_set_id,md5,status FROM beatmaps WHERE id=$1",
+        )
+        .bind(local_id)
+        .fetch_optional(&state.pool)
+        .await?
         {
             let status = match row.get::<String, _>("status").as_str() {
                 "ranked" => 1,
                 "loved" => 4,
                 _ => 0,
             };
+            let public_id = row.get::<Option<i64>, _>("official_id").unwrap_or(local_id);
             lines.push(format!(
-                "{index}|{id}|{}|{}|{status}|N|N|N|N",
-                row.get::<Option<i64>, _>("official_set_id").unwrap_or(id),
+                "{index}|{public_id}|{}|{}|{status}|N|N|N|N",
+                row.get::<Option<i64>, _>("official_set_id")
+                    .unwrap_or(local_id),
                 row.get::<String, _>("md5")
             ));
         }

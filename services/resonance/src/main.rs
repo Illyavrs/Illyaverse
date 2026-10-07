@@ -6,6 +6,9 @@ mod credential_race_tests;
 mod lazer;
 mod lazer_chat;
 mod multiplayer;
+#[cfg(test)]
+mod native_map_tests;
+mod native_maps;
 mod registration;
 #[cfg(test)]
 mod relax_tests;

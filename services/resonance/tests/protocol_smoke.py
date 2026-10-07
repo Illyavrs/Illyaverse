@@ -536,6 +536,15 @@ def run():
 
     player_id, player_bancho = login(player_name, player_password)
     admin_id, admin_bancho = login(admin_name, admin_password)
+    # Internal discovery must never accept a website session or native identity
+    # without the trusted service key. The disposable stack has no osu! OAuth
+    # credentials; a valid unknown selection is unavailable, never Not submitted.
+    admin.request("POST", "/api/v1/internal/beatmaps/resolve",
+                  {"user_id": player_id, "checksum": map_hash}, expected=401)
+    unknown_query = urllib.parse.urlencode({"u": player_name, "h": digest(player_password),
+                                           "c": "f" * 32, "m": 0})
+    missing = gateway.json("GET", "/web/osu-osz2-getscores.php?" + unknown_query, expected=503)
+    assert missing["error"] == "map_resolution_unavailable"
     assert gateway.json("GET", "/web/osu-getseasonal.php?fixture=ignored") == []
     assert gateway.request("GET", "/web/bancho_connect.php?fixture=ignored")[0] == b""
     avatar_headers = {"Host": "a.smoke.illya.test"}
@@ -877,7 +886,8 @@ def run():
     after_logout = gateway.request("POST", "/", packet(4), player_bancho)[0]
     assert any(i == 86 for i, _ in packets(after_logout)), "Logged out stable session remained valid"
     checks = ["shared auth", "stable binary login/ping/chat/logout", "lazer OAuth/refresh", "lazer checksum/set lookup/archive/score collections", "Classic profile totals and standardized mixed-client ranking", "stable ScoreV1/ScoreV2 board partition", "RBAC", "friend/block/DM settings", "stable password room/host authority/slot identity", "stable ready/start/load/score/complete/transfer/leave", "stable spectator frame relay", "lazer score token/idempotency", "stable Rijndael256 submission/checksum", "server PP", "replay round trip", "pending rankings", "moderation", "encrypted stable RX and native solo RX", "RX metadata and unavailable common scale", "RX retry deduplication and native mod binding", "RX pending isolation and fixture moderation", "RX replay original ruleset/mod binding", "RX PP-sorted boards and best-per-map totals", "NM/RX API and gateway rank/stat isolation", "osu/taiko/catch RX partition isolation", "mania RX rejection and untrusted variant derivation"]
-    checks.extend(["lazer HeadToHead frozen loading token lifecycle", "real room ingress and Sanctuary PP",
+    checks.extend(["native discovery service-key isolation and unavailable-vs-unknown boundary",
+                   "lazer HeadToHead frozen loading token lifecycle", "real room ingress and Sanctuary PP",
                    "room exact retry and changed-payload conflict", "room/solo and room/item/user scope isolation",
                    "private frozen peers and late-joiner empty history", "room index/cursors/user/leaderboard/native summaries",
                    "RX optional participant room mods and native total", "metadata stats/events and exact ended spectator processing"])

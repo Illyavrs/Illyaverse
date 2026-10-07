@@ -10,6 +10,8 @@ mod mail_delivery;
 mod mail_queue_tests;
 mod maps;
 #[cfg(test)]
+mod native_map_tests;
+#[cfg(test)]
 mod profile_media_tests;
 #[cfg(test)]
 mod rbac_tests;
@@ -384,6 +386,10 @@ fn router(state: AppState) -> Router {
         .route(
             "/api/v1/internal/scores",
             post(scores::internal_submit).layer(DefaultBodyLimit::max(32 * 1024)),
+        )
+        .route(
+            "/api/v1/internal/beatmaps/resolve",
+            post(maps::resolve).layer(DefaultBodyLimit::max(1024)),
         )
         .route("/api/v1/leaderboard", get(scores::leaderboard))
         .route("/api/v1/channels", get(chat::channels))

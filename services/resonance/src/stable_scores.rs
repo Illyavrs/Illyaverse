@@ -152,14 +152,16 @@ pub async fn submit(
             "target_practice_submission_unavailable",
         ));
     }
-    let map = sqlx::query("SELECT id,mode,official_set_id FROM beatmaps WHERE md5=$1")
-        .bind(&submission.beatmap_md5)
-        .fetch_optional(&state.pool)
-        .await?;
-    let Some(map) = map else {
+    let Some(map_id) =
+        crate::native_maps::resolve_checksum(&state, player.id, &submission.beatmap_md5).await?
+    else {
         return Ok("error: beatmap".into_response());
     };
-    let map_id: i64 = map.get("id");
+    let map = sqlx::query("SELECT id,mode,official_id,official_set_id FROM beatmaps WHERE id=$1")
+        .bind(map_id)
+        .fetch_one(&state.pool)
+        .await?;
+    let public_map_id = map.get::<Option<i64>, _>("official_id").unwrap_or(map_id);
     if state.service_key.len() < 32 {
         return Err(ApiError(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -262,7 +264,7 @@ pub async fn submit(
     // Pending scores do not update ranked totals or placement. This chart still
     // gives stable the persistent online score ID for its local score/replay.
     let body = format!(
-        "beatmapId:{map_id}|beatmapSetId:{set_id}|beatmapPlaycount:0|beatmapPasscount:0|approvedDate:{}|\n|chartId:beatmap|chartUrl:/beatmaps/{map_id}|chartName:Awaiting review|rankBefore:0|rankAfter:0|rankedScoreBefore:0|rankedScoreAfter:0|totalScoreBefore:0|totalScoreAfter:0|maxComboBefore:0|maxComboAfter:0|accuracyBefore:0|accuracyAfter:0|ppBefore:0|ppAfter:0|onlineScoreId:{score_id}|\n|chartId:overall|chartUrl:/players/{}|chartName:Awaiting review|rankBefore:0|rankAfter:0|rankedScoreBefore:0|rankedScoreAfter:0|totalScoreBefore:0|totalScoreAfter:0|maxComboBefore:0|maxComboAfter:0|accuracyBefore:0|accuracyAfter:0|ppBefore:0|ppAfter:0|achievements-new:",
+        "beatmapId:{public_map_id}|beatmapSetId:{set_id}|beatmapPlaycount:0|beatmapPasscount:0|approvedDate:{}|\n|chartId:beatmap|chartUrl:/beatmaps/{map_id}|chartName:Awaiting review|rankBefore:0|rankAfter:0|rankedScoreBefore:0|rankedScoreAfter:0|totalScoreBefore:0|totalScoreAfter:0|maxComboBefore:0|maxComboAfter:0|accuracyBefore:0|accuracyAfter:0|ppBefore:0|ppAfter:0|onlineScoreId:{score_id}|\n|chartId:overall|chartUrl:/players/{}|chartName:Awaiting review|rankBefore:0|rankAfter:0|rankedScoreBefore:0|rankedScoreAfter:0|totalScoreBefore:0|totalScoreAfter:0|maxComboBefore:0|maxComboAfter:0|accuracyBefore:0|accuracyAfter:0|ppBefore:0|ppAfter:0|achievements-new:",
         Utc::now().format("%Y-%m-%d %H:%M:%S"),
         player.id
     );
