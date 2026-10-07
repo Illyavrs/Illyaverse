@@ -20,7 +20,15 @@ Original ordinary code-led extension: qualified Best performances plus existing 
 | PostgreSQL | `sha256:1bea307dfb3ee30541a7acf7de14b58bcd6948da98e5d31a04c627c4d35ec64b` |
 | Caddy | `sha256:f77f856a30f0004200b36b322d61da17fade31e24875699d77fb968399b9eb77` |
 
-The owned PostgreSQL, website and protocol helpers verified removal of their freshly created resources; retained community databases were not used for gates. Ignored logs/helpers remain under `data-profile-best/`. Deployment results will be appended after they complete. No native game process, hosts, trust, firewall or security setting was changed.
+The owned PostgreSQL, website and protocol helpers verified removal of their freshly created resources; retained community databases were not used for gates. Ignored logs/helpers remain under `data-profile-best/`. No native game process, hosts, trust, firewall or security setting was changed.
+
+## Retained local deployment
+
+Source commit `1612480` was deployed to both `illyaverse` and `illyaverse-client-test` using the verified image pins above, without another build. Before stopping writers, both stacks had zero online native sessions and zero received local room receipts; the check was repeated after stopping writers. Unique backups beginning `before-profile-best-20261007T214618Z-{main,client}` contain verified custom-format PostgreSQL dumps, readable shared-data archives and baseline fingerprints. The helper performed no database restore or new migration.
+
+Both stacks retain exactly the successful migrations 0001–0019 and zero failed migrations. Main retained **2 users / 0 maps / 0 scores**; client-test retained **2 users / 44 maps / 0 scores**. Both retained zero local packages and filename aliases. Full account/profile/preferences, beatmap, filename-alias, chat/private-message, relationship, read-marker and score fingerprints match their stopped-writer baselines; official archive/member counts match as well.
+
+All **10** retained runtime services are healthy. Sanctuary and Serendipity run their new verified pins; Resonance retains its verified pin. Existing PostgreSQL and Caddy container identities and image pins are unchanged. Read-only runtime checks returned the expected statuses for website chat, public channels, unauthorized conversations, map pages/catalogues and the new public best-score API on both stacks. TLS checks used the existing public Caddy certificate only for individual requests; trust settings were not changed. No retained community writes were made during verification. Logs are `data-profile-best/deployment.log` and `data-profile-best/runtime-verification.log`.
 
 ## Evidence limits
 
