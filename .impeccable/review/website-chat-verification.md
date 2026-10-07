@@ -39,4 +39,19 @@ The detector ran once before the mobile fix: 86 advisory findings, zero primary 
 
 Stable/lazer game UI, production load and full client compatibility are not established by isolated protocol fixtures. Actual stable score submission remains pending the human diagnostic retry. Native presence and numeric read-marker limitations are documented in `docs/website-chat.md`.
 
-Local ignored logs, failed-run evidence and deployment backups remain under `data-website-chat/`. Compiler caches and workspace fixtures were not deleted. Deployment results will be recorded separately after that step succeeds.
+Local ignored logs, failed-run evidence and deployment backups remain under `data-website-chat/`. Compiler caches and workspace fixtures were not deleted.
+
+## Local deployment
+
+Source commit `f995a82` was deployed to `illyaverse` and `illyaverse-client-test` using the pinned images above. At 2026-10-07T20:46:17Z, both stacks had zero active native sessions and no received local room receipts. Writers stopped before the retained-data baseline and backups were taken.
+
+Both custom-format PostgreSQL backups passed PGDMP magic and `pg_restore --list` checks; shared-data tar archives passed readability checks. Backups remain at `data-website-chat/before-website-chat-20261007T204617Z-{main,client}.*` and their shared-data archive/snapshot siblings. No restore or cache cleanup was performed.
+
+| Stack | Users | Maps | Scores | Successful migrations |
+| --- | ---: | ---: | ---: | ---: |
+| Main | 2 | 0 | 0 | 19 |
+| Client test | 2 | 44 | 0 | 19 |
+
+Before/after fingerprints match for complete account rows, beatmaps, filename aliases, chat messages, private-message bridge rows, relationships, read markers and scores. Official archive/member counts also match. Both stacks retain exactly schema 0001–0019, with no failed migration.
+
+All ten service containers are healthy; application pins match the tested images. Existing PostgreSQL and Caddy container identities/images remained unchanged. Read-only checks returned 200 for `/chat` and public channels, and 401 for anonymous private conversations on both localhost:3000 and HTTPS illya.test. HTTPS used the existing public CA file and request-local DNS resolution; hosts and trust were not changed.
