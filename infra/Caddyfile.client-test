@@ -31,7 +31,7 @@
 	tls internal
 	encode zstd gzip
 	request_body {
-		max_size 66MB
+		max_size 71303168
 	}
 	@protocol_paths path /users /users/ /web/* /osu/* /d/* /oauth/* /api/v2/* /signalr/* /notification-server /notification-server/* /spectator /spectator/* /multiplayer /multiplayer/* /metadata /metadata/*
 	handle @protocol_paths {
@@ -55,7 +55,7 @@ c.illya.test, ce.illya.test, c4.illya.test, api.illya.test, spectator.illya.test
 	tls internal
 	encode zstd gzip
 	request_body {
-		max_size 66MB
+		max_size 71303168
 	}
 	reverse_proxy resonance:8081
 }

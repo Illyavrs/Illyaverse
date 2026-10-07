@@ -6,7 +6,7 @@
 :80 {
 	encode zstd gzip
 	request_body {
-		max_size 66MB
+		max_size 71303168
 	}
 	handle /healthz {
 		respond "ok" 200
