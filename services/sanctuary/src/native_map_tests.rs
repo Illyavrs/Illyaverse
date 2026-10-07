@@ -277,6 +277,7 @@ struct Counters {
     lookup: AtomicUsize,
     detail: AtomicUsize,
     osu: AtomicUsize,
+    set: AtomicUsize,
 }
 impl Counters {
     fn snapshot(&self) -> [usize; 4] {
@@ -293,6 +294,11 @@ struct FixtureData {
     lookup_rate_limits: usize,
     lookup_retry_after: String,
     lookup_pause: Option<Arc<LookupPause>>,
+    sets: HashMap<i64, Value>,
+    set_queries: Vec<i64>,
+    set_rate_limits: usize,
+    set_retry_after: String,
+    set_pause: Option<Arc<LookupPause>>,
 }
 impl Default for FixtureData {
     fn default() -> Self {
@@ -306,6 +312,11 @@ impl Default for FixtureData {
             lookup_rate_limits: 0,
             lookup_retry_after: "1".into(),
             lookup_pause: None,
+            sets: Default::default(),
+            set_queries: Default::default(),
+            set_rate_limits: 0,
+            set_retry_after: "1".into(),
+            set_pause: None,
         }
     }
 }
@@ -341,6 +352,7 @@ impl OfficialServer {
             .route("/oauth/token", post(fixture_oauth))
             .route("/api/v2/beatmaps/lookup", get(fixture_lookup))
             .route("/api/v2/beatmaps/{id}", get(fixture_detail))
+            .route("/api/v2/beatmapsets/{id}", get(fixture_set))
             .route("/osu/{id}", get(fixture_osu))
             .with_state(state.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -371,6 +383,22 @@ impl OfficialServer {
     pub(crate) async fn pause_next_lookup(&self) -> Arc<LookupPause> {
         let pause = Arc::new(LookupPause::default());
         self.state.data.lock().await.lookup_pause = Some(pause.clone());
+        pause
+    }
+    pub(crate) async fn add_set(&self, set_id: i64, metadata: Value) {
+        self.state.data.lock().await.sets.insert(set_id, metadata);
+    }
+    pub(crate) async fn set_queries(&self) -> Vec<i64> {
+        self.state.data.lock().await.set_queries.clone()
+    }
+    pub(crate) async fn set_rate_limits(&self, count: usize, retry_after: &str) {
+        let mut data = self.state.data.lock().await;
+        data.set_rate_limits = count;
+        data.set_retry_after = retry_after.into();
+    }
+    pub(crate) async fn pause_next_set(&self) -> Arc<LookupPause> {
+        let pause = Arc::new(LookupPause::default());
+        self.state.data.lock().await.set_pause = Some(pause.clone());
         pause
     }
     pub(crate) fn counters(&self) -> [usize; 4] {
@@ -465,6 +493,36 @@ async fn fixture_detail(
     check_bearer(&headers);
     match state.data.lock().await.maps.get(&id) {
         Some(map) => Json(map.metadata.clone()).into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+async fn fixture_set(
+    State(state): State<FixtureState>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Response {
+    state.counters.set.fetch_add(1, Ordering::SeqCst);
+    check_bearer(&headers);
+    let pause = {
+        let mut data = state.data.lock().await;
+        data.set_queries.push(id);
+        data.set_pause.take()
+    };
+    if let Some(pause) = pause {
+        pause.entered.notify_one();
+        pause.release.notified().await;
+    }
+    let mut data = state.data.lock().await;
+    if data.set_rate_limits > 0 {
+        data.set_rate_limits -= 1;
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            [(header::RETRY_AFTER, data.set_retry_after.clone())],
+        )
+            .into_response();
+    }
+    match data.sets.get(&id) {
+        Some(set) => Json(set.clone()).into_response(),
         None => StatusCode::NOT_FOUND.into_response(),
     }
 }

@@ -40,8 +40,8 @@ pub(crate) fn row_ids(row: &sqlx::postgres::PgRow) -> Result<(i64, i64), ApiErro
     Ok((id, set))
 }
 
-/// Local downloads belong to the immutable upload package. Official maps may
-/// have a retained official archive; ordinary API discovery has none.
+/// Local downloads belong to the immutable upload package. New official
+/// archives have a complete verified set manifest; ordinary discovery has none.
 pub(crate) async fn archive_path(state: &AppState, set: i64) -> Result<Option<String>, ApiError> {
     require_id(set)?;
     if set >= LOCAL_ID_MIN {
@@ -53,6 +53,27 @@ pub(crate) async fn archive_path(state: &AppState, set: i64) -> Result<Option<St
         .await?
         .flatten());
     }
+    if let Some(archive) = sqlx::query(
+        "SELECT a.archive_path,a.member_md5,ARRAY(SELECT b.md5 FROM official_beatmapset_archive_members m JOIN beatmaps b ON b.id=m.beatmap_id WHERE m.archive_id=a.id ORDER BY b.md5) AS stored_manifest,ARRAY(SELECT b.md5 FROM beatmaps b WHERE b.native_set_id=a.official_set_id ORDER BY b.md5) AS set_manifest,NOT EXISTS(SELECT 1 FROM official_beatmapset_archive_members m JOIN beatmaps b ON b.id=m.beatmap_id WHERE m.archive_id=a.id AND (b.source<>'official' OR b.official_id IS NULL OR b.official_set_id IS DISTINCT FROM a.official_set_id OR b.native_set_id<>a.official_set_id)) AS valid_members FROM official_beatmapset_archives a WHERE a.official_set_id=$1",
+    )
+    .bind(set)
+    .fetch_optional(&state.pool)
+    .await?
+    {
+        let manifest: Vec<String> = archive.get("member_md5");
+        if !archive.get::<bool, _>("valid_members")
+            || manifest != archive.get::<Vec<String>, _>("stored_manifest")
+            || manifest != archive.get::<Vec<String>, _>("set_manifest")
+        {
+            return Err(ApiError(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "invalid_stored_beatmap_archive",
+            ));
+        }
+        return Ok(Some(archive.get("archive_path")));
+    }
+    // Older explicitly retained per-difficulty archives remain readable. They
+    // do not gain the new verified-package identity or manifest claim.
     Ok(sqlx::query_scalar("SELECT archive_path FROM beatmaps WHERE native_set_id=$1 AND official_set_id IS NOT NULL AND archive_path IS NOT NULL ORDER BY id LIMIT 1")
         .bind(set).fetch_optional(&state.pool).await?)
 }
@@ -344,6 +365,9 @@ async fn discover(
                 }
                 Ok(error) if error.error.code == "beatmap_filename_conflict" => {
                     "beatmap_filename_conflict"
+                }
+                Ok(error) if error.error.code == "official_set_version_conflict" => {
+                    "beatmap_set_version_conflict"
                 }
                 _ => "beatmap_version_conflict",
             };

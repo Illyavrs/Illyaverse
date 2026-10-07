@@ -15,7 +15,8 @@ Titles, artist names, creator names and embedded official IDs do not define loca
 membership. Difficulty moderation statuses remain independent.
 
 New local content must have no positive `BeatmapID` or `BeatmapSetID`; official
-content uses the official import flow. This avoids accepting a package whose
+content uses the [official import flow](official-beatmap-archives.md), including
+the explicit complete-archive option. This avoids accepting a package whose
 retained embedded IDs contradict its assigned local public IDs. Stock lazer's
 [GetBeatmapRequest](https://raw.githubusercontent.com/ppy/osu/master/osu.Game/Online/API/Requests/GetBeatmapRequest.cs)
 sends both a positive online ID and checksum, and its
@@ -105,12 +106,15 @@ advertised as a downloadable `.osz`.
 ## Website reads and upload results
 
 `GET /api/v1/beatmaps/{id}/package/difficulties?page=1&page_size=24` is a public
-read of the anchor difficulty's local package. It returns the standard paginated
+read of the anchor difficulty's local package or verified official archive.
+It returns the standard paginated
 `items`, `total`, `page` and `page_size` response. The default page size is 24;
 the maximum is 100. Members use stable internal-ID order and current moderation
 states. `total` counts stored member rows, rather than assuming every original
-manifest entry still has a row. An absent anchor or an official set without a
-local package returns 404.
+manifest entry still has a row. An absent anchor or a difficulty without either
+package kind returns 404. Official archives expose the same bounded public
+summary with `source="official"`; their identity, verification and retry rules
+are described in the separate official-archive contract.
 
 Each member summary contains only `id`, `title`, `artist`, `creator`, `version`,
 `mode`, `status`, `source`, `stars`, `length_seconds`, `bpm` and `max_combo`.

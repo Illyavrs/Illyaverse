@@ -16,6 +16,8 @@ mod maps;
 #[cfg(test)]
 mod native_map_tests;
 #[cfg(test)]
+mod official_archive_tests;
+#[cfg(test)]
 mod profile_media_tests;
 #[cfg(test)]
 mod rbac_tests;
@@ -208,7 +210,11 @@ async fn guard(State(state): State<AppState>, request: Request, next: Next) -> R
             Some((60, 60, "relationships"))
         } else if mutating && path.ends_with("/messages") {
             Some((30, 60, "chat"))
-        } else if mutating && (path.ends_with("/upload") || path.ends_with("/media")) {
+        } else if mutating
+            && (path.ends_with("/upload")
+                || path.ends_with("/media")
+                || path == "/api/v1/beatmaps/import/archive")
+        {
             Some((10, 600, "upload"))
         } else {
             None
@@ -366,6 +372,10 @@ fn router(state: AppState) -> Router {
         .route(
             "/api/v1/beatmaps/import",
             post(maps::import).layer(DefaultBodyLimit::max(8 * 1024)),
+        )
+        .route(
+            "/api/v1/beatmaps/import/archive",
+            post(maps::import_archive).layer(DefaultBodyLimit::max(68 * 1024 * 1024)),
         )
         .route("/api/v1/beatmaps/{id}", get(maps::detail))
         .route(

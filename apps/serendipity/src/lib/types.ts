@@ -57,6 +57,7 @@ export type BeatmapPackage = {
   difficulty_count: number;
   beatmap_ids: number[];
   download_url: string;
+  source?: 'local' | 'official';
 };
 export type Beatmap = BeatmapDifficulty & {
   official_id: number | null;

@@ -666,3 +666,68 @@ async fn stable_local_package_direct_download_and_score_use_canonical_ids() {
         std::panic::resume_unwind(error);
     }
 }
+
+#[tokio::test]
+#[ignore = "requires ILLYA_TEST_DATABASE_URL; creates and removes an isolated schema"]
+async fn stable_official_archive_direct_search_uses_set_manifest_and_canonical_ids() {
+    let f = Fixture::new().await;
+    let result = std::panic::AssertUnwindSafe(async {
+        let bytes = b"original official transport fixture with multiple difficulties and assets";
+        let archive = uuid::Uuid::new_v4();
+        let archive_directory = format!("official-package-{archive}");
+        let archive_path = format!("{archive_directory}/package.osz");
+        tokio::fs::create_dir(f.storage.join("maps").join(&archive_directory)).await.unwrap();
+        tokio::fs::write(f.storage.join("maps").join(&archive_path),bytes).await.unwrap();
+        let sibling_hash = "11111111111111111111111111111111";
+        let mut ids = Vec::new();
+        for (native,hash,version) in [(OFFICIAL_ID,HASH,"Primary"),(OFFICIAL_ID+1,sibling_hash,"Sibling")] {
+            let internal: i64 = sqlx::query_scalar("INSERT INTO beatmaps(official_id,official_set_id,title,artist,creator,version,mode,status,source,stars,max_combo,md5,osu_path) VALUES($1,$2,'Official package fixture','Fixture','Fixture',$3,0,'loved','official',1,2,$4,'fixture.osu') RETURNING id")
+                .bind(native).bind(SET_ID).bind(version).bind(hash).fetch_one(&f.state.pool).await.unwrap();
+            ids.push(internal);
+        }
+        let mut publication = f.state.pool.begin().await.unwrap();
+        sqlx::query("INSERT INTO official_beatmapset_archives(official_set_id,id,archive_path,sha256,byte_length,member_md5,uploaded_by) VALUES($1,$2,$3,$4,$5,$6,$7)")
+            .bind(SET_ID).bind(archive).bind(&archive_path).bind("b".repeat(64)).bind(bytes.len() as i64)
+            .bind(vec![HASH,sibling_hash]).bind(f.user).execute(&mut *publication).await.unwrap();
+        for internal in &ids {
+            sqlx::query("INSERT INTO official_beatmapset_archive_members(archive_id,beatmap_id) VALUES($1,$2)")
+                .bind(archive).bind(internal).execute(&mut *publication).await.unwrap();
+        }
+        publication.commit().await.unwrap();
+        let mut query = f.auth();
+        query.push(("q","Official package fixture".into()));
+        let listing = f.state.http.get(format!("{}/web/osu-search.php",f.base)).query(&query).send().await.unwrap();
+        assert_eq!(listing.status(),StatusCode::OK);
+        let text = listing.text().await.unwrap();
+        assert!(text.starts_with(&format!("1\n{SET_ID}.osz|")));
+        assert!(text.contains("Primary@0") && text.contains("Sibling@0"));
+        assert_eq!(text.lines().count(),2);
+        assert_eq!(f.state.http.get(format!("{}/web/osu-search.php?q=Official",f.base)).send().await.unwrap().status(),StatusCode::UNAUTHORIZED);
+        for (key,id) in [("b",OFFICIAL_ID),("b",OFFICIAL_ID+1),("s",SET_ID)] {
+            let mut query = f.auth();query.push((key,id.to_string()));
+            let listing = f.state.http.get(format!("{}/web/osu-search-set.php",f.base)).query(&query).send().await.unwrap();
+            assert_eq!(listing.status(),StatusCode::OK);
+            assert!(listing.text().await.unwrap().starts_with(&format!("{SET_ID}.osz|")));
+        }
+        let download = f.state.http.get(format!("{}/d/{SET_ID}",f.base)).send().await.unwrap();
+        assert_eq!(download.status(),StatusCode::OK);
+        assert_eq!(download.headers()["content-type"],"application/x-osu-beatmap-archive");
+        assert_eq!(download.bytes().await.unwrap().as_ref(),bytes);
+        let info = f.info(json!({"Ids":[OFFICIAL_ID,OFFICIAL_ID+1]})).await;
+        assert_eq!(info.status(),StatusCode::OK);
+        let info = info.text().await.unwrap();
+        assert!(info.starts_with(&format!("0|{OFFICIAL_ID}|{SET_ID}|{HASH}|")));
+        assert!(info.contains(&format!("1|{}|{SET_ID}|{sibling_hash}|",OFFICIAL_ID+1)));
+        assert!(f.board(HASH).await.text().await.unwrap().starts_with(&format!("5|false|{OFFICIAL_ID}|{SET_ID}|")));
+        let error = sqlx::query("DELETE FROM official_beatmapset_archive_members WHERE archive_id=$1 AND beatmap_id=$2")
+            .bind(archive).bind(ids[1]).execute(&f.state.pool).await.unwrap_err();
+        assert_eq!(error.as_database_error().unwrap().code().as_deref(),Some("23514"));
+        assert_eq!(f.state.http.get(format!("{}/d/{SET_ID}",f.base)).send().await.unwrap().bytes().await.unwrap().as_ref(),bytes);
+        assert_eq!(tokio::fs::read(f.storage.join("maps").join(&archive_path)).await.unwrap(),bytes);
+        assert!(f.backend.calls.lock().await.is_empty());
+    }).catch_unwind().await;
+    f.cleanup().await;
+    if let Err(error) = result {
+        std::panic::resume_unwind(error);
+    }
+}

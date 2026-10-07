@@ -19,6 +19,10 @@ use std::{
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+#[path = "official_archive.rs"]
+mod official_archive;
+pub use official_archive::import_archive;
+
 pub struct OfficialState {
     token: Option<String>,
     expires: Option<Instant>,
@@ -81,13 +85,19 @@ fn filename_conflict() -> ApiError {
 const PUBLIC_MAP: &str = r#"to_jsonb(b)-'osu_path'-'archive_path' || jsonb_build_object(
     'play_count',(SELECT count(*) FROM scores s WHERE s.beatmap_id=b.id AND verification='verified'),
     'download_url','/api/v1/beatmaps/'||b.id||'/download',
-    'download_kind',CASE WHEN right(COALESCE(b.archive_path,b.osu_path),4)='.osz' THEN 'osz' ELSE 'osu' END,
-    'package',(SELECT jsonb_build_object(
+    'download_kind',CASE WHEN EXISTS(SELECT 1 FROM official_beatmapset_archive_members am WHERE am.beatmap_id=b.id)
+        OR right(COALESCE(b.archive_path,b.osu_path),4)='.osz' THEN 'osz' ELSE 'osu' END,
+    'package',COALESCE((SELECT jsonb_build_object(
         'id',p.id,'native_set_id',p.native_set_id,'kind',p.kind,'legacy',p.legacy,
         'difficulty_count',cardinality(p.member_md5),
         'beatmap_ids',(SELECT jsonb_agg(m.id ORDER BY m.id) FROM beatmaps m WHERE m.local_package_id=p.id),
         'download_url','/api/v1/beatmaps/'||(SELECT min(m.id) FROM beatmaps m WHERE m.local_package_id=p.id)||'/download'
-    ) FROM beatmap_packages p WHERE p.id=b.local_package_id)
+    ) FROM beatmap_packages p WHERE p.id=b.local_package_id),
+    (SELECT jsonb_build_object('id',a.id,'native_set_id',a.official_set_id,'kind','osz','legacy',false,'source','official',
+        'difficulty_count',cardinality(a.member_md5),
+        'beatmap_ids',(SELECT jsonb_agg(m.beatmap_id ORDER BY m.beatmap_id) FROM official_beatmapset_archive_members m WHERE m.archive_id=a.id),
+        'download_url','/api/v1/beatmaps/'||(SELECT min(m.beatmap_id) FROM official_beatmapset_archive_members m WHERE m.archive_id=a.id)||'/download')
+        FROM official_beatmapset_archives a JOIN official_beatmapset_archive_members am ON am.archive_id=a.id WHERE am.beatmap_id=b.id))
 )"#;
 
 fn commit_error_confirms_rollback(severity: sqlx::postgres::PgSeverity, code: &str) -> bool {
@@ -149,6 +159,7 @@ enum MapSelector {
     Checksum(String),
     OfficialId(i64),
     Filename(String),
+    OfficialSet(i64),
 }
 
 #[cfg(test)]
@@ -235,35 +246,46 @@ pub async fn package_difficulties(
     Path(id): Path<i64>,
     Query(pagination): Query<Pagination>,
 ) -> ApiResult {
-    let package: Uuid = sqlx::query_scalar(
-        "SELECT local_package_id FROM beatmaps WHERE id=$1 AND local_package_id IS NOT NULL",
-    )
+    let membership = sqlx::query("SELECT COALESCE(b.local_package_id,am.archive_id) AS package_id,b.local_package_id IS NOT NULL AS is_local FROM beatmaps b LEFT JOIN official_beatmapset_archive_members am ON am.beatmap_id=b.id WHERE b.id=$1 AND COALESCE(b.local_package_id,am.archive_id) IS NOT NULL")
     .bind(id)
     .fetch_optional(&state.db)
     .await?
     .ok_or_else(ApiError::missing)?;
+    let package: Uuid = membership.get("package_id");
+    let local: bool = membership.get("is_local");
     let (p, size, offset) = pagination.bounds();
-    let total: i64 = sqlx::query_scalar("SELECT count(*) FROM beatmaps WHERE local_package_id=$1")
+    let count = if local {
+        "SELECT count(*) FROM beatmaps WHERE local_package_id=$1"
+    } else {
+        "SELECT count(*) FROM official_beatmapset_archive_members WHERE archive_id=$1"
+    };
+    let total: i64 = sqlx::query_scalar(count)
         .bind(package)
         .fetch_one(&state.db)
         .await?;
     // A package summary is intentionally smaller than PUBLIC_MAP. Fetch the
     // current member rows in one slice, without nested package/member metadata.
-    let items = sqlx::query_scalar::<_, Value>(
+    let members = if local {
+        "beatmaps b WHERE b.local_package_id=$1"
+    } else {
+        "official_beatmapset_archive_members am JOIN beatmaps b ON b.id=am.beatmap_id WHERE am.archive_id=$1"
+    };
+    let query = format!(
         "SELECT jsonb_build_object('id',id,'title',title,'artist',artist,'creator',creator,
         'version',version,'mode',mode,'status',status,'source',source,'stars',stars,
         'length_seconds',length_seconds,'bpm',bpm,'max_combo',max_combo)
-        FROM beatmaps WHERE local_package_id=$1 ORDER BY id ASC LIMIT $2 OFFSET $3",
-    )
-    .bind(package)
-    .bind(size)
-    .bind(offset)
-    .fetch_all(&state.db)
-    .await?;
+        FROM {members} ORDER BY b.id ASC LIMIT $2 OFFSET $3"
+    );
+    let items = sqlx::query_scalar::<_, Value>(&query)
+        .bind(package)
+        .bind(size)
+        .bind(offset)
+        .fetch_all(&state.db)
+        .await?;
     Ok(page(items, total, p, size))
 }
 async fn file_response(state: &AppState, id: i64, archive: bool) -> ApiResult<Response> {
-    let row = sqlx::query("SELECT osu_path,archive_path FROM beatmaps WHERE id=$1")
+    let row = sqlx::query("SELECT b.osu_path,COALESCE(a.archive_path,b.archive_path) AS archive_path FROM beatmaps b LEFT JOIN official_beatmapset_archive_members am ON am.beatmap_id=b.id LEFT JOIN official_beatmapset_archives a ON a.id=am.archive_id WHERE b.id=$1")
         .bind(id)
         .fetch_optional(&state.db)
         .await?
@@ -411,6 +433,12 @@ pub fn parse_map(bytes: Vec<u8>) -> ApiResult<ParsedMap> {
     })
 }
 pub fn unpack_archive(bytes: &[u8]) -> ApiResult<Vec<(String, Vec<u8>)>> {
+    unpack_archive_with_policy(bytes, false)
+}
+fn unpack_archive_with_policy(
+    bytes: &[u8],
+    top_level_maps: bool,
+) -> ApiResult<Vec<(String, Vec<u8>)>> {
     let mut archive = zip::ZipArchive::new(Cursor::new(bytes))
         .map_err(|_| ApiError::bad("Invalid .osz archive."))?;
     if archive.len() > 512 {
@@ -454,6 +482,11 @@ pub fn unpack_archive(bytes: &[u8]) -> ApiResult<Vec<(String, Vec<u8>)>> {
             ));
         }
         if name.to_ascii_lowercase().ends_with(".osu") {
+            if top_level_maps && name.contains('/') {
+                return Err(ApiError::bad(
+                    "Official archives must contain top-level .osu difficulties.",
+                ));
+            }
             let filename = name.rsplit('/').next().unwrap_or_default();
             if !valid_beatmap_filename(filename) {
                 return Err(ApiError::bad(
@@ -840,7 +873,7 @@ async fn throttle(official: &mut OfficialState) {
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
         .unwrap_or(1000)
-        .max(500);
+        .max(1000);
     #[cfg(test)]
     let interval = if official.fixture.is_some() {
         1
@@ -1166,6 +1199,7 @@ async fn stored_map<'e>(
     let (checksum, official_id) = match selector {
         MapSelector::Checksum(checksum) => (Some(checksum.as_str()), None),
         MapSelector::OfficialId(id) => (None, Some(*id)),
+        MapSelector::OfficialSet(_) => return Ok(None),
         MapSelector::Filename(filename) => {
             // Bound the exact alias index lookup before joining primary keys.
             // Filename resolution must not scan the full beatmap catalogue.
@@ -1191,6 +1225,9 @@ async fn fetch_official_map(state: &AppState, selector: &MapSelector) -> ApiResu
     let path = match selector {
         MapSelector::Checksum(checksum) => format!("/api/v2/beatmaps/lookup?checksum={checksum}"),
         MapSelector::OfficialId(id) => format!("/api/v2/beatmaps/{id}"),
+        MapSelector::OfficialSet(_) => {
+            return Err(ApiError::internal("set selector used for a difficulty"));
+        }
         MapSelector::Filename(filename) => {
             let mut url = reqwest::Url::parse("https://osu.ppy.sh/api/v2/beatmaps/lookup")
                 .map_err(ApiError::internal)?;
@@ -1359,6 +1396,8 @@ async fn insert_official_map(
             if active.is_none() { return Err(ApiError::unauthorized()); }
             None
         };
+        official_archive::lock_set(&mut tx, official.set_id).await?;
+        official_archive::require_published_member(&mut tx, &official).await?;
         let filename = if let MapSelector::Filename(filename) = selector {
             lock_filename_aliases(&mut tx, std::slice::from_ref(filename)).await?;
             if let Some(existing) = stored_map(&mut *tx, selector).await?

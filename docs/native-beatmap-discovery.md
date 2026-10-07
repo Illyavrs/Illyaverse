@@ -6,6 +6,8 @@ Stable 選擇圖譜後，登入玩家的 `/web/osu-osz2-getscores.php` 請求會
 
 Lazer 的已認證 checksum lookup、difficulty ID 查詢、以 difficulty 查詢圖譜集，以及單人成績 token 建立也使用同一 resolver。Lookup 同時帶 checksum、ID、filename 時先依 checksum 取得圖譜，並要求已提供的正整數 ID 與回傳的原生 ID 一致；filename 不會覆蓋 checksum。只有 filename 的 lookup 新增本機精確檔名對照，未命中才透過官方 filename lookup 查詢並驗證內容。以圖譜集 ID 查詢與搜尋仍只使用本機已收錄資料，不會同步匯入整組官方 difficulties。
 
+具有 `beatmaps.import` 權限的帳號也可以提供完整官方 `.osz` 與 set ID，經整組官方 metadata 核對後保存原始封包與全部 difficulties。這是網站的明確匯入動作；原生 set lookup 不會自動下載整包。匯入成功後，stable osu!direct 與 lazer set download 可下載相同的完整 bytes，網站也可瀏覽同封包難度。驗證範圍、重試與版本限制見[官方封包匯入](official-beatmap-archives.md)。
+
 ## 身分、快取與錯誤
 
 對外 difficulty ID 與資料庫內部 ID 是不同欄位。Stable 的 leaderboard、BeatmapInfo 和提交結果使用 canonical native ID；分數、replay 與網站圖譜頁使用本機資料庫 ID。官方 native ID 保留在 `1..1_999_999_999`，私服 difficulty／set 分別使用 `2_000_000_000..2_147_483_647`，不是把內部 primary key 當別名。未知高區段 ID 不會觸發官方查詢。BeatmapInfo 最多接收 100 個 selector，只查快取，不會同步匯入整批未知圖譜。
@@ -14,7 +16,7 @@ Lazer 使用相同的 canonical difficulty／set ID。已匯入官方圖譜的�
 
 單人成績 token 先依 checksum 辨識，再綁定本機圖譜、對外 ID、ruleset 與玩家。辨識等待結束後，在寫入 token 的短交易內重新檢查 bearer session 和帳號狀態；提交與重試只使用已綁定身分，不會重新辨識或接受官方圖譜的 primary-key 別名。
 
-同一 selector 的併發請求合併，最多四個 resolver 同時處理；OAuth token、全域請求間隔、429 的 Retry-After 和短期失敗快取降低重複請求。官方 `.osu` 最多 8 MiB，metadata、檔案 checksum、ruleset 與官方 ID 均須一致。資料先寫入唯一檔案，再發布資料庫引用；競爭中的 loser 只移除自己的未使用檔案。不能確定 COMMIT 是否成功時保留檔案，避免已提交圖譜失去內容。
+同一 selector 的併發請求合併，最多四個 resolver 同時處理；OAuth token、全域至少一秒的請求間隔、429 的 Retry-After 和短期失敗快取降低重複請求。官方 `.osu` 最多 8 MiB，metadata、檔案 checksum、ruleset 與官方 ID 均須一致。資料先寫入唯一檔案，再發布資料庫引用；競爭中的 loser 只移除自己的未使用檔案。不能確定 COMMIT 是否成功時保留檔案，避免已提交圖譜失去內容。
 
 只有官方明確表示 checksum 不存在時，resolver 回覆 404 `beatmap_not_found`，stable 才得到原有的未知圖譜回應。未設定 API、授權失敗、上游服務失敗或限流分別回覆 503、502 或 429，不會假造 Ranked，也不會把這些失敗快取成永久的不存在。
 

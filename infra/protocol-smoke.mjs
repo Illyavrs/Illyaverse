@@ -58,11 +58,18 @@ export function pythonRuntime(environment = process.env) {
   return { python, env };
 }
 
+export function protocolScript(value) {
+  if (value === undefined || value === 'protocol') return 'services/resonance/tests/protocol_smoke.py';
+  if (value === 'official-archives') return 'services/resonance/tests/official_archive_smoke.py';
+  throw new Error('ILLYA_PROTOCOL_SMOKE_SUITE must be protocol or official-archives.');
+}
+
 export async function launchSmoke(environment = process.env, signal) {
   requireDisposable(environment);
   // Reject unsafe destinations before reading credentials or performing network requests.
   const sanctuary = localOrigin(environment.TEST_SANCTUARY_URL ?? 'http://localhost:3000', 'TEST_SANCTUARY_URL');
   const resonance = localOrigin(environment.TEST_RESONANCE_URL ?? 'http://127.0.0.1:8081', 'TEST_RESONANCE_URL');
+  const script = protocolScript(environment.ILLYA_PROTOCOL_SMOKE_SUITE);
   let contents;
   try { contents = await readFile(path.resolve(workspace, environment.ILLYA_TEST_ENV_FILE ?? '.env'), 'utf8'); }
   catch { throw new Error('The disposable test environment file could not be read.'); }
@@ -84,7 +91,7 @@ export async function launchSmoke(environment = process.env, signal) {
     redirect: 'error', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000),
   });
   if (!registration.ok) throw new Error(`Fixture registration failed: HTTP ${registration.status}`);
-  const result = await runCommand(runtime.python, ['services/resonance/tests/protocol_smoke.py'], {
+  const result = await runCommand(runtime.python, [script], {
     env: { ...runtime.env,
       TEST_ADMIN_USERNAME: values.BOOTSTRAP_ADMIN_USERNAME, TEST_ADMIN_PASSWORD: values.BOOTSTRAP_ADMIN_PASSWORD,
       TEST_PLAYER_USERNAME: username, TEST_PLAYER_PASSWORD: password,

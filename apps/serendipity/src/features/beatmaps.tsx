@@ -162,20 +162,38 @@ function PackageDifficulties({ mapId, currentVersion }: { mapId: number; current
   );
 }
 
-function UploadResult({ result }: { result: BeatmapUploadResult }) {
+function UploadResult({
+  result,
+  official = false,
+}: {
+  result: BeatmapUploadResult;
+  official?: boolean;
+}) {
   const t = useTranslations('maps');
   const [page, setPage] = useState(1);
   const archive = result.package.kind === 'osz';
   return (
-    <section className="map-upload-result" aria-labelledby="map-upload-result-title">
-      <h2 id="map-upload-result-title">{t('uploadResultTitle')}</h2>
+    <section className="map-upload-result" aria-labelledby="map-upload-result-title" tabIndex={-1}>
+      <h2 id="map-upload-result-title">
+        {t(official ? 'importResultTitle' : 'uploadResultTitle')}
+      </h2>
       <p className="form-success" role="status">
-        {t(result.idempotent ? 'uploadRetrySuccess' : 'uploadSuccess')}
+        {t(
+          official
+            ? result.idempotent
+              ? 'importArchiveRetrySuccess'
+              : 'importArchiveSuccess'
+            : result.idempotent
+              ? 'uploadRetrySuccess'
+              : 'uploadSuccess',
+        )}
       </p>
       <p className="hint">
         {t('packageCount', { count: result.items.length })} · {t('resultStatusHint')}
       </p>
-      {result.idempotent && <p className="hint">{t('uploadRetryHint')}</p>}
+      {result.idempotent && (
+        <p className="hint">{t(official ? 'importArchiveRetryHint' : 'uploadRetryHint')}</p>
+      )}
       <DifficultyRows items={result.items.slice((page - 1) * 24, page * 24)} />
       <Pagination page={page} total={result.items.length} onChange={setPage} />
       <div className="actions">
@@ -451,12 +469,23 @@ export function MapUploadPage({ official = false }: { official?: boolean }) {
   const c = useTranslations('common');
   const { user } = useSession();
   const submitting = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  const [importKind, setImportKind] = useState<'difficulty' | 'archive'>('difficulty');
+  const archiveImport = official && importKind === 'archive';
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [errorCode, setErrorCode] = useState('');
   const [result, setResult] = useState<BeatmapUploadResult | null>(null);
   const [imported, setImported] = useState<Beatmap | null>(null);
+  const [feedbackRevision, setFeedbackRevision] = useState(0);
+  useEffect(() => {
+    if (error) errorRef.current?.focus();
+    else if (result || imported)
+      formRef.current?.querySelector<HTMLElement>('.map-upload-result')?.focus();
+  }, [error, result, imported, feedbackRevision]);
   function clearFeedback() {
+    setFeedbackRevision((revision) => revision + 1);
     setError('');
     setErrorCode('');
     setResult(null);
@@ -465,13 +494,39 @@ export function MapUploadPage({ official = false }: { official?: boolean }) {
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (submitting.current) return;
-    submitting.current = true;
     const form = e.currentTarget;
     const data = new FormData(form);
-    setBusy(true);
     clearFeedback();
+    if (archiveImport) {
+      const setId = Number(data.get('official_set_id'));
+      if (!Number.isInteger(setId) || setId < 1 || setId > 1_999_999_999) {
+        setErrorCode('invalid_official_set_id');
+        setError(t('errorOfficialSetId'));
+        return;
+      }
+      const file = data.get('file');
+      if (!(file instanceof File) || file.size === 0 || !/\.osz$/i.test(file.name)) {
+        setErrorCode('invalid_archive_file');
+        setError(t('errorArchiveFile'));
+        return;
+      }
+      if (file.size > 64 * 1024 * 1024) {
+        setErrorCode('archive_too_large');
+        setError(t('errorArchiveTooLarge'));
+        return;
+      }
+    }
+    submitting.current = true;
+    setBusy(true);
     try {
-      if (official)
+      if (archiveImport)
+        setResult(
+          await api<BeatmapUploadResult>('/beatmaps/import/archive', {
+            method: 'POST',
+            body: data,
+          }),
+        );
+      else if (official)
         setImported(
           await api<Beatmap>('/beatmaps/import', {
             method: 'POST',
@@ -482,19 +537,44 @@ export function MapUploadPage({ official = false }: { official?: boolean }) {
         setResult(
           await api<BeatmapUploadResult>('/beatmaps/upload', { method: 'POST', body: data }),
         );
-      form.reset();
+      if (official) {
+        // Keep the inactive flow's draft, including its selected file.
+        for (const name of archiveImport ? ['official_set_id', 'file'] : ['official_id']) {
+          const input = form.elements.namedItem(name);
+          if (input instanceof HTMLInputElement) input.value = '';
+        }
+      } else form.reset();
     } catch (cause) {
-      if (cause instanceof ApiError && cause.status >= 400 && cause.status < 500) {
+      if (cause instanceof ApiError) {
         const errorKeys = {
           official_beatmap_requires_import: 'errorOfficialUpload',
           map_package_conflict: 'errorPackageConflict',
           official_namespace_conflict: 'errorOfficialNamespace',
           official_version_conflict: 'errorOfficialVersion',
+          official_set_version_conflict: 'errorOfficialSetVersion',
+          official_archive_conflict: 'errorOfficialArchiveConflict',
+          official_archive_manifest_mismatch: 'errorOfficialArchiveManifest',
+          official_archive_invalid: 'errorOfficialArchiveInvalid',
+          official_archive_too_large: 'errorArchiveTooLarge',
+          official_identity_mismatch: 'errorOfficialIdentity',
+          checksum_mismatch: 'errorOfficialChecksum',
+          official_api_not_configured: 'errorOfficialAPIConfig',
+          official_auth_failed: 'errorOfficialAPIAuth',
+          official_api_failed: 'errorOfficialAPIFailed',
+          official_rate_limited: 'errorOfficialRateLimit',
+          beatmap_not_found: 'errorOfficialNotFound',
+          beatmapset_not_found: 'errorOfficialNotFound',
           unauthorized: 'errorUnauthorized',
           forbidden: 'errorForbidden',
         } as const;
         const key = errorKeys[cause.code as keyof typeof errorKeys];
-        setError(key ? t(key) : cause.message);
+        setError(
+          key
+            ? t(key)
+            : cause.status >= 400 && cause.status < 500
+              ? cause.message
+              : c('serviceError'),
+        );
         setErrorCode(cause.code);
       } else setError(c('serviceError'));
     } finally {
@@ -509,22 +589,93 @@ export function MapUploadPage({ official = false }: { official?: boolean }) {
         description={t(official ? 'importDescription' : 'uploadDescription')}
       />
       <Protected permission={official ? 'beatmaps.import' : 'beatmaps.upload'}>
-        <form onSubmit={submit} className="glass upload-form">
+        <form ref={formRef} onSubmit={submit} className="glass upload-form" aria-busy={busy}>
           {official ? (
-            <div className="field">
-              <label htmlFor="official_id">{t('officialId')}</label>
-              <Input
-                id="official_id"
-                name="official_id"
-                type="number"
-                min={1}
-                max={1_999_999_999}
-                step={1}
-                required
-                disabled={busy}
-                onChange={clearFeedback}
-              />
-            </div>
+            <>
+              <div className="field">
+                <label htmlFor="official-import-kind">{t('importKind')}</label>
+                <select
+                  id="official-import-kind"
+                  className="native-select"
+                  value={importKind}
+                  disabled={busy}
+                  onChange={(e) => {
+                    setImportKind(e.target.value as 'difficulty' | 'archive');
+                    clearFeedback();
+                  }}
+                >
+                  <option value="difficulty">{t('importDifficultyMode')}</option>
+                  <option value="archive">{t('importArchiveMode')}</option>
+                </select>
+              </div>
+              <div hidden={archiveImport}>
+                <div className="field">
+                  <label htmlFor="official_id">{t('officialId')}</label>
+                  <Input
+                    id="official_id"
+                    name="official_id"
+                    type="number"
+                    min={1}
+                    max={1_999_999_999}
+                    step={1}
+                    required={!archiveImport}
+                    disabled={busy || archiveImport}
+                    onChange={clearFeedback}
+                  />
+                  <p className="hint">{t('singleFileHint')}</p>
+                </div>
+              </div>
+              <div hidden={!archiveImport}>
+                <div className="field">
+                  <label htmlFor="official_set_id">{t('officialSetId')}</label>
+                  <Input
+                    id="official_set_id"
+                    name="official_set_id"
+                    type="number"
+                    min={1}
+                    max={1_999_999_999}
+                    step={1}
+                    required={archiveImport}
+                    disabled={busy || !archiveImport}
+                    aria-describedby="official-set-hint"
+                    aria-invalid={errorCode === 'invalid_official_set_id' || undefined}
+                    onChange={clearFeedback}
+                  />
+                  <p className="hint" id="official-set-hint">
+                    {t('officialSetIdHint')}
+                  </p>
+                </div>
+                <div className="field">
+                  <label htmlFor="official_archive_file">{t('archiveFile')}</label>
+                  <label className="drop-zone">
+                    <Upload />
+                    <strong>{t('importArchiveAction')}</strong>
+                    <span>{t('archiveFileHint')}</span>
+                    <input
+                      type="file"
+                      name="file"
+                      id="official_archive_file"
+                      accept=".osz"
+                      required={archiveImport}
+                      disabled={busy || !archiveImport}
+                      aria-describedby="official-archive-hint"
+                      aria-invalid={
+                        ['invalid_archive_file', 'archive_too_large'].includes(errorCode) ||
+                        undefined
+                      }
+                      onChange={clearFeedback}
+                    />
+                  </label>
+                  <p className="hint" id="official-archive-hint">
+                    {t('archiveImportHint')}
+                  </p>
+                  <Link href="/docs/official-archives" className="text-link">
+                    {t('archiveImportGuide')}
+                    <ArrowRight />
+                  </Link>
+                </div>
+              </div>
+            </>
           ) : (
             <div className="field">
               <label htmlFor="mapfile">{c('file')}</label>
@@ -550,7 +701,7 @@ export function MapUploadPage({ official = false }: { official?: boolean }) {
           )}
           {error && (
             <div className="map-upload-error">
-              <p className="form-error" role="alert">
+              <p className="form-error" role="alert" ref={errorRef} tabIndex={-1}>
                 {error}
               </p>
               {errorCode === 'official_beatmap_requires_import' &&
@@ -573,15 +724,25 @@ export function MapUploadPage({ official = false }: { official?: boolean }) {
           <div className="actions">
             <Button disabled={busy} type="submit">
               {busy ? <LoaderCircle className="spin" /> : <Upload />}
-              {t(official ? 'import' : 'upload')}
+              {t(
+                official
+                  ? archiveImport
+                    ? 'importArchiveAction'
+                    : 'importDifficultyAction'
+                  : 'upload',
+              )}
             </Button>
             <Button variant="ghost" asChild>
               <Link href="/beatmaps">{c('back')}</Link>
             </Button>
           </div>
-          {result && <UploadResult result={result} />}
+          {result && <UploadResult result={result} official={official} />}
           {imported && (
-            <section className="map-upload-result" aria-labelledby="map-upload-result-title">
+            <section
+              className="map-upload-result"
+              aria-labelledby="map-upload-result-title"
+              tabIndex={-1}
+            >
               <h2 id="map-upload-result-title">{t('importResultTitle')}</h2>
               <p className="form-success" role="status">
                 {t('importSuccess')}

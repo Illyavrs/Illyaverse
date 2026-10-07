@@ -888,7 +888,7 @@ async fn search(
     if !(-1..=3).contains(&mode) {
         return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_mode"));
     }
-    let sets = sqlx::query_scalar::<_, i64>("SELECT b.native_set_id FROM beatmaps b LEFT JOIN beatmap_packages p ON p.id=b.local_package_id WHERE COALESCE(p.archive_path,b.archive_path) IS NOT NULL AND ($1=-1 OR b.mode=$1) AND (b.title ILIKE $2 OR b.artist ILIKE $2 OR b.creator ILIKE $2) GROUP BY b.native_set_id ORDER BY max(b.created_at) DESC,b.native_set_id DESC LIMIT 100 OFFSET $3").bind(mode).bind(format!("%{search}%")).bind(page*100).fetch_all(&state.pool).await?;
+    let sets = sqlx::query_scalar::<_, i64>("SELECT b.native_set_id FROM beatmaps b LEFT JOIN beatmap_packages p ON p.id=b.local_package_id LEFT JOIN official_beatmapset_archives a ON a.official_set_id=b.official_set_id WHERE COALESCE(p.archive_path,a.archive_path,b.archive_path) IS NOT NULL AND ($1=-1 OR b.mode=$1) AND (b.title ILIKE $2 OR b.artist ILIKE $2 OR b.creator ILIKE $2) GROUP BY b.native_set_id ORDER BY max(b.created_at) DESC,b.native_set_id DESC LIMIT 100 OFFSET $3").bind(mode).bind(format!("%{search}%")).bind(page*100).fetch_all(&state.pool).await?;
     let mut output = format!("{}\n", sets.len());
     for set in sets {
         output.push_str(

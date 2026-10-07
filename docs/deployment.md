@@ -62,7 +62,7 @@ docker compose -f compose.yaml -f compose.production.yaml up -d --build --wait
 | `ILLYA_DOMAIN`／`ACME_EMAIL` | 正式域名與 ACME contact |
 | `BOOTSTRAP_ADMIN_*` | 初始管理員建立；用過後清空 |
 | `OSU_CLIENT_ID`／`OSU_CLIENT_SECRET` | 可選的官方譜面 metadata 匯入 |
-| `OSU_API_INTERVAL_MS` | 官方請求節流間隔，預設 1000ms；服務也限制最小值 |
+| `OSU_API_INTERVAL_MS` | 官方請求節流間隔，預設及最小值 1000ms；difficulty 與整包 metadata 共用節流 |
 | `RUST_LOG` | 服務 log filter |
 | `SMTP_HOST`／`SMTP_FROM` | 可選的帳號復原與信箱驗證寄信服務 |
 | `SMTP_USERNAME`／`SMTP_PASSWORD` | SMTP 認證，必須成對設定 |

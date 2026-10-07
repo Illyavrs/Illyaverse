@@ -91,6 +91,7 @@ async fn resolve(
             match state.invalid.load(Ordering::SeqCst) {
                 7 => "beatmap_filename_ambiguous",
                 8 => "beatmap_filename_conflict",
+                9 => "official_set_version_conflict",
                 _ => "original_fixture_error",
             }
         };
@@ -433,6 +434,138 @@ macro_rules! fixture_test {
     };
 }
 
+fixture_test!(
+    lazer_official_archive_uses_complete_set_manifest_and_preserves_native_identity,
+    f,
+    {
+        let primary = f
+            .local_map(
+                HASHES[0],
+                Some(OFFICIAL_ID),
+                Some(SET_ID),
+                Some("official.osz"),
+            )
+            .await;
+        let sibling = f
+            .local_map(HASHES[1], Some(OFFICIAL_ID + 1), Some(SET_ID), None)
+            .await;
+        let bytes = b"original transport fixture archive with both difficulties and asset bytes";
+        let archive = uuid::Uuid::new_v4();
+        let archive_directory = format!("official-package-{archive}");
+        let archive_path = format!("{archive_directory}/package.osz");
+        tokio::fs::create_dir(f.storage.join("maps").join(&archive_directory))
+            .await
+            .unwrap();
+        tokio::fs::write(f.storage.join("maps").join(&archive_path), bytes)
+            .await
+            .unwrap();
+        let mut manifest = vec![HASHES[0].to_string(), HASHES[1].to_string()];
+        manifest.sort();
+        let mut publication = f.state.pool.begin().await.unwrap();
+        sqlx::query("INSERT INTO official_beatmapset_archives(official_set_id,id,archive_path,sha256,byte_length,member_md5,uploaded_by) VALUES($1,$2,$3,$4,$5,$6,$7)")
+        .bind(SET_ID).bind(archive).bind(&archive_path).bind("a".repeat(64)).bind(bytes.len() as i64).bind(manifest).bind(f.users[0])
+        .execute(&mut *publication).await.unwrap();
+        for internal in [primary, sibling] {
+            sqlx::query("INSERT INTO official_beatmapset_archive_members(archive_id,beatmap_id) VALUES($1,$2)")
+            .bind(archive).bind(internal).execute(&mut *publication).await.unwrap();
+        }
+        publication.commit().await.unwrap();
+        let set = body(
+            f.get(&format!("/api/v2/beatmapsets/{SET_ID}")).await,
+            StatusCode::OK,
+        )
+        .await;
+        assert_eq!(set["id"], SET_ID);
+        assert_eq!(set["download_disabled"], false);
+        let members = set["beatmaps"].as_array().unwrap();
+        assert_eq!(members.len(), 2);
+        assert_eq!(members[0]["id"], OFFICIAL_ID);
+        assert_eq!(members[1]["id"], OFFICIAL_ID + 1);
+        let encoded = serde_json::to_string(&set).unwrap();
+        for private in [
+            archive_path.as_str(),
+            "official.osz",
+            "member_md5",
+            "archive_path",
+            "uploaded_by",
+        ] {
+            assert!(!encoded.contains(private));
+        }
+        let response = f
+            .get(&format!("/api/v2/beatmapsets/{SET_ID}/download"))
+            .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers()["content-type"],
+            "application/x-osu-beatmap-archive"
+        );
+        assert_eq!(response.bytes().await.unwrap().as_ref(), bytes);
+        assert_eq!(
+            f.request(
+                Method::GET,
+                &format!("/api/v2/beatmapsets/{SET_ID}/download"),
+                None,
+                None
+            )
+            .await
+            .status(),
+            StatusCode::UNAUTHORIZED
+        );
+        let lookup = body(
+            f.get(&format!(
+                "/api/v2/beatmapsets/lookup?beatmap_id={}",
+                OFFICIAL_ID + 1
+            ))
+            .await,
+            StatusCode::OK,
+        )
+        .await;
+        assert_eq!(lookup["beatmaps"], set["beatmaps"]);
+        let token = body(f.token(OFFICIAL_ID + 1, HASHES[1], 0).await, StatusCode::OK).await;
+        let bound: i64 =
+            sqlx::query_scalar("SELECT beatmap_id FROM lazer_score_tokens WHERE id=$1")
+                .bind(token["id"].as_i64().unwrap())
+                .fetch_one(&f.state.pool)
+                .await
+                .unwrap();
+        assert_eq!(bound, sibling);
+        let error = sqlx::query(
+            "DELETE FROM official_beatmapset_archive_members WHERE archive_id=$1 AND beatmap_id=$2",
+        )
+        .bind(archive)
+        .bind(sibling)
+        .execute(&f.state.pool)
+        .await
+        .unwrap_err();
+        assert_eq!(
+            error.as_database_error().unwrap().code().as_deref(),
+            Some("23514")
+        );
+        let error = sqlx::query("INSERT INTO beatmaps(official_id,official_set_id,title,artist,creator,version,mode,status,source,stars,max_combo,md5,osu_path) VALUES($1,$2,'Unbound','Fixture','Fixture','Extra',0,'loved','official',1,2,$3,'fixture.osu')")
+        .bind(OFFICIAL_ID+2).bind(SET_ID).bind(HASHES[2]).execute(&f.state.pool).await.unwrap_err();
+        assert_eq!(
+            error.as_database_error().unwrap().code().as_deref(),
+            Some("23514")
+        );
+        assert_eq!(
+            f.get(&format!("/api/v2/beatmapsets/{SET_ID}/download"))
+                .await
+                .bytes()
+                .await
+                .unwrap()
+                .as_ref(),
+            bytes
+        );
+        assert_eq!(
+            tokio::fs::read(f.storage.join("maps").join(&archive_path))
+                .await
+                .unwrap(),
+            bytes
+        );
+        assert!(f.backend.calls.lock().await.is_empty());
+    }
+);
+
 fixture_test!(lazer_maps_discover_by_checksum_and_id_and_cache, f, {
     let lookup = body(
         f.get(&format!(
@@ -643,6 +776,7 @@ fixture_test!(
             (502, 0, "map_resolution_failed"),
             (409, 7, "beatmap_filename_ambiguous"),
             (409, 8, "beatmap_filename_conflict"),
+            (409, 9, "beatmap_set_version_conflict"),
         ] {
             f.backend.status.store(status, Ordering::SeqCst);
             f.backend.invalid.store(invalid, Ordering::SeqCst);
