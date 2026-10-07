@@ -149,7 +149,9 @@ production compilation. Its pinned images pass 343 HTTP requests in 41
 categories and 26 browser cases. Public member pagination, actual file formats,
 upload/retry results, localized failure recovery and shared pagination form
 behavior are covered. Eight fresh synthetic browser captures and independent
-scope review passed; these are not real-client evidence. Deployment and fresh
-DB/file backup evidence are recorded in [verification](verification.md).
+scope review passed; these are not real-client evidence. Both local stacks run
+the pinned images with schema 0016 and retained map fingerprints unchanged.
+Deployment, read-only runtime checks and fresh DB/file backup evidence are
+recorded in [verification](verification.md).
 Real stable/lazer map search, download, gameplay and submission require separate
 user-operated client checks.
