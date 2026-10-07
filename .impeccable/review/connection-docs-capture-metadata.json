@@ -1,0 +1,96 @@
+{
+  "scope": "Connection/docs incumbent Read refinement",
+  "capturedFrom": "illya-web-smoke-eedf208707e14645",
+  "webImage": "sha256:b07c455d2c98f0506dd7ad1c207e60bdae6f120d439aca404ce74c21b500298c",
+  "sanctuaryImage": "sha256:fdeba8f3767c41aae64e7335443f1a66c6fb0e808715e8436daf02d6952cdcac",
+  "resonanceImage": "sha256:f50992f1a2170ab38d1f830269c4eaf8876520a779a67146f0f665326a4ddb1c",
+  "engine": "Playwright Chromium, desktop and emulated mobile viewports",
+  "evidenceBoundary": "Real shipped Markdown reader and Connect, only guest /api/v1/me response intercepted. No native game launched.",
+  "captures": [
+    {
+      "path": ".impeccable/review/connection-docs-final-desktop-dark-connect.png",
+      "sha256": "4e803b6216ec730d718953c86dc219c970e12f1eb38d77a2ebc84822877097e1",
+      "capturedUtc": "2026-10-07T23:44:06.2135793Z",
+      "bytes": 108578,
+      "route": "/connect",
+      "locale": "en",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "state": "lazer tab, operation-guide CTA",
+      "fullPage": false
+    },
+    {
+      "path": ".impeccable/review/connection-docs-final-mobile-light-fragment.png",
+      "sha256": "c06edc843a19835c3be671e8a6d2d3b648b26a208a053fdf60db04149a98df0e",
+      "capturedUtc": "2026-10-07T23:44:14.6748614Z",
+      "bytes": 96267,
+      "route": "/docs/native-maps#lazer-官方圖譜集資訊",
+      "locale": "zh-TW",
+      "theme": "light",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "state": "actual CJK fragment destination below sticky header",
+      "fullPage": false
+    }
+  ],
+  "productionSources": [
+    {
+      "path": "apps/serendipity/src/app/docs/[slug]/page.tsx",
+      "sha256": "c7264efd0e0f64278f016eea1e0f8b0faa82e7e4f3a1ba1d03d59a2e2b192418"
+    },
+    {
+      "path": "apps/serendipity/src/lib/docs-navigation.ts",
+      "sha256": "316b2ec7cb5cb278fbf40821eb16b67618e8502f40c2331de2f7867e432dc892"
+    },
+    {
+      "path": "apps/serendipity/src/features/connect.tsx",
+      "sha256": "9ef3e96e28191f355ffb5ab2297460efa05b1b28f1c029a70b85c84681949e24"
+    },
+    {
+      "path": "apps/serendipity/src/app/globals.css",
+      "sha256": "f6c8ba7d0144c2b2068be6dac6e4a6f630a04a78cc6d23f8f9168d0f9fb65276"
+    },
+    {
+      "path": "apps/serendipity/messages/zh-TW.json",
+      "sha256": "ece53cb28a19781e794d3d5fecf673ad2afe61484034ec0ebbbbf54e0ef22640"
+    },
+    {
+      "path": "apps/serendipity/messages/en.json",
+      "sha256": "207d6a67d462245900327e41a22fa14d9e220eb85a4f416c1dc0e1ca005178ef"
+    },
+    {
+      "path": "apps/serendipity/messages/ja.json",
+      "sha256": "d1878d3a864e3291d1f33f5a94d38b3caf14293c50ebbf1909748d30996aac97"
+    },
+    {
+      "path": "docs/connection.md",
+      "sha256": "0b127d38a57661029c3819308633ea7942c09f4c566f4522dd1b6377fed802e6"
+    },
+    {
+      "path": "docs/deployment.md",
+      "sha256": "c0dd9fdd2746f659a85ea01df0df010272346fa6292cfad80e246f95687f00de"
+    },
+    {
+      "path": "docs/lazer-client-build.md",
+      "sha256": "c3e24e19f103010768251d2e73198d6581c8fc268a29d2a727b3d30c2fedc8c0"
+    },
+    {
+      "path": "docs/protocol-compatibility.md",
+      "sha256": "7bb43686e0c2dc0c7f3bd0efe1490f6545c394727f770a96cfac48323bb159f0"
+    }
+  ],
+  "postBuildRootInspectionRounds": 1,
+  "baselineInspection": "Two pre-edit captures inspected separately from postbuild finish.",
+  "captureAttempts": "First12-case gate had10pass2test-selector failures; corrected spec-only assertions then12/12passed on same image. Final2PNGs opened together; no production edits/rebuild after captures.",
+  "detector": {
+    "advisory": 86,
+    "invocations": 1,
+    "primary": 0,
+    "note": "Incumbent stylesheet advisories; no global repair."
+  }
+}

@@ -39,6 +39,8 @@ docker compose ps
 
 ## 正式網域與 HTTPS
 
+以下設定屬於伺服器部署。目前 Kaleidoscope 測試包的固定端點是 `illya.test`；正式網域上線還需要開發者更新並驗證啟動器與 Transfiguration 的固定端點，再發布對應套件。更改 `.env` 不會同步改寫玩家已安裝的啟動器，也不會提供玩家選服功能。
+
 在 `.env` 設定真實 `ILLYA_DOMAIN` 與 `ACME_EMAIL`。營運者應把根網域與 `osu`、`c`、`ce`、`c4`、`api`、`spectator`、`bss`、`a`、`b` 子域名的 A／AAAA 指向部署主機；只發布確實能到達主機的 IPv6。防火牆允許 TCP 80／443，HTTP/3 可用 UDP 443。
 
 ```sh

@@ -72,8 +72,8 @@ export function ConnectPage() {
               <TabsContent value="lazer" className="pt-6">
                 <h2>{t('lazerTitle')}</h2>
                 <p>{t('lazerText')}</p>
-                <Link href="/docs/lazer-client" className="back-link">
-                  {t('lazerBuild')}
+                <Link href="/docs/kaleidoscope" className="back-link">
+                  {t('download')}
                 </Link>
               </TabsContent>
             </Tabs>

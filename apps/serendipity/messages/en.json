@@ -496,7 +496,6 @@
     "scrollUsers": "Scroll horizontally to view roles and account actions."
   },
   "connect": {
-    "lazerBuild": "Developer alternative: source test client",
     "localTesting": "Operator local testing guide",
     "title": "Connection guide",
     "subtitle": "Account setup, Kaleidoscope instructions and current stable/lazer compatibility.",
@@ -506,7 +505,7 @@
     "accountText": "Use the username and password you registered here. Your official osu! account remains separate.",
     "clientTitle": "Choose your game client",
     "stableTitle": "Use your installed stable client",
-    "stableText": "Choose your stable executable in Kaleidoscope. The launcher supplies Illyaverse's -devserver argument. Close any running game, launch or restart through Kaleidoscope, then sign in with your community account.",
+    "stableText": "Choose your stable executable in Kaleidoscope. The launcher supplies Illyaverse's -devserver argument. Click Launch, then sign in with your community account. If the game is already running, the launcher shows Restart; clicking it closes and relaunches the game.",
     "stableCommand": "osu!.exe -devserver illya.test",
     "toolTitle": "Launch with Kaleidoscope",
     "toolText": "The launcher is configured for Illyaverse. Choose your installed stable or official lazer client and follow the guide to launch or restart. A public download is not available yet; start with the test operation guide.",

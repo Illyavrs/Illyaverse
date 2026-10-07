@@ -5,37 +5,13 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
-const documents: Record<string, string> = {
-  connection: 'connection.md',
-  kaleidoscope: 'kaleidoscope-launcher.md',
-  'local-client': 'local-client-testing.md',
-  'lazer-client': 'lazer-client-build.md',
-  'native-chat': 'native-chat.md',
-  'native-mods': 'native-mods.md',
-  'native-maps': 'native-beatmap-discovery.md',
-  'map-packages': 'local-map-packages.md',
-  'official-archives': 'official-beatmap-archives.md',
-  relax: 'relax.md',
-  'score-normalization': 'score-normalization.md',
-  replays: 'lazer-replays.md',
-  deployment: 'deployment.md',
-  'account-recovery': 'account-recovery.md',
-  architecture: 'architecture.md',
-  permissions: 'permissions.md',
-  protocol: 'protocol-compatibility.md',
-  realtime: 'signalr-compatibility.md',
-  'room-scores': 'lazer-room-scores-plan.md',
-  verification: 'verification.md',
-};
-const documentLink = (href?: string) => {
-  const match = Object.entries(documents).find(([, filename]) => href?.split('#')[0] === filename);
-  return match ? `/docs/${match[0]}${href?.includes('#') ? `#${href.split('#')[1]}` : ''}` : href;
-};
+import { documentFilename, documentLink, remarkDocumentHeadings } from '@/lib/docs-navigation';
+
 export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
-  const t = await getTranslations('common');
   const { slug } = await params;
-  const file = documents[slug];
+  const file = documentFilename(slug);
   if (!file) notFound();
+  const t = await getTranslations('common');
   const root = process.env.ILLYA_DOCS_PATH ?? path.resolve(process.cwd(), '../../docs');
   // The Docker runtime explicitly includes the allowlisted docs directory.
   const markdown = await readFile(
@@ -47,7 +23,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
     <div className="page-container">
       <article className="markdown-document glass">
         <Markdown
-          remarkPlugins={[remarkGfm]}
+          remarkPlugins={[remarkGfm, remarkDocumentHeadings]}
           components={{
             table: ({ children, ...props }) => (
               <div
@@ -59,7 +35,13 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
                 <table {...props}>{children}</table>
               </div>
             ),
-            a: ({ href, children }) => <Link href={documentLink(href) ?? '#'}>{children}</Link>,
+            a: ({ href, children }) => {
+              const destination = documentLink(href);
+              if (!destination) return <span>{children}</span>;
+              return /^[#?]/.test(destination) || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(destination)
+                ? <a href={destination}>{children}</a>
+                : <Link href={destination}>{children}</Link>;
+            },
           }}
         >
           {markdown}

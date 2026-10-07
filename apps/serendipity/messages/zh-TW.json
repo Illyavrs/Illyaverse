@@ -496,7 +496,6 @@
     "scrollUsers": "左右捲動可查看角色與帳號操作。"
   },
   "connect": {
-    "lazerBuild": "開發者替代方式：原始碼測試客戶端",
     "localTesting": "管理員本機測試指南",
     "title": "連線教學",
     "subtitle": "帳號設定、Kaleidoscope 操作方式與目前的 stable／lazer 相容性。",
@@ -506,7 +505,7 @@
     "accountText": "使用在這裡註冊的帳號與密碼。它與你的官方 osu! 帳號各自獨立。",
     "clientTitle": "選擇遊戲客戶端",
     "stableTitle": "使用已安裝的 stable",
-    "stableText": "在 Kaleidoscope 選擇你的 stable 執行檔。啟動器會帶入 Illyaverse 的 -devserver 參數；先關閉已執行的遊戲，再從啟動器啟動或重新啟動，並登入你的社群帳號。",
+    "stableText": "在 Kaleidoscope 選擇你的 stable 執行檔。啟動器會帶入 Illyaverse 的 -devserver 參數；按下啟動後登入你的社群帳號。如果遊戲已在執行，啟動器會顯示重新啟動，由你按下後關閉遊戲並重新開啟。",
     "stableCommand": "osu!.exe -devserver illya.test",
     "toolTitle": "從 Kaleidoscope 啟動",
     "toolText": "啟動器已固定連接 Illyaverse。選擇電腦上已安裝的 stable 或官方 lazer，即可依操作指南啟動或重新啟動。公開下載尚未提供，目前請先閱讀測試操作指南。",

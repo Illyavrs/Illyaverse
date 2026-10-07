@@ -2,7 +2,7 @@
 
 玩家使用專用 [Kaleidoscope 啟動器](kaleidoscope-launcher.md)：先在網站註冊，選擇已安裝的 stable／lazer，再按「啟動」。stable 使用固定 `-devserver`，lazer 沿用官方安裝檔並強制載入原創 Transfiguration 外掛。原生登入、遊玩與退出清理仍待玩家驗證；隔離測試不代表全功能相容。
 
-本文範例使用 `illya.example.com` 作為營運者擁有的根網域；請換成自己的實際網域。`illya.test` 適合本機開發，沒有公開 DNS 或公開 CA 憑證。公開玩家應優先使用正常 DNS 與受信任的 HTTPS，通常不需要修改 hosts。
+本文範例使用 `illya.example.com` 作為營運者擁有的根網域，供管理員設定伺服器與手動測試 stable 使用。目前 Kaleidoscope 測試包固定連到 `illya.test`，玩家不能輸入其他伺服器。正式營運前須由開發者更新並驗證套件的固定端點，再發布對應套件；只修改伺服器的 `.env` 不會改變已發出的啟動器。`illya.test` 適合本機開發，沒有公開 DNS 或公開 CA 憑證。公開玩家應優先使用正常 DNS 與受信任的 HTTPS，通常不需要修改 hosts。
 
 ## 使用 stable
 
@@ -128,7 +128,8 @@ hosts 只改 DNS 結果，**不會改變 HTTPS 的 hostname 或憑證驗證**。
 | 客戶端 | 必須以真實客戶端驗證 |
 | --- | --- |
 | Stable | 指定版本 `-devserver` 登入、封包／token、頻道聊天、下載、自訂譜面、score submit、replay、登出／重連 |
-| Lazer source build | 自有 endpoints、OAuth refresh／撤銷、API v2、SignalR negotiation／方法、score token、replay frames、multiplayer／metadata |
-| 官方 lazer release | 尚未驗證；沒有測試證據前維持不支援標示 |
+| 官方 lazer + Kaleidoscope／Transfiguration | 支援版本檢查、啟動前固定端點、獨立資料目錄、連線失敗不回到官方、OAuth 登入／refresh／撤銷、API v2、SignalR、送分／replay、多人遊戲、退出後清理與啟動器異常復原；原生流程仍待驗證 |
+| Lazer source build（開發者比較工具） | 自有 endpoints、OAuth refresh／撤銷、API v2、SignalR negotiation／方法、score token、replay frames、multiplayer／metadata；不作為玩家預設連線方式 |
+| 直接啟動官方 lazer | 尚未驗證任意私服端點切換；請使用上方固定伺服器啟動器流程 |
 
-Kaleidoscope 的單元測試驗證輸入安全、區塊處理、換行／BOM、衝突拒絕、位元組備份、檔案變更檢查、鎖，以及「移除區塊仍保留其他修改」。測試只使用臨時 fixture，從未操作玩家電腦的系統 hosts。這些測試不等於 osu! 客戶端端到端相容性測試。
+Kaleidoscope 的啟動器測試驗證固定伺服器政策、啟動／重新啟動邊界、橋接版本與檔案識別、監護程序及只清理自有 DLL。保留的管理員 CLI 測試另驗證 hosts 區塊、換行／BOM、衝突、備份、檔案變更檢查與還原；它不屬於玩家 GUI 操作。測試只使用隔離 fixture，從未操作玩家電腦的系統 hosts，也不等於原生遊戲端到端相容性測試。

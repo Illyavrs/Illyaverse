@@ -496,7 +496,6 @@
     "scrollUsers": "左右にスクロールすると、ロールやアカウント操作を表示できます。"
   },
   "connect": {
-    "lazerBuild": "開発者向けの代替手順：ソース版テストクライアント",
     "localTesting": "管理者向けローカルテストガイド",
     "title": "接続ガイド",
     "subtitle": "アカウント設定、Kaleidoscope の操作、現在の stable・lazer 互換性。",
@@ -506,7 +505,7 @@
     "accountText": "ここで登録したユーザー名とパスワードを使用します。公式 osu! アカウントとは独立しています。",
     "clientTitle": "ゲームクライアントを選ぶ",
     "stableTitle": "インストール済みの stable を使う",
-    "stableText": "Kaleidoscope で stable の実行ファイルを選びます。ランチャーが Illyaverse の -devserver 引数を設定します。実行中のゲームを閉じ、ランチャーから起動または再起動して、コミュニティアカウントでログインしてください。",
+    "stableText": "Kaleidoscope で stable の実行ファイルを選びます。ランチャーが Illyaverse の -devserver 引数を設定します。起動を押して、コミュニティアカウントでログインしてください。ゲームが実行中の場合は再起動が表示され、押すとゲームを閉じて起動し直します。",
     "stableCommand": "osu!.exe -devserver illya.test",
     "toolTitle": "Kaleidoscope から起動",
     "toolText": "ランチャーの接続先は Illyaverse に設定されています。インストール済みの stable または公式 lazer を選び、ガイドに沿って起動・再起動してください。公開ダウンロードはまだ用意されていないため、まずテスト操作ガイドをご覧ください。",
