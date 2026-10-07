@@ -610,13 +610,14 @@ async fn score_upload_parser_and_resolver_diagnostics_remain_redacted() {
     }
     let _guard = UPLOAD_TEST_LOCK.lock().await;
     let captured = diagnostic_capture();
-    for (disposition, parser, length, variant) in [
-        (r#"form-data; name="Score""#, "unknown", 5, true),
+    for (disposition, parser, length, variant, names_match) in [
+        (r#"form-data; name="Score""#, "unknown", 5, true, true),
         (
             r#"form-data; name="PRIVATE_FIELD_MARKER""#,
             "unknown",
             20,
             false,
+            true,
         ),
         // Multer can find a name-shaped substring inside an unrelated quoted
         // parameter. The bounded resolver identifies the actual parameter.
@@ -624,6 +625,15 @@ async fn score_upload_parser_and_resolver_diagnostics_remain_redacted() {
             r#"form-data; ignored="x; name=score ; extra"; name="PRIVATE_FIELD_MARKER""#,
             "score",
             20,
+            false,
+            false,
+        ),
+        // Categories and lengths alone do not identify parser disagreement.
+        (
+            r#"form-data; ignored="x; name=OTHER_FIELD_MARKERXX ; extra"; name="PRIVATE_FIELD_MARKER""#,
+            "unknown",
+            20,
+            false,
             false,
         ),
     ] {
@@ -641,8 +651,106 @@ async fn score_upload_parser_and_resolver_diagnostics_remain_redacted() {
         assert!(event.contains(&format!("parser_field_category=\"{parser}\"")));
         assert!(event.contains(&format!("resolved_name_length={length}")));
         assert!(event.contains(&format!("score_name_case_variant={variant}")));
+        assert!(event.contains("resolved_name_present=true"));
+        assert!(event.contains("resolved_filename_present=false"));
+        assert!(event.contains(&format!("parser_name_matches_resolved={names_match}")));
         assert!(!event.contains("PRIVATE_FIELD_MARKER"));
+        assert!(!event.contains("OTHER_FIELD_MARKERXX"));
         assert!(!event.contains("ignored="));
+    }
+}
+
+#[tokio::test]
+async fn score_upload_presence_diagnostics_distinguish_parser_and_resolver() {
+    if diagnostic_runs_in_child(
+        "stable_scores::upload_tests::score_upload_presence_diagnostics_distinguish_parser_and_resolver",
+    ) {
+        return;
+    }
+    let _guard = UPLOAD_TEST_LOCK.lock().await;
+    let captured = diagnostic_capture();
+    for (
+        disposition,
+        parser_name,
+        parser_filename,
+        resolved_name,
+        resolved_filename,
+        names_match,
+    ) in [
+        // The resolver accepts parameter-key casing without treating the
+        // case-sensitive name value as a replay field.
+        (
+            r#"attachment; name="Score"; FileName="""#,
+            true,
+            false,
+            true,
+            true,
+            true,
+        ),
+        (
+            r#"attachment; Name="PRIVATE_FIELD_MARKER"; filename="""#,
+            false,
+            true,
+            true,
+            true,
+            false,
+        ),
+        // An explicitly empty name is different from an absent name.
+        (
+            r#"attachment; name=""; filename="""#,
+            true,
+            true,
+            true,
+            true,
+            true,
+        ),
+        (r#"attachment; filename="""#, false, true, false, true, true),
+        ("attachment", false, false, false, false, true),
+        // A filename-shaped substring inside an unrelated quoted value does
+        // not confer replay identity on the part.
+        (
+            r#"attachment; ignored="x; filename=PRIVATE_FILENAME_MARKER ; extra"; name="PRIVATE_FIELD_MARKER""#,
+            true,
+            true,
+            true,
+            false,
+            true,
+        ),
+    ] {
+        let (result, event) = diagnostic_body(
+            custom_disposition_body(disposition, None, &vec![b'x'; SCALAR_BYTES + 1]),
+            &captured,
+        )
+        .await;
+        rejected(
+            result,
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "score_upload_too_large",
+        );
+        for expected in [
+            format!("parser_name_present={parser_name}"),
+            format!("parser_filename_present={parser_filename}"),
+            format!("resolved_name_present={resolved_name}"),
+            format!("resolved_filename_present={resolved_filename}"),
+            format!("parser_name_matches_resolved={names_match}"),
+            "part_limit=32768".to_owned(),
+            "rejection_stage=\"part_limit\"".to_owned(),
+        ] {
+            assert!(
+                event.contains(&expected),
+                "missing diagnostic {expected}: {event}"
+            );
+        }
+        for marker in [
+            "PRIVATE_FIELD_MARKER",
+            "PRIVATE_FILENAME_MARKER",
+            "ignored=",
+        ] {
+            assert!(
+                !event.contains(marker),
+                "untrusted header values must remain redacted"
+            );
+        }
     }
 }
 
@@ -686,6 +794,8 @@ async fn score_upload_uppercase_disposition_rejections_remain_redacted() {
             "name_present=false",
             "name_length=0",
             "filename_present=false",
+            "parser_name_present=false",
+            "parser_filename_present=false",
             "binary_mime=false",
             "disposition_type=\"attachment\"",
             "disposition_name_parameter_ci=true",
@@ -703,6 +813,16 @@ async fn score_upload_uppercase_disposition_rejections_remain_redacted() {
             );
         }
         assert!(event.contains(&format!("content_type_category=\"{category}\"")));
+        for unresolved in [
+            "resolved_name_present=",
+            "resolved_filename_present=",
+            "parser_name_matches_resolved=",
+        ] {
+            assert!(
+                !event.contains(unresolved),
+                "invalid disposition must not publish resolved booleans: {event}"
+            );
+        }
     }
 }
 
@@ -789,6 +909,11 @@ async fn score_upload_diagnostics_exclude_untrusted_markers() {
         "name_present=true",
         "name_length=22",
         "filename_present=true",
+        "parser_name_present=true",
+        "parser_filename_present=true",
+        "resolved_name_present=true",
+        "resolved_filename_present=true",
+        "parser_name_matches_resolved=true",
         "binary_mime=true",
         "content_type_category=\"octet-stream\"",
         "disposition_type=\"form-data\"",

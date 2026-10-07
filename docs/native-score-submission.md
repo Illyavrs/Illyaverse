@@ -14,6 +14,8 @@ Multer 3.1 的內建參數辨識區分大小寫，會漏認 `Name`／`FileName`�
 
 新增的 multipart 拒絕事件只記錄固定欄位分類、標頭類型分類、參數存在與大小寫 booleans、byte counts、限制與 stage；送分拒絕事件只記錄固定 error code 和 HTTP status。這兩種事件不記錄欄位原始名稱、filename、header values、密碼、hash 值、decrypted envelope 或 replay 內容。
 
+`parser_name_present`、`parser_filename_present` 分別表示 Multer 提供的 name／filename；既有 `name_present`、`filename_present` 保留相同 parser 意義。Header resolver 成功後，才記錄 `resolved_name_present`、`resolved_filename_present` 和 `parser_name_matches_resolved`。空字串參數仍算存在；比對保留 name 值大小寫，並區分不存在與空字串。Resolver 拒絕不合法 header 時不記錄這三個 booleans，避免將無法解析誤認為合法但沒有參數。這些欄位可分辨內建 parser 漏認不同大小寫的參數名稱，或誤認 quoted value 內的參數形狀字串；不會輸出該字串或調整分類與大小限制。
+
 2026-10-07 本機人工作業確認 stable 有送出 POST，但收到 413，資料庫仍沒有成績。診斷顯示第 14 個項目沒有被內建 parser 辨識出 name／filename，超過 32 KiB 被拒絕。不同大小寫的附件參數會造成相同失敗，已由合成 fixture 重現並修正；該次真實客戶端的完整標頭分類與修正後送分仍待人工作業確認，不能將隔離通過記為 native client pass。
 
 同日 13:58–13:59 UTC 的真人重試仍收到 413：第 14 個項目有五 bytes 的 parser name，但 resolver 的固定分類仍為 unknown；沒有 filename 參數或 Content-Type，內容約 33–64 KiB。因此先前的大小寫附件修正不能視為這次原生格式已修復。追加的安全診斷分別記錄 parser／resolver 固定分類、resolver name 長度，以及是否為 score 的 ASCII 大小寫變體；仍不記錄原始欄位名稱或 payload。目前尚待更新後的真人請求來辨識差異，未放寬未知文字欄位上限。
