@@ -19,6 +19,46 @@ use uuid::Uuid;
 
 const IMPORT_PATH: &str = "/api/v1/beatmaps/import/archive";
 
+#[tokio::test]
+#[ignore = "requires ILLYA_TEST_DATABASE_URL; owned disposable PostgreSQL 17"]
+async fn official_archive_withdrawal_blocks_cold_inflight_and_exact_retry_then_restores() {
+    let server = OfficialServer::start().await;
+    let cold = ArchiveSet::new(6041);
+    let retained = ArchiveSet::new(6042);
+    let inflight = ArchiveSet::new(6043);
+    for set in [&cold, &retained, &inflight] {
+        server.add_set(set.id, set.metadata.clone()).await;
+    }
+    let fixture = MutationFixture::new("archive_withdrawal", server.origin.clone()).await;
+    let state = fixture.state.clone();
+    let app = fixture.app.clone();
+    let result=tokio::spawn(async move {
+        let (_,_,_,cookie)=actor(&state,"ArchiveAvailability",&["beatmaps.import","beatmaps.moderate"]).await;
+        assert_eq!(crate::beatmap_availability_tests::change(&app,&cookie,cold.id,true,0,"Cold set withheld").await.0,StatusCode::OK);
+        assert_eq!(import(&app,&cookie,cold.id,&cold.payload).await.0,StatusCode::GONE);
+        assert!(server.set_queries().await.is_empty());assert_eq!(file_count(&state.maps_root).await,0);
+        let (status,published)=import(&app,&cookie,retained.id,&retained.payload).await;assert_eq!(status,StatusCode::OK,"{published}");
+        let before=snapshot(&state).await;let files=files_snapshot(&state.maps_root).await;let queries=server.set_queries().await;
+        assert_eq!(crate::beatmap_availability_tests::change(&app,&cookie,retained.id,true,0,"Published set withheld").await.0,StatusCode::OK);
+        assert_eq!(import(&app,&cookie,retained.id,&retained.payload).await.0,StatusCode::GONE);assert_eq!(server.set_queries().await,queries);assert_eq!(files_snapshot(&state.maps_root).await,files);
+        for map in &retained.maps {
+            let id=id_for(&published,map.id);
+            assert_eq!(get_bytes(&app,&format!("/api/v1/beatmaps/{id}/download")).await.0,StatusCode::GONE);
+            let (status,value)=request(&app,"/api/v1/internal/beatmaps/resolve",None,true,"application/json",json!({"user_id":sqlx::query_scalar::<_,i64>("SELECT id FROM users WHERE username='ArchiveAvailability'").fetch_one(&state.db).await.unwrap(),"official_id":map.id}).to_string().into_bytes()).await;
+            assert_eq!(status,StatusCode::GONE,"{value}");
+        }
+        let after=snapshot(&state).await;assert_eq!(before.maps,after.maps);assert_eq!(before.archives,after.archives);assert_eq!(before.members,after.members);assert_eq!(before.aliases,after.aliases);
+        let pause=server.pause_next_set().await;let a=app.clone();let c=cookie.clone();let payload=inflight.payload.clone();let set_id=inflight.id;
+        let job=tokio::spawn(async move {import(&a,&c,set_id,&payload).await});pause.wait_entered().await;
+        assert_eq!(crate::beatmap_availability_tests::change(&app,&cookie,inflight.id,true,0,"Withdraw while archive metadata waits").await.0,StatusCode::OK);
+        pause.release();assert_eq!(job.await.unwrap().0,StatusCode::GONE);assert_eq!(files_snapshot(&state.maps_root).await,files);
+        assert_eq!(crate::beatmap_availability_tests::change(&app,&cookie,retained.id,false,1,"Restore original archive").await.0,StatusCode::OK);
+        let (status,retry)=import(&app,&cookie,retained.id,&retained.payload).await;assert_eq!(status,StatusCode::OK,"{retry}");assert_eq!(retry["idempotent"],true);assert_eq!(ids(&retry),ids(&published));assert_eq!(files_snapshot(&state.maps_root).await,files);
+        for map in &retained.maps { let id=id_for(&retry,map.id); assert_eq!(get_bytes(&app,&format!("/api/v1/beatmaps/{id}/download")).await,(StatusCode::OK,retained.payload.clone())); }
+    }).await;
+    fixture.finish(result).await;
+}
+
 #[derive(Clone)]
 struct ArchiveMap {
     id: i64,

@@ -10,7 +10,7 @@ use resonance_protocol::{
     submission::{StableSubmission, decrypt_score_field, validate_compressed_frames},
 };
 use serde_json::{Value, json};
-use sqlx::Row;
+use sqlx::{Row, postgres::PgRow};
 use std::collections::HashMap;
 
 #[cfg(test)]
@@ -453,6 +453,105 @@ pub async fn submit(
     result
 }
 
+fn duplicate_payload() -> ApiError {
+    ApiError(StatusCode::CONFLICT, "duplicate_score_payload_mismatch")
+}
+
+async fn saved_score(state: &AppState, ingestion_key: &str) -> Result<Option<PgRow>, ApiError> {
+    Ok(sqlx::query("SELECT s.*,b.md5 AS beatmap_md5 FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id WHERE s.ingestion_key=$1")
+        .bind(ingestion_key).fetch_optional(&state.pool).await?)
+}
+
+fn judgement_accuracy(submission: &StableSubmission) -> Result<f64, ApiError> {
+    let [a, b, c, g, k, m] = submission.hit_counts.map(f64::from);
+    let (numerator, denominator) = match submission.mode {
+        0 => (6.0 * a + 2.0 * b + c, 6.0 * (a + b + c + m)),
+        1 => (2.0 * a + b, 2.0 * (a + b + m)),
+        2 => (a + b + c, a + b + c + k + m),
+        3 => (
+            6.0 * (g + a) + 4.0 * k + 2.0 * b + c,
+            6.0 * (g + a + k + b + c + m),
+        ),
+        _ => return Err(duplicate_payload()),
+    };
+    if denominator == 0.0 {
+        return Err(duplicate_payload());
+    }
+    Ok(100.0 * numerator / denominator)
+}
+
+fn require_saved_payload(
+    row: &PgRow,
+    submission: &StableSubmission,
+    user_id: i64,
+    map_id: Option<i64>,
+    ingestion_key: &str,
+    variant: illya_domain::ScoreVariant,
+) -> Result<(), ApiError> {
+    // Online checksum only binds n300+n100, and concatenates other counts.
+    // Compare every stored judgement independently before treating it as a
+    // retry. Old JSON without the optional tick counters normalizes to zero.
+    let h: illya_domain::HitCounts =
+        serde_json::from_value(row.get("hit_counts")).map_err(|_| duplicate_payload())?;
+    let accuracy = row.get::<f64, _>("accuracy");
+    let expected_accuracy = judgement_accuracy(submission)?;
+    if row.get::<i64, _>("user_id") != user_id
+        || map_id.is_some_and(|map| row.get::<i64, _>("beatmap_id") != map)
+        || !row.get::<String, _>("beatmap_md5").eq_ignore_ascii_case(&submission.beatmap_md5)
+        || row.get::<Option<String>, _>("ingestion_key").as_deref() != Some(ingestion_key)
+        || row.get::<String, _>("client") != "stable"
+        || row.get::<i16, _>("mode") != i16::from(submission.mode)
+        || row.get::<String, _>("score_variant") != variant.as_str()
+        || row.get::<i64, _>("score") != i64::from(submission.total_score)
+        || row.get::<i32, _>("max_combo") != i32::from(submission.max_combo)
+        || row.get::<i64, _>("mods") != i64::from(submission.mods)
+        || row.get::<bool, _>("passed") != submission.passed
+        || [h.n300, h.n100, h.n50, h.geki, h.katu, h.misses] != submission.hit_counts.map(u32::from)
+        || h.large_tick_hits != 0 || h.small_tick_hits != 0 || h.slider_end_hits != 0
+        || !accuracy.is_finite()
+        // Float8/JSON round trips can differ at the last few binary digits.
+        // This is far below one possible u16 judgement's accuracy contribution.
+        || (accuracy - expected_accuracy).abs() > 1e-7
+    {
+        return Err(duplicate_payload());
+    }
+    // For missing-replay legacy rows, the validated checksum/key is the only
+    // persisted time/version/perfect/rank identity. Existing replay metadata
+    // supplies an independent identity check below; review/PP are never inputs.
+    Ok(())
+}
+
+fn require_replay_identity(
+    existing: &resonance_protocol::replay::LegacyReplay<'_>,
+    expected: &resonance_protocol::replay::LegacyReplay<'_>,
+) -> Result<(), ApiError> {
+    if existing.mode != expected.mode
+        || existing.client_version != expected.client_version
+        || !existing
+            .beatmap_md5
+            .eq_ignore_ascii_case(expected.beatmap_md5)
+        || existing.player_name != expected.player_name
+        || (!existing.replay_md5.is_empty()
+            && !existing
+                .replay_md5
+                .eq_ignore_ascii_case(expected.replay_md5))
+        || existing.hit_counts != expected.hit_counts
+        || existing.total_score != expected.total_score
+        || existing.max_combo != expected.max_combo
+        || existing.perfect != expected.perfect
+        || existing.mods != expected.mods
+        || existing.timestamp_ticks != expected.timestamp_ticks
+        || existing
+            .online_score_id
+            .is_some_and(|id| Some(id) != expected.online_score_id)
+    {
+        return Err(duplicate_payload());
+    }
+    // Older containers may omit checksum/online ID or include a life-bar string;
+    // neither absence changes the independently stored immutable score context.
+    Ok(())
+}
+
 async fn submit_inner(state: AppState, multipart: Multipart) -> Result<Response, ApiError> {
     let ScoreUpload {
         fields,
@@ -536,9 +635,48 @@ async fn submit_inner(state: AppState, multipart: Multipart) -> Result<Response,
             "target_practice_submission_unavailable",
         ));
     }
-    let Some(map_id) =
-        crate::native_maps::resolve_checksum(&state, player.id, &submission.beatmap_md5).await?
-    else {
+    let variant = illya_domain::ScoreVariant::from_legacy(submission.mode, submission.mods)
+        .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_score_variant"))?;
+    let ingestion_key = format!("stable:{}:{}", player.id, submission.checksum);
+    // A persisted score owns its immutable identity even when the set is later
+    // withdrawn. Only exact existing receipts bypass active discovery.
+    let saved = saved_score(&state, &ingestion_key).await?;
+    let resolved = if let Some(saved) = saved {
+        require_saved_payload(
+            &saved,
+            &submission,
+            player.id,
+            None,
+            &ingestion_key,
+            variant,
+        )?;
+        Some(saved.get::<i64, _>("beatmap_id"))
+    } else {
+        match crate::native_maps::resolve_checksum(&state, player.id, &submission.beatmap_md5).await
+        {
+            Ok(resolved) => resolved,
+            Err(error) if error.0 == StatusCode::GONE => {
+                // A publisher can win between the initial lookup and an active
+                // discovery fence. The winner must satisfy the same payload
+                // guard before it can establish the retained retry exception.
+                if let Some(saved) = saved_score(&state, &ingestion_key).await? {
+                    require_saved_payload(
+                        &saved,
+                        &submission,
+                        player.id,
+                        None,
+                        &ingestion_key,
+                        variant,
+                    )?;
+                    Some(saved.get::<i64, _>("beatmap_id"))
+                } else {
+                    return Err(error);
+                }
+            }
+            Err(error) => return Err(error),
+        }
+    };
+    let Some(map_id) = resolved else {
         return Ok("error: beatmap".into_response());
     };
     let map = sqlx::query("SELECT id,mode,native_id,native_set_id FROM beatmaps WHERE id=$1")
@@ -570,6 +708,12 @@ async fn submit_inner(state: AppState, multipart: Multipart) -> Result<Response,
     let [n300, n100, n50, geki, katu, misses] = submission.hit_counts;
     let response=state.http.post(format!("{}/api/v1/internal/scores",state.sanctuary_url.trim_end_matches('/'))).header("x-illya-service-key",state.service_key.as_str()).json(&json!({"user_id":player.id,"beatmap_id":map_id,"mode":submission.mode,"score":submission.total_score,"accuracy":0,"max_combo":submission.max_combo,"mods":submission.mods,"passed":submission.passed,"hit_counts":{"n300":n300,"n100":n100,"n50":n50,"geki":geki,"katu":katu,"misses":misses},"client":"stable","ingestion_key":format!("stable:{}:{}",player.id,submission.checksum)})).send().await.map_err(|_|ApiError(StatusCode::SERVICE_UNAVAILABLE,"score_ingestion_unavailable"))?;
     if !response.status().is_success() {
+        if response.status() == StatusCode::GONE {
+            return Err(ApiError(StatusCode::GONE, "beatmap_withdrawn"));
+        }
+        if response.status() == StatusCode::CONFLICT {
+            return Err(duplicate_payload());
+        }
         return Err(ApiError(
             StatusCode::BAD_REQUEST,
             "score_rejected_by_ingestion",
@@ -583,34 +727,40 @@ async fn submit_inner(state: AppState, multipart: Multipart) -> Result<Response,
         StatusCode::BAD_GATEWAY,
         "invalid_ingestion_response",
     ))?;
+    let mut tx = state.pool.begin().await?;
+    let row = sqlx::query("SELECT s.*,b.md5 AS beatmap_md5 FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id WHERE s.id=$1 FOR UPDATE OF s")
+        .bind(score_id).fetch_optional(&mut *tx).await?
+        .ok_or(ApiError(StatusCode::BAD_GATEWAY, "invalid_ingestion_response"))?;
+    // This second guard covers a winner committed during the ingestion HTTP
+    // request/shared-set wait and protects an orphaned score before attachment.
+    require_saved_payload(
+        &row,
+        &submission,
+        player.id,
+        Some(map_id),
+        &ingestion_key,
+        variant,
+    )?;
     if submission.passed {
-        let mut tx = state.pool.begin().await?;
-        let row =
-            sqlx::query("SELECT replay_path FROM scores WHERE id=$1 AND user_id=$2 FOR UPDATE")
-                .bind(score_id)
-                .bind(player.id)
-                .fetch_one(&mut *tx)
-                .await?;
+        let container = submission.replay_container(
+            version
+                .parse()
+                .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_score_version"))?,
+            &replay,
+            score_id,
+        )?;
+        let expected = resonance_protocol::replay::LegacyReplay::parse(&container)?;
         if let Some(path) = row.get::<Option<String>, _>("replay_path") {
             let existing = common::stored_file(&state, &path, "replays", 16_777_216).await?;
-            if resonance_protocol::replay::LegacyReplay::parse(&existing)?.compressed_frames
-                != replay
-            {
+            let existing = resonance_protocol::replay::LegacyReplay::parse(&existing)?;
+            if existing.compressed_frames != replay {
                 return Err(ApiError(
                     StatusCode::CONFLICT,
                     "duplicate_score_replay_mismatch",
                 ));
             }
+            require_replay_identity(&existing, &expected)?;
         } else {
-            let container = submission.replay_container(
-                version
-                    .parse()
-                    .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_score_version"))?,
-                &replay,
-                score_id,
-            )?;
-            // Verify our exported container before publishing the stored path.
-            resonance_protocol::replay::LegacyReplay::parse(&container)?;
             let filename = format!("stable-{score_id}-{}.osr", uuid::Uuid::new_v4());
             let path = state.storage.join("replays").join(&filename);
             tokio::fs::write(&path, &container).await?;
@@ -626,8 +776,8 @@ async fn submit_inner(state: AppState, multipart: Multipart) -> Result<Response,
             }
             sqlx::query("INSERT INTO audit_events(actor_id,action,target_type,target_id,details) VALUES($1,'scores.stable_ingest','score',$2,$3)").bind(player.id).bind(score_id.to_string()).bind(json!({"checksum_matches":true,"client_matches":true,"frames":frame_count,"gameplay_verified":false,"replay_bytes":replay.len(),"rank":submission.rank,"ended_at":submission.played_at.and_utc()})).execute(&mut *tx).await?;
         }
-        tx.commit().await?;
     }
+    tx.commit().await?;
     let notification = wire::string_packet(
         wire::server::NOTIFICATION,
         &format!(

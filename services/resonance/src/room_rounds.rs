@@ -15,6 +15,25 @@ pub(crate) async fn record_playlist(
     room_id: i64,
     snapshot: &Value,
 ) -> Result<i64, ApiError> {
+    let native = snapshot["beatmapID"]
+        .as_i64()
+        .ok_or_else(|| invalid("invalid_playlist_map"))?;
+    crate::native_maps::require_id(native)?;
+    let set: i64 = sqlx::query_scalar("SELECT native_set_id FROM beatmaps WHERE native_id=$1")
+        .bind(native)
+        .fetch_optional(&mut **tx)
+        .await?
+        .ok_or_else(|| invalid("beatmap_not_found"))?;
+    crate::native_maps::lock_active_set(tx, set).await?;
+    record_retained_playlist(tx, room_id, snapshot).await
+}
+
+/// Expiring a frozen playlist item records history, not new map admission.
+pub(crate) async fn record_retained_playlist(
+    tx: &mut Transaction<'_, Postgres>,
+    room_id: i64,
+    snapshot: &Value,
+) -> Result<i64, ApiError> {
     let item = snapshot["id"]
         .as_i64()
         .filter(|id| *id > 0)
@@ -129,6 +148,7 @@ pub(crate) async fn freeze_round(
         .await?
         .ok_or_else(|| invalid("beatmap_not_found"))?;
     let checksum: String = map.get("md5");
+    crate::native_maps::lock_active_set(tx, map.get("native_set_id")).await?;
     if snapshot["beatmapChecksum"] != checksum {
         return Err(invalid("beatmap_checksum_mismatch"));
     }
@@ -196,6 +216,11 @@ pub(crate) async fn mark_playing(
     tx: &mut Transaction<'_, Postgres>,
     round_id: i64,
 ) -> Result<(), ApiError> {
+    let sets: Vec<i64> = sqlx::query_scalar("SELECT DISTINCT b.native_set_id FROM lazer_room_round_participants p JOIN beatmaps b ON b.id=p.beatmap_id WHERE p.round_id=$1 ORDER BY b.native_set_id")
+        .bind(round_id).fetch_all(&mut **tx).await?;
+    for set in sets {
+        crate::native_maps::lock_active_set(tx, set).await?;
+    }
     let changed = sqlx::query("UPDATE lazer_room_rounds SET status='playing' WHERE id=$1 AND status='loading' AND expires_at>now()")
         .bind(round_id).execute(&mut **tx).await?.rows_affected();
     if changed != 1 {

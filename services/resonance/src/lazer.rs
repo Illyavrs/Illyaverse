@@ -356,7 +356,7 @@ async fn user_scores(
         ));
     }
     let ids = match kind.as_str() {
-        "best" => sqlx::query_scalar::<_,i64>("WITH best AS (SELECT DISTINCT ON(s.beatmap_id) s.id,s.pp FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id WHERE s.user_id=$1 AND s.mode=$2 AND s.score_variant=$3 AND s.verification='verified' AND s.passed AND s.pp_eligible AND b.status='ranked' ORDER BY s.beatmap_id,s.pp DESC,s.id) SELECT id FROM best ORDER BY pp DESC,id LIMIT $4 OFFSET $5")
+        "best" => sqlx::query_scalar::<_,i64>("WITH best AS (SELECT DISTINCT ON(s.beatmap_id) s.id,s.pp FROM scores s JOIN active_beatmaps b ON b.id=s.beatmap_id WHERE s.user_id=$1 AND s.mode=$2 AND s.score_variant=$3 AND s.verification='verified' AND s.passed AND s.pp_eligible AND b.status='ranked' ORDER BY s.beatmap_id,s.pp DESC,s.id) SELECT id FROM best ORDER BY pp DESC,id LIMIT $4 OFFSET $5")
             .bind(owner.id).bind(i16::from(ruleset)).bind(variant.as_str()).bind(limit).bind(offset).fetch_all(&state.pool).await?,
         "recent" => {
             let include_fails = match query.get("include_fails").map(String::as_str).unwrap_or("0") {
@@ -370,7 +370,10 @@ async fn user_scores(
     };
     let mut scores = Vec::with_capacity(ids.len());
     for score in ids {
-        scores.push(score_json(&state, score, &viewer).await?);
+        let value = score_json(&state, score, &viewer).await?;
+        if kind != "best" || value["beatmap_withdrawn"] != true {
+            scores.push(value);
+        }
     }
     Ok(Json(json!(scores)))
 }
@@ -492,7 +495,7 @@ async fn create_score(
         crate::native_maps::resolve_checksum_for_id(&state, player.id, &input.beatmap_hash, id)
             .await?
             .ok_or(ApiError(StatusCode::NOT_FOUND, "beatmap_not_found"))?;
-    let map = sqlx::query("SELECT id,native_id,md5,mode FROM beatmaps WHERE id=$1")
+    let map = sqlx::query("SELECT id,native_id,native_set_id,md5,mode FROM beatmaps WHERE id=$1")
         .bind(internal)
         .fetch_optional(&state.pool)
         .await?
@@ -517,6 +520,7 @@ async fn create_score(
     // and bearer session only for the short token write after that wait.
     let mut tx = state.pool.begin().await?;
     common::lazer_account_in_tx(&mut tx, &headers, player.id).await?;
+    crate::native_maps::lock_active_set(&mut tx, map.get("native_set_id")).await?;
     let token:i64=sqlx::query_scalar("INSERT INTO lazer_score_tokens(user_id,beatmap_id,ruleset_id,version_hash,expires_at,scope) VALUES($1,$2,$3,$4,$5,'solo') RETURNING id").bind(player.id).bind(internal).bind(i16::from(input.ruleset_id)).bind(input.version_hash).bind(Utc::now()+Duration::hours(6)).fetch_one(&mut *tx).await?;
     tx.commit().await?;
     Ok(Json(json!({"id":token})))
@@ -551,6 +555,7 @@ async fn submit_score(
         ));
     }
     let mut tx = state.pool.begin().await?;
+    common::lazer_account_in_tx(&mut tx, &headers, player.id).await?;
     let token=sqlx::query("SELECT t.* FROM lazer_score_tokens t JOIN beatmaps b ON b.id=t.beatmap_id WHERE t.id=$1 AND t.user_id=$2 AND t.scope='solo' AND b.native_id=$3 AND (t.expires_at>now() OR t.score_id IS NOT NULL) FOR UPDATE OF t").bind(token_id).bind(player.id).bind(map_id).fetch_optional(&mut *tx).await?.ok_or(ApiError(StatusCode::NOT_FOUND,"invalid_score_token"))?;
     let map_id: i64 = token.get("beatmap_id");
     if token.get::<i16, _>("ruleset_id") != i16::from(input.ruleset_id) {
@@ -563,11 +568,48 @@ async fn submit_score(
     {
         return Err(ApiError(StatusCode::CONFLICT, "score_token_already_used"));
     }
-    let score_id = if let Some(score_id) = token.get::<Option<i64>, _>("score_id") {
+    if token
+        .get::<Option<chrono::DateTime<Utc>>, _>("revoked_at")
+        .is_some()
+    {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "score_token_revoked"));
+    }
+    let variant = ScoreVariant::from_legacy(input.ruleset_id, mods)
+        .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_score_variant"))?;
+    if token.get::<Option<i64>, _>("score_id").is_none()
+        && let Err(error) = crate::native_maps::lock_score_admission(
+            &mut tx,
+            token_id,
+            player.id,
+            map_id,
+            i16::from(input.ruleset_id),
+            variant,
+        )
+        .await
+    {
+        if error.0 == StatusCode::GONE && token.get::<String, _>("processing_status") == "received"
+        {
+            sqlx::query("UPDATE lazer_score_tokens SET processing_error='beatmap_withdrawn',retry_at=now()+interval '5 minutes' WHERE id=$1 AND scope='solo' AND score_id IS NULL")
+                .bind(token_id).execute(&mut *tx).await?;
+            tx.commit().await?;
+        }
+        return Err(error);
+    }
+    // Persist the exact intent before releasing every database lock for HTTP.
+    // Withdrawal cannot discard an accepted intent or create an unbound retry.
+    sqlx::query("UPDATE lazer_score_tokens SET submission=$2,received_at=COALESCE(received_at,now()),processing_status=CASE WHEN score_id IS NULL THEN 'received' ELSE processing_status END WHERE id=$1")
+        .bind(token_id).bind(&submission).execute(&mut *tx).await?;
+    let previous_score = token.get::<Option<i64>, _>("score_id");
+    tx.commit().await?;
+    let score_id = if let Some(score_id) = previous_score {
         score_id
     } else {
         let response=state.http.post(format!("{}/api/v1/internal/scores",state.sanctuary_url.trim_end_matches('/'))).header("x-illya-service-key",state.service_key.as_str()).json(&json!({"user_id":player.id,"beatmap_id":map_id,"mode":input.ruleset_id,"score":input.total_score,"accuracy":input.accuracy*100.0,"max_combo":input.max_combo,"mods":mods,"api_mods":input.mods,"passed":input.passed,"hit_counts":input.legacy_hit_counts(),"native_submission":input,"client":"lazer","ingestion_key":format!("lazer:{token_id}")})).send().await.map_err(|_|ApiError(StatusCode::SERVICE_UNAVAILABLE,"score_ingestion_unavailable"))?;
         if !response.status().is_success() {
+            if response.status() == StatusCode::GONE {
+                sqlx::query("UPDATE lazer_score_tokens SET processing_error='beatmap_withdrawn' WHERE id=$1 AND scope='solo' AND score_id IS NULL").bind(token_id).execute(&state.pool).await?;
+                return Err(ApiError(StatusCode::GONE, "beatmap_withdrawn"));
+            }
             return Err(ApiError(
                 StatusCode::BAD_REQUEST,
                 "score_rejected_by_ingestion",
@@ -581,17 +623,52 @@ async fn submit_score(
             StatusCode::BAD_GATEWAY,
             "invalid_ingestion_response",
         ))?;
+        let mut tx = state.pool.begin().await?;
+        common::lazer_account_in_tx(&mut tx, &headers, player.id).await?;
+        let current = sqlx::query("SELECT submission,score_id,expires_at,revoked_at FROM lazer_score_tokens WHERE id=$1 AND user_id=$2 AND scope='solo' AND beatmap_id=$3 AND ruleset_id=$4 FOR UPDATE")
+            .bind(token_id).bind(player.id).bind(map_id).bind(i16::from(input.ruleset_id)).fetch_optional(&mut *tx).await?
+            .ok_or(ApiError(StatusCode::NOT_FOUND, "invalid_score_token"))?;
+        if current.get::<Option<Value>, _>("submission").as_ref() != Some(&submission)
+            || current
+                .get::<Option<i64>, _>("score_id")
+                .is_some_and(|saved| saved != score_id)
+        {
+            return Err(ApiError(StatusCode::CONFLICT, "score_token_already_used"));
+        }
+        if current
+            .get::<Option<chrono::DateTime<Utc>>, _>("revoked_at")
+            .is_some()
+            || (current.get::<chrono::DateTime<Utc>, _>("expires_at") <= Utc::now()
+                && current.get::<Option<i64>, _>("score_id").is_none())
+        {
+            return Err(ApiError(StatusCode::BAD_REQUEST, "score_token_expired"));
+        }
+        let saved = sqlx::query("SELECT native_submission,user_id,beatmap_id,mode,client,ingestion_key FROM scores WHERE id=$1 FOR SHARE")
+            .bind(score_id).fetch_optional(&mut *tx).await?.ok_or(ApiError(StatusCode::BAD_GATEWAY, "invalid_ingestion_response"))?;
+        if saved.get::<i64, _>("user_id") != player.id
+            || saved.get::<i64, _>("beatmap_id") != map_id
+            || saved.get::<i16, _>("mode") != i16::from(input.ruleset_id)
+            || saved.get::<String, _>("client") != "lazer"
+            || saved.get::<Option<String>, _>("ingestion_key").as_deref()
+                != Some(format!("lazer:{token_id}").as_str())
+            || saved.get::<Option<Value>, _>("native_submission").as_ref() != Some(&submission)
+        {
+            return Err(ApiError(
+                StatusCode::CONFLICT,
+                "score_ingestion_link_mismatch",
+            ));
+        }
         sqlx::query(
-            "UPDATE lazer_score_tokens SET consumed_at=now(),score_id=$2,submission=$3 WHERE id=$1",
+            "UPDATE lazer_score_tokens SET consumed_at=now(),score_id=$2,submission=$3,processing_status='processed',processing_error=NULL WHERE id=$1",
         )
         .bind(token_id)
         .bind(score_id)
         .bind(&submission)
         .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
         score_id
     };
-    tx.commit().await?;
     if let Err(error) = crate::replay_capture::finalize(&state, player.id, token_id).await {
         tracing::warn!(
             score_id,
@@ -658,6 +735,16 @@ pub(crate) async fn score_json_from_row(
         json!({"great":count("n300"),"ok":count("n100"),"meh":count("n50"),"perfect":count("geki"),"good":count("katu"),"miss":count("misses")})
     };
     let mut output = json!({"id":id,"user_id":owner.id,"user":user_json(&owner),"ruleset_id":row.get::<i16,_>("mode"),"beatmap_id":row.get::<i64,_>("native_map_id"),"total_score":row.get::<Option<i64>,_>("standardised_score").unwrap_or_else(||if stable{0}else{row.get::<i64,_>("score")}),"accuracy":row.get::<f64,_>("accuracy")/100.0,"max_combo":row.get::<i32,_>("max_combo"),"passed":row.get::<bool,_>("passed"),"pp":row.get::<f64,_>("pp"),"mods":submission.get("mods").cloned().unwrap_or(json!(legacy_mods)),"statistics":submission.get("statistics").cloned().unwrap_or(stats),"maximum_statistics":submission.get("maximum_statistics").cloned().unwrap_or(json!({})),"ended_at":audit.get("ended_at").cloned().unwrap_or(json!(row.get::<chrono::DateTime<Utc>,_>("created_at"))),"has_replay":row.get::<Option<String>,_>("replay_path").is_some(),"ranked":verified&&row.get::<String,_>("map_status")=="ranked"&&row.get::<bool,_>("pp_eligible"),"processed":true,"position":null,"scores_around":null,"verification":row.get::<String,_>("verification")});
+    let active: bool = sqlx::query_scalar(
+        "SELECT illya_beatmapset_active(native_set_id) FROM beatmaps WHERE id=$1",
+    )
+    .bind(row.get::<i64, _>("beatmap_id"))
+    .fetch_one(&state.pool)
+    .await?;
+    if !active {
+        output["ranked"] = json!(false);
+    }
+    output["beatmap_withdrawn"] = json!(!active);
     output["replay_complete"] = json!(row.get::<Option<bool>, _>("replay_complete"));
     output["score_variant"] = json!(row.get::<String, _>("score_variant"));
     if let Some(grade) = grade {

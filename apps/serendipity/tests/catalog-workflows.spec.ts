@@ -77,7 +77,7 @@ async function moderationFixtures(page: Page, withMaps = false) {
   const unexpected: string[] = [];
   const browserErrors: string[] = [];
   const queries: string[] = [];
-  const writes: { id: number; verification: string }[] = [];
+  const writes: { id: number; body: unknown }[] = [];
   let pending = Array.from({ length: 25 }, (_, index) => ({
     ...score(98600 + index), title: `Pending catalogue fixture ${index + 1}`, verification: 'pending',
   }));
@@ -107,8 +107,7 @@ async function moderationFixtures(page: Page, withMaps = false) {
     }
     if (method === 'PATCH' && /^\/admin\/scores\/\d+$/.test(pathname)) {
       const id = Number(pathname.split('/').at(-1));
-      const { verification } = request.postDataJSON() as { verification: string };
-      writes.push({ id, verification });
+      writes.push({ id, body: request.postDataJSON() });
       pending = pending.filter((item) => item.id !== id);
       return route.fulfill({ json: { ok: true } });
     }
@@ -127,14 +126,20 @@ for (const [action, verification] of [['Approve', 'verified'], ['Reject', 'rejec
   test(`pending queue returns to page 1 after its final page-2 score is ${verification}`, async ({ page }) => {
     const state = await moderationFixtures(page);
     await page.goto('/admin');
+    const scores = page.getByRole('button', { name: 'Scores', exact: true });
+    await scores.click();
+    await expect(scores).toHaveAttribute('aria-pressed', 'true');
     await expect(page.locator('.pagination')).toContainText('1 / 2');
     await page.locator('.pagination').getByRole('button', { name: 'Next', exact: true }).click();
     await expect(page.locator('.pagination')).toContainText('2 / 2');
     await expect(page.locator('.data-table tbody tr')).toHaveCount(1);
-    await page.getByRole('button', { name: action, exact: true }).click();
+    const row = page.locator('.data-table tbody tr');
+    await expect(row).toContainText('Pending catalogue fixture 25');
+    await row.getByRole('button', { name: action, exact: true }).click();
+    await expect(page.getByRole('status')).toHaveText('Administrative change saved');
     await expect(page.locator('.data-table tbody tr')).toHaveCount(24);
     await expect(page.locator('.pagination')).toHaveCount(0);
-    expect(state.writes).toEqual([{ id: 98624, verification }]);
+    expect(state.writes).toEqual([{ id: 98624, body: { verification } }]);
     expect(state.queries.at(-1)).toContain('/scores?verification=pending&page=1&page_size=24');
     expect(state.queries.filter((query) => query === '/scores?verification=pending&page=1&page_size=24').length).toBeGreaterThanOrEqual(2);
     expect(state.unexpected).toEqual([]);

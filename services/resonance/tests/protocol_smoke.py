@@ -843,7 +843,7 @@ def run():
     admin_oauth = gateway.json("POST", "/oauth/token", {"grant_type": "password", "username": admin_name, "password": admin_password})
     admin_bearer = {"Authorization": "Bearer " + admin_oauth["access_token"]}
 
-    def encrypted_rx(n300=None, n100=0, mode=0, expected=200):
+    def encrypted_rx(n300=None, n100=0, mode=0, expected=200, played_at=played_at):
         n300 = rx_count if n300 is None else n300
         rank = "X" if n100 == 0 else "B"
         rx_checksum = digest(f"chickenmcnuggets{n300 + n100}o1500smustard00uu{map_hash}{rx_count}True{player_name}0{rank}128QTrue{mode}{version}{played_at}{client_hash}")
@@ -988,6 +988,169 @@ def run():
     assert admin.json("GET", f"/api/v1/scores?user_id={player_id}&mode=3")["items"] == []
 
     room_scores = native_room_smoke(admin, gateway, bearer, player_id, map_id, map_hash, rx_objects)
+
+    # Final release-image availability proof uses only this disposable stack's
+    # existing uploaded set, accepted receipts, and replay bytes. No osu! API
+    # credentials or external requests are used by this category.
+    withdrawal_initial_requests = Client.request_count
+    player_site = Client(admin.base)
+    player_site.json("POST", "/api/v1/auth/login", {"username": player_name, "password": player_password})
+    availability_path = f"/api/v1/admin/beatmapsets/{set_id}/availability"
+    retained_before = admin.json("GET", f"/api/v1/admin/beatmaps/{map_pk}")
+    current_revision = retained_before["availability"]["revision"]
+    assert not retained_before["availability"]["withdrawn"]
+    private_reason = "PRIVATE_WITHDRAWAL_FIXTURE_" + uuid.uuid4().hex
+    transition = {"withdrawn": True, "expected_revision": current_revision, "reason": private_reason}
+    anonymous.request("PATCH", availability_path, transition, expected=401)
+    player_site.request("PATCH", availability_path, transition, expected=403)
+    anonymous.request("GET", f"/api/v1/admin/beatmaps/{map_pk}", expected=401)
+    player_site.request("GET", f"/api/v1/admin/beatmaps/{map_pk}", expected=403)
+    existing_scores = admin.json("GET", f"/api/v1/scores?beatmap_id={map_pk}&page_size=100")
+    existing_ids = {entry["id"] for entry in existing_scores["items"]}
+    assert len(existing_ids) == existing_scores["total"]
+    catalogue_query = urllib.parse.urlencode({"q": rx_map["title"], "availability": "all"})
+    assert anonymous.json("GET", "/api/v1/beatmaps?" + catalogue_query)["total"] == 1
+    rx_filename_path = "/api/v2/beatmaps/lookup?" + urllib.parse.urlencode({"filename": "independent-rx.osu"})
+    assert gateway.json("GET", rx_filename_path, headers=bearer)["id"] == map_id
+    assert gateway.json("GET", f"/api/v2/beatmapsets/{set_id}", headers=bearer)["beatmaps"][0]["checksum"] == map_hash
+    rx_archive_bytes = rx_archive.getvalue()
+    assert gateway.request("GET", f"/api/v2/beatmapsets/{set_id}/download", headers=bearer)[0] == rx_archive_bytes
+    pending_token = gateway.json("POST", f"/api/v2/beatmaps/{map_id}/solo/scores", nm_token_fields,
+                                dict(bearer, **{"Content-Type": "application/x-www-form-urlencoded"}))["id"]
+    nm_payload = dict(score, max_combo=rx_count, statistics={"great": rx_count}, maximum_statistics={"great": rx_count})
+    pending_path = f"/api/v2/beatmaps/{map_id}/solo/scores/{pending_token}"
+    history_before = anonymous.json("GET", f"/api/v1/scores/{rx_stable_id}")
+    assert anonymous.request("GET", history_before["replay_url"])[0] == rx_replay
+    weak_history_before = anonymous.json("GET", f"/api/v1/scores/{rx_weak_id}")
+    weak_replay_before = anonymous.request("GET", weak_history_before["replay_url"])[0]
+    # Both B-rank plays have the same checksum because total hit count, combo,
+    # raw score, mods, grade and timestamp match. Different individual counts
+    # must conflict with the saved weak receipt even while its set is active.
+    encrypted_rx(n300=rx_count - 1, n100=1, expected=409)
+    assert anonymous.json("GET", f"/api/v1/scores/{rx_weak_id}") == weak_history_before
+    assert anonymous.request("GET", weak_history_before["replay_url"])[0] == weak_replay_before
+    scores_after_active_conflict = admin.json("GET", f"/api/v1/scores?beatmap_id={map_pk}&page_size=100")
+    assert scores_after_active_conflict["total"] == existing_scores["total"]
+    assert {entry["id"] for entry in scores_after_active_conflict["items"]} == existing_ids
+    stats_before_withdrawal = anonymous.json("GET", f"/api/v1/users/{player_id}?mode=0&variant=relax")["statistics"]
+    best_before = anonymous.json("GET", f"/api/v1/users/{player_id}/scores/best?mode=0&variant=relax")
+    assert any(entry["beatmap_id"] == map_pk for entry in best_before["items"])
+
+    withdrawn = admin.json("PATCH", availability_path, transition)
+    withdrawn_revision = withdrawn["availability"]["revision"]
+    assert withdrawn["native_set_id"] == set_id and withdrawn["availability"]["withdrawn"]
+    assert withdrawn_revision == current_revision + 1 and withdrawn["availability"]["reason"] == private_reason
+    conflict = admin.json("PATCH", availability_path,
+                          {"withdrawn": False, "expected_revision": current_revision, "reason": "Stale fixture restore"}, expected=409)
+    assert conflict["error"]["code"] == "availability_conflict"
+    noop = admin.json("PATCH", availability_path,
+                      {"withdrawn": True, "expected_revision": withdrawn_revision, "reason": "No-op fixture reason"})
+    assert noop == withdrawn, "No-op transition changed revision or the original reason"
+    retained = admin.json("GET", f"/api/v1/admin/beatmaps/{map_pk}")
+    assert retained["availability"]["reason"] == private_reason and retained["availability"]["withdrawn"]
+    assert all(retained[key] == retained_before[key] for key in ("id", "native_id", "native_set_id", "md5", "local_package_id", "status"))
+    staff_catalogue = admin.json("GET", "/api/v1/admin/beatmaps?" + urllib.parse.urlencode({"q": rx_map["title"], "availability": "withdrawn"}))
+    assert staff_catalogue["total"] == 1 and staff_catalogue["items"][0]["id"] == map_pk
+    public_catalogue = anonymous.json("GET", "/api/v1/beatmaps?" + catalogue_query)
+    assert public_catalogue["items"] == [] and public_catalogue["total"] == 0
+    assert private_reason not in json.dumps(public_catalogue)
+    for site_path in [f"/api/v1/beatmaps/{map_pk}", f"/api/v1/beatmaps/{map_pk}/package/difficulties",
+                      f"/api/v1/beatmaps/{map_pk}/download", f"/api/v1/beatmaps/{map_pk}/osu",
+                      f"/api/v1/beatmaps/{map_pk}/scores?mode=0&variant=relax"]:
+        denial = anonymous.json("GET", site_path, expected=410)
+        assert denial["error"]["code"] == "beatmap_withdrawn" and private_reason not in json.dumps(denial)
+    native_paths = [f"/api/v2/beatmaps/{map_id}", f"/api/v2/beatmaps/lookup?id={map_id}",
+                    f"/api/v2/beatmaps/lookup?checksum={map_hash}", rx_filename_path,
+                    f"/api/v2/beatmapsets/lookup?beatmap_id={map_id}", f"/api/v2/beatmapsets/{set_id}",
+                    f"/api/v2/beatmapsets/{set_id}/download", f"/api/v2/beatmaps/{map_id}/scores?mode=osu&variant=relax",
+                    f"/osu/{map_id}", f"/d/{set_id}", "/web/osu-osz2-getscores.php?" + rx_query]
+    for native_path in native_paths:
+        denial = gateway.json("GET", native_path, headers=bearer, expected=410)
+        assert denial["error"] == "beatmap_withdrawn" and private_reason not in json.dumps(denial)
+    stable_auth_query = urllib.parse.urlencode(direct_auth)
+    for selection in [{"Ids": [map_id], "Filenames": []}, {"Ids": [], "Filenames": ["independent-rx.osu"]}]:
+        denial = gateway.json("POST", "/web/osu-getbeatmapinfo.php?" + stable_auth_query, selection, expected=410)
+        assert denial["error"] == "beatmap_withdrawn"
+    for selector, identity in [("b", map_id), ("s", set_id), ("c", map_hash)]:
+        denial = gateway.json("GET", "/web/osu-search-set.php?" + urllib.parse.urlencode(dict(direct_auth, **{selector: identity})), expected=410)
+        assert denial["error"] == "beatmap_withdrawn"
+    assert gateway.request("GET", "/web/osu-search.php?" + urllib.parse.urlencode(dict(direct_auth, q=rx_map["title"])))[0] == b"0\n"
+    assert gateway.json("GET", "/api/v2/beatmapsets/search?" + urllib.parse.urlencode({"q": rx_map["title"]}), headers=bearer)["total"] == 0
+    gateway.request("POST", f"/api/v2/beatmaps/{map_id}/solo/scores", nm_token_fields,
+                    dict(bearer, **{"Content-Type": "application/x-www-form-urlencoded"}), expected=410)
+    gateway.request("PUT", pending_path, nm_payload, bearer, expected=410)
+    api_denial = player_site.json("POST", "/api/v1/scores",
+                                 {"beatmap_id": map_pk, "mode": 0, "score": 600, "accuracy": 100,
+                                  "max_combo": rx_count, "mods": 0, "passed": True, "hit_counts": {"n300": rx_count}}, expected=410)
+    assert api_denial["error"]["code"] == "beatmap_withdrawn"
+    encrypted_rx(n300=rx_count - 1, n100=1, expected=409)
+    # Stable's checksum binds total hit count rather than each judgement count.
+    # A distinct timestamp makes this a new receipt rather than the saved B rank.
+    withdrawn_played_at = (datetime.datetime.strptime(played_at, "%y%m%d%H%M%S") + datetime.timedelta(seconds=1)).strftime("%y%m%d%H%M%S")
+    encrypted_rx(n300=rx_count - 1, n100=1, expected=410, played_at=withdrawn_played_at)
+    assert encrypted_rx() == rx_stable_id, "Saved stable receipt lost idempotency after withdrawal"
+    saved_solo_path = f"/api/v2/beatmaps/{map_id}/solo/scores/{nm_token}"
+    assert gateway.json("PUT", saved_solo_path, nm_payload, bearer)["id"] == nm_baseline["id"]
+    scores_while_withdrawn = admin.json("GET", f"/api/v1/scores?beatmap_id={map_pk}&page_size=100")
+    assert scores_while_withdrawn["total"] == existing_scores["total"]
+    assert {entry["id"] for entry in scores_while_withdrawn["items"]} == existing_ids
+    assert anonymous.json("GET", f"/api/v1/scores/{rx_weak_id}") == weak_history_before
+    assert anonymous.request("GET", weak_history_before["replay_url"])[0] == weak_replay_before
+    assert anonymous.json("GET", f"/api/v1/scores/{rx_stable_id}") == history_before
+    assert anonymous.request("GET", history_before["replay_url"])[0] == rx_replay
+    assert gateway.request("GET", f"/api/v2/scores/{rx_stable_id}/download", headers=bearer)[0] == rx_replay
+    native_history = gateway.json("GET", f"/api/v2/scores/{rx_stable_id}", headers=bearer)
+    assert native_history["id"] == rx_stable_id and native_history["beatmap_withdrawn"] and not native_history["ranked"]
+    frozen_room = gateway.json("GET", f"/api/v2/rooms/{room_scores['room_id']}", headers=bearer)
+    assert all(not item["beatmap"]["is_scoreable"] for item in frozen_room["playlist"])
+    assert private_reason not in json.dumps(frozen_room)
+    stats_while_withdrawn = anonymous.json("GET", f"/api/v1/users/{player_id}?mode=0&variant=relax")["statistics"]
+    assert stats_while_withdrawn["pp"] == 0 and stats_while_withdrawn["play_count"] == stats_before_withdrawal["play_count"]
+    assert gateway.json("GET", "/api/v2/me/osu?variant=relax", headers=bearer)["statistics"]["pp"] == 0
+    assert anonymous.json("GET", f"/api/v1/users/{player_id}/scores/best?mode=0&variant=relax")["items"] == []
+    assert gateway.json("GET", f"/api/v2/users/{player_id}/scores/best?mode=osu&variant=relax", headers=bearer) == []
+
+    restored = admin.json("PATCH", availability_path,
+                          {"withdrawn": False, "expected_revision": withdrawn_revision, "reason": "Original fixture restore"})
+    restored_revision = restored["availability"]["revision"]
+    assert restored["native_set_id"] == set_id and not restored["availability"]["withdrawn"]
+    assert restored_revision == withdrawn_revision + 1
+    restored_map = anonymous.json("GET", f"/api/v1/beatmaps/{map_pk}")
+    assert all(restored_map[key] == retained_before[key] for key in ("id", "native_id", "native_set_id", "md5", "local_package_id", "status"))
+    assert "reason" not in restored_map["availability"] and private_reason not in json.dumps(restored_map)
+    assert gateway.json("GET", rx_filename_path, headers=bearer)["id"] == map_id
+    assert gateway.request("GET", f"/osu/{map_id}")[0] == rx_fixture
+    assert gateway.request("GET", f"/d/{set_id}")[0] == rx_archive_bytes
+    assert anonymous.request("GET", f"/api/v1/beatmaps/{map_pk}/download")[0] == rx_archive_bytes
+    assert anonymous.json("GET", f"/api/v1/scores/{rx_stable_id}") == history_before
+    assert anonymous.json("GET", f"/api/v1/users/{player_id}?mode=0&variant=relax")["statistics"] == stats_before_withdrawal
+    assert [entry["id"] for entry in anonymous.json("GET", f"/api/v1/users/{player_id}/scores/best?mode=0&variant=relax")["items"]] == [entry["id"] for entry in best_before["items"]]
+    assert encrypted_rx() == rx_stable_id
+    restored_intent = gateway.json("PUT", pending_path, nm_payload, bearer)
+    assert restored_intent["beatmap_id"] == map_id and restored_intent["id"] not in existing_ids
+    assert gateway.json("PUT", pending_path, nm_payload, bearer)["id"] == restored_intent["id"]
+
+    # A valid official set can be withheld before any map is imported. Only its
+    # withdrawn routes are read, so restoration never causes an upstream fetch.
+    uncached_official_set = 1_999_999_991
+    official_path = f"/api/v1/admin/beatmapsets/{uncached_official_set}/availability"
+    withheld_official = admin.json("PATCH", official_path,
+                                  {"withdrawn": True, "expected_revision": 0, "reason": private_reason})
+    assert withheld_official["native_set_id"] == uncached_official_set and withheld_official["availability"]["revision"] == 1
+    for official_route in [f"/api/v2/beatmapsets/{uncached_official_set}",
+                           f"/api/v2/beatmapsets/{uncached_official_set}/download", f"/d/{uncached_official_set}"]:
+        denial = gateway.json("GET", official_route, headers=bearer, expected=410)
+        assert denial["error"] == "beatmap_withdrawn" and private_reason not in json.dumps(denial)
+    released_official = admin.json("PATCH", official_path,
+                                  {"withdrawn": False, "expected_revision": 1, "reason": "Uncached official fixture restore"})
+    assert released_official["native_set_id"] == uncached_official_set and not released_official["availability"]["withdrawn"]
+    assert released_official["availability"]["revision"] == 2
+    withdrawal = {"native_set_id": set_id, "restored_revision": restored_revision,
+                  "stable_receipt_id": rx_stable_id, "solo_receipt_id": nm_baseline["id"],
+                  "collision_receipt_id": rx_weak_id,
+                  "restored_intent_score_id": restored_intent["id"], "uncached_official_set_id": uncached_official_set,
+                  "http_requests": Client.request_count - withdrawal_initial_requests,
+                  "scope": "disposable_release_image_http"}
     rotated = gateway.json("POST", "/oauth/token", {"grant_type": "refresh_token", "refresh_token": oauth["refresh_token"]})
     gateway.request("GET", "/api/v2/me", headers=bearer, expected=401)
     assert gateway.json("GET", "/api/v2/me", headers={"Authorization": "Bearer " + rotated["access_token"]})["id"] == player_id
@@ -1004,7 +1167,16 @@ def run():
                    "room exact retry and changed-payload conflict", "room/solo and room/item/user scope isolation",
                    "private frozen peers and late-joiner empty history", "room index/cursors/user/leaderboard/native summaries",
                    "RX optional participant room mods and native total", "metadata stats/events and exact ended spectator processing"])
-    print(json.dumps({"status": "passed", "beatmap_id": primary_map_id, "rx_beatmap_id": map_id, "stable_score_id": stable_id, "lazer_score_id": lazer["id"], "rx_stable_score_id": rx_stable_id, "rx_lazer_score_id": rx_lazer["id"], "rx_converted_score_ids": rx_converted_ids, "room_scores": room_scores, "http_requests": Client.request_count, "check_count": len(checks), "checks": checks}))
+    checks.extend(["availability cookie RBAC, revision conflict and idempotent no-op",
+                   "withdrawn public catalogue/details/download exclusion and retained staff metadata",
+                   "warm stable/lazer immutable selector withdrawal without reason leakage",
+                   "withdrawn new score rejection and saved stable/solo retry idempotency",
+                   "withdrawn active PP/best exclusion with lifetime plays retained",
+                   "withdrawn score/replay/frozen room history retained",
+                   "availability restoration preserves map IDs, bytes, score receipts and PP",
+                   "uncached official set terminal withdrawal without upstream discovery",
+                   "stable same-checksum changed-judgement retry conflict before/after withdrawal"])
+    print(json.dumps({"status": "passed", "beatmap_id": primary_map_id, "rx_beatmap_id": map_id, "stable_score_id": stable_id, "lazer_score_id": lazer["id"], "rx_stable_score_id": rx_stable_id, "rx_lazer_score_id": rx_lazer["id"], "rx_converted_score_ids": rx_converted_ids, "room_scores": room_scores, "withdrawal": withdrawal, "http_requests": Client.request_count, "check_count": len(checks), "checks": checks}))
 
 
 if __name__ == "__main__":

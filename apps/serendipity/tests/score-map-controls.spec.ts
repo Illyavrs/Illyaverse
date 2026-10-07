@@ -348,6 +348,10 @@ async function mapFixture(page: Page, locale = 'en', mode = 'dark', staff = true
       return route.fulfill({ json: listing(items, Number(query.get('page') ?? 1)) });
     }
     const admin = /^\/admin\/beatmaps\/(\d+)$/.exec(path);
+    if (admin && request.method() === 'GET')
+      return route.fulfill({
+        json: state.items.find((item) => item.id === Number(admin[1])) ?? map(Number(admin[1])),
+      });
     if (admin && request.method() === 'PATCH') {
       const write = { id: Number(admin[1]), status: request.postDataJSON().status as string };
       if (state.failWrite)

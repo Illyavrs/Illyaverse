@@ -51,6 +51,7 @@ const HASHES: [&str; 8] = [
 struct Backend {
     pool: PgPool,
     status: Arc<AtomicU16>,
+    ingestion_status: Arc<AtomicU16>,
     invalid: Arc<AtomicU8>,
     mode: Arc<AtomicI16>,
     calls: Arc<Mutex<Vec<Value>>>,
@@ -135,11 +136,36 @@ async fn ingest(
     State(state): State<Backend>,
     headers: HeaderMap,
     Json(input): Json<Value>,
-) -> Json<Value> {
+) -> (StatusCode, Json<Value>) {
     assert_eq!(headers["x-illya-service-key"], SERVICE_KEY);
     assert_eq!(input["client"], "lazer");
     state.ingested.lock().await.push(input.clone());
-    let id: i64 = sqlx::query_scalar("INSERT INTO scores(user_id,beatmap_id,mode,score,accuracy,max_combo,mods,pp,passed,hit_counts,client,ingestion_key,native_submission,api_mods) VALUES($1,$2,$3,$4,$5,$6,$7,1,$8,$9,'lazer',$10,$11,$12) RETURNING id")
+    if state.ingestion_status.load(Ordering::SeqCst) != 200 {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error":"fixture_disconnect_before_publication"})),
+        );
+    }
+    let existing: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM scores WHERE ingestion_key=$1)")
+            .bind(input["ingestion_key"].as_str().unwrap())
+            .fetch_one(&state.pool)
+            .await
+            .unwrap();
+    let active: bool = sqlx::query_scalar(
+        "SELECT illya_beatmapset_active(native_set_id) FROM beatmaps WHERE id=$1",
+    )
+    .bind(input["beatmap_id"].as_i64().unwrap())
+    .fetch_one(&state.pool)
+    .await
+    .unwrap();
+    if !active && !existing {
+        return (
+            StatusCode::GONE,
+            Json(json!({"error":{"code":"beatmap_withdrawn"}})),
+        );
+    }
+    let id: i64 = sqlx::query_scalar("INSERT INTO scores(user_id,beatmap_id,mode,score,accuracy,max_combo,mods,pp,passed,hit_counts,client,ingestion_key,native_submission,api_mods) VALUES($1,$2,$3,$4,$5,$6,$7,1,$8,$9,'lazer',$10,$11,$12) ON CONFLICT(ingestion_key) DO UPDATE SET ingestion_key=excluded.ingestion_key RETURNING id")
         .bind(input["user_id"].as_i64().unwrap())
         .bind(input["beatmap_id"].as_i64().unwrap())
         .bind(input["mode"].as_i64().unwrap() as i16)
@@ -153,7 +179,7 @@ async fn ingest(
         .bind(&input["native_submission"])
         .bind(&input["api_mods"])
         .fetch_one(&state.pool).await.unwrap();
-    Json(json!({"id":id,"pp":1}))
+    (StatusCode::OK, Json(json!({"id":id,"pp":1})))
 }
 
 async fn missing_set_metadata(
@@ -237,6 +263,7 @@ impl Fixture {
         let backend = Backend {
             pool: pool.clone(),
             status: Arc::new(AtomicU16::new(200)),
+            ingestion_status: Arc::new(AtomicU16::new(200)),
             invalid: Arc::new(AtomicU8::new(0)),
             mode: Arc::new(AtomicI16::new(0)),
             calls: Default::default(),
@@ -1466,5 +1493,224 @@ fixture_test!(
         }
         assert!(f.backend.calls.lock().await.is_empty());
         assert!(f.backend.ingested.lock().await.is_empty());
+    }
+);
+
+fixture_test!(
+    lazer_withdrawal_gates_local_and_official_catalogue_preserves_receipts_and_pp_history,
+    f,
+    {
+        let official = f
+            .local_map(
+                HASHES[0],
+                Some(OFFICIAL_ID),
+                Some(SET_ID),
+                Some("official.osz"),
+            )
+            .await;
+        let local = f.local_map(HASHES[1], None, None, Some("local.osz")).await;
+        let (native_local, local_set) = f.public_ids(local).await;
+        sqlx::query("INSERT INTO beatmap_filename_aliases(filename,beatmap_id) VALUES($1,$2)")
+            .bind(FILENAME)
+            .bind(official)
+            .execute(&f.state.pool)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE beatmaps SET status='ranked' WHERE id=$1")
+            .bind(official)
+            .execute(&f.state.pool)
+            .await
+            .unwrap();
+        let token = body(f.token(OFFICIAL_ID, HASHES[0], 0).await, StatusCode::OK).await["id"]
+            .as_i64()
+            .unwrap();
+        let deferred = body(f.token(OFFICIAL_ID, HASHES[0], 0).await, StatusCode::OK).await["id"]
+            .as_i64()
+            .unwrap();
+        let received = body(f.token(OFFICIAL_ID, HASHES[0], 0).await, StatusCode::OK).await["id"]
+            .as_i64()
+            .unwrap();
+        f.backend.ingestion_status.store(503, Ordering::SeqCst);
+        assert_eq!(
+            f.submit(OFFICIAL_ID, received, 0, submission())
+                .await
+                .status(),
+            StatusCode::BAD_REQUEST
+        );
+        f.backend.ingestion_status.store(200, Ordering::SeqCst);
+        let received_before:Value=sqlx::query_scalar("SELECT jsonb_build_object('submission',submission,'status',processing_status,'received_at',received_at) FROM lazer_score_tokens WHERE id=$1").bind(received).fetch_one(&f.state.pool).await.unwrap();
+        let accepted = body(
+            f.submit(OFFICIAL_ID, token, 0, submission()).await,
+            StatusCode::OK,
+        )
+        .await;
+        let score = accepted["id"].as_i64().unwrap();
+        sqlx::query("UPDATE scores SET verification='verified' WHERE id=$1")
+            .bind(score)
+            .execute(&f.state.pool)
+            .await
+            .unwrap();
+        let user = f.users[0];
+        assert_eq!(
+            body(
+                f.get(&format!("/api/v2/users/{user}/scores/best")).await,
+                StatusCode::OK
+            )
+            .await
+            .as_array()
+            .unwrap()
+            .len(),
+            1
+        );
+        for set in [SET_ID, local_set] {
+            sqlx::query("INSERT INTO beatmapset_availability(native_set_id,withdrawn,revision,reason,actor_id) VALUES($1,true,1,'Native fixture withdrawal',$2)").bind(set).bind(user).execute(&f.state.pool).await.unwrap();
+        }
+        let calls = f.backend.calls.lock().await.len();
+        for path in [
+            format!("/api/v2/beatmaps/{OFFICIAL_ID}"),
+            format!("/api/v2/beatmaps/{native_local}"),
+            format!("/api/v2/beatmaps/lookup?checksum={}", HASHES[0]),
+            filename_lookup_path(FILENAME),
+            format!("/api/v2/beatmapsets/lookup?beatmap_id={OFFICIAL_ID}"),
+            format!("/api/v2/beatmapsets/{SET_ID}"),
+            format!("/api/v2/beatmapsets/{local_set}"),
+            format!("/api/v2/beatmapsets/{SET_ID}/download"),
+            format!("/api/v2/beatmapsets/{local_set}/download"),
+            format!("/api/v2/beatmaps/{OFFICIAL_ID}/scores"),
+        ] {
+            assert_eq!(
+                body(f.get(&path).await, StatusCode::GONE).await["error"],
+                "beatmap_withdrawn"
+            );
+        }
+        assert_eq!(
+            f.token(OFFICIAL_ID, HASHES[0], 0).await.status(),
+            StatusCode::GONE
+        );
+        assert_eq!(
+            f.token(native_local, HASHES[1], 0).await.status(),
+            StatusCode::GONE
+        );
+        assert_eq!(
+            body(f.get("/api/v2/beatmapsets/search").await, StatusCode::OK).await["total"],
+            0
+        );
+        assert!(
+            body(
+                f.get(&format!("/api/v2/users/{user}/scores/best")).await,
+                StatusCode::OK
+            )
+            .await
+            .as_array()
+            .unwrap()
+            .is_empty()
+        );
+        assert_eq!(
+            crate::score_aggregates::ranking(
+                &f.state.pool,
+                user,
+                0,
+                illya_domain::ScoreVariant::Vanilla
+            )
+            .await
+            .unwrap()
+            .get::<f64, _>("pp"),
+            0.0
+        );
+        assert_eq!(
+            crate::score_aggregates::lifetime(
+                &f.state.pool,
+                user,
+                0,
+                illya_domain::ScoreVariant::Vanilla
+            )
+            .await
+            .unwrap()
+            .get::<i64, _>("plays"),
+            1
+        );
+        let history = body(
+            f.get(&format!("/api/v2/scores/{score}")).await,
+            StatusCode::OK,
+        )
+        .await;
+        assert_eq!(history["beatmap_withdrawn"], true);
+        assert_eq!(history["ranked"], false);
+        assert_eq!(
+            body(
+                f.submit(OFFICIAL_ID, token, 0, submission()).await,
+                StatusCode::OK
+            )
+            .await["id"],
+            score
+        );
+        assert_eq!(
+            body(
+                f.submit(OFFICIAL_ID, deferred, 0, submission()).await,
+                StatusCode::GONE
+            )
+            .await["error"],
+            "beatmap_withdrawn"
+        );
+        let retained = sqlx::query(
+            "SELECT submission,processing_status,score_id FROM lazer_score_tokens WHERE id=$1",
+        )
+        .bind(deferred)
+        .fetch_one(&f.state.pool)
+        .await
+        .unwrap();
+        assert!(retained.get::<Option<Value>, _>("submission").is_none());
+        assert_eq!(retained.get::<String, _>("processing_status"), "issued");
+        let ingestion_calls = f.backend.ingested.lock().await.len();
+        assert_eq!(
+            f.submit(OFFICIAL_ID, received, 0, submission())
+                .await
+                .status(),
+            StatusCode::GONE
+        );
+        let received_after:Value=sqlx::query_scalar("SELECT jsonb_build_object('submission',submission,'status',processing_status,'received_at',received_at) FROM lazer_score_tokens WHERE id=$1").bind(received).fetch_one(&f.state.pool).await.unwrap();
+        assert_eq!(received_before, received_after);
+        assert_eq!(f.backend.ingested.lock().await.len(), ingestion_calls);
+        assert_eq!(ingestion_calls, 2);
+        assert!(retained.get::<Option<i64>, _>("score_id").is_none());
+        assert_eq!(f.backend.calls.lock().await.len(), calls);
+        for set in [SET_ID, local_set] {
+            sqlx::query("UPDATE beatmapset_availability SET withdrawn=false,revision=revision+1,reason='Native fixture restoration' WHERE native_set_id=$1").bind(set).execute(&f.state.pool).await.unwrap();
+        }
+        assert_eq!(
+            body(
+                f.submit(OFFICIAL_ID, deferred, 0, submission()).await,
+                StatusCode::OK
+            )
+            .await["beatmap_withdrawn"],
+            false
+        );
+        assert!(
+            body(
+                f.submit(OFFICIAL_ID, received, 0, submission()).await,
+                StatusCode::OK
+            )
+            .await["id"]
+                .as_i64()
+                .is_some()
+        );
+        assert_eq!(
+            crate::score_aggregates::ranking(
+                &f.state.pool,
+                user,
+                0,
+                illya_domain::ScoreVariant::Vanilla
+            )
+            .await
+            .unwrap()
+            .get::<f64, _>("pp"),
+            1.0
+        );
+        assert_eq!(
+            crate::native_maps::known_id(&f.state, OFFICIAL_ID)
+                .await
+                .unwrap(),
+            Some(official)
+        );
     }
 );

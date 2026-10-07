@@ -2,7 +2,8 @@
 import { Suspense, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { useSearchParams } from 'next/navigation';
-import useSWR, { useSWRConfig } from 'swr';
+import useSWR, { unstable_serialize, useSWRConfig } from 'swr';
+import { Dialog } from 'radix-ui';
 import Link from 'next/link';
 import { LoaderCircle, ShieldCheck, Plus, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -20,7 +21,15 @@ import {
 } from '@/components/common';
 import { useSession } from '@/components/providers';
 import { api, ApiError, fetcher, hasPermission } from '@/lib/api';
-import type { Page, AdminUser, Role, Beatmap, Score, Audit } from '@/lib/types';
+import type {
+  Page,
+  AdminUser,
+  Role,
+  Beatmap,
+  BeatmapAvailability,
+  Score,
+  Audit,
+} from '@/lib/types';
 
 const grants = [
   'chat.send',
@@ -44,6 +53,7 @@ type MapFilters = {
   mode: string;
   source: string;
   status: string;
+  availability: string;
   page: number;
 };
 function readMapFilters(query: Pick<URLSearchParams, 'get'>): MapFilters {
@@ -57,6 +67,9 @@ function readMapFilters(query: Pick<URLSearchParams, 'get'>): MapFilters {
     mode: /^[0-3]$/.test(mode) ? mode : 'all',
     source: ['local', 'official'].includes(source) ? source : 'all',
     status: mapStatuses.includes(status as MapStatus) ? status : 'all',
+    availability: ['withdrawn', 'all'].includes(query.get('availability') ?? '')
+      ? query.get('availability')!
+      : 'active',
     page: Number.isSafeInteger(page) && page > 0 && page <= 4294967295 ? page : 1,
   };
 }
@@ -68,12 +81,15 @@ function mapQuery(query: string, filters: MapFilters) {
     if (value && value !== 'all') next.set(name, value);
     else next.delete(name);
   }
+  if (filters.availability !== 'active') next.set('availability', filters.availability);
+  else next.delete('availability');
   if (filters.page > 1) next.set('page', String(filters.page));
   else next.delete('page');
   return next;
 }
 function mapListKey(filters: MapFilters) {
   const query = new URLSearchParams({ page: String(filters.page), page_size: '24' });
+  query.set('availability', filters.availability);
   for (const name of ['q', 'mode', 'source', 'status'] as const) {
     if (filters[name] && filters[name] !== 'all') query.set(name, filters[name]);
   }
@@ -646,26 +662,240 @@ function RolesEditor({ changed, permissions }: { changed: RefreshAdmin; permissi
   );
 }
 
+export function BeatmapAvailabilityAction({
+  map,
+  disabled = false,
+  changed,
+  onBusy,
+  accepted,
+}: {
+  map: Beatmap;
+  disabled?: boolean;
+  changed: RefreshAdmin;
+  onBusy?: (busy: boolean) => void;
+  accepted?: (availability: BeatmapAvailability) => void;
+}) {
+  const t = useTranslations('mapAvailability');
+  const c = useTranslations('common');
+  const [open, setOpen] = useState(false);
+  const [target, setTarget] = useState(false);
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [conflict, setConflict] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [stale, setStale] = useState(false);
+  const writing = useRef(false);
+  const withdrawn = map.availability?.withdrawn ?? false;
+  const revision = map.availability?.revision ?? 0;
+  const nativeSetId = map.native_set_id ?? map.package?.native_set_id;
+  async function refresh() {
+    if (writing.current) return;
+    writing.current = true;
+    setBusy(true);
+    try {
+      const refreshed = await changed();
+      setStale(!refreshed);
+      if (refreshed) {
+        setConflict(false);
+        setError('');
+        if (saved) setOpen(false);
+      }
+    } finally {
+      writing.current = false;
+      setBusy(false);
+    }
+  }
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (
+      writing.current ||
+      disabled ||
+      saved ||
+      stale ||
+      conflict ||
+      !nativeSetId ||
+      target === withdrawn
+    )
+      return;
+    const trimmed = reason.trim();
+    if (
+      !trimmed ||
+      Array.from(trimmed).length > 500 ||
+      new TextEncoder().encode(trimmed).length > 2000
+    ) {
+      setError(t('reasonInvalid'));
+      return;
+    }
+    writing.current = true;
+    setBusy(true);
+    onBusy?.(true);
+    setError('');
+    try {
+      const result = await api<{ native_set_id: number; availability: BeatmapAvailability }>(
+        `/admin/beatmapsets/${nativeSetId}/availability`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ withdrawn: target, expected_revision: revision, reason: trimmed }),
+        },
+      );
+      accepted?.(result.availability);
+      // A successful write stays acknowledged even when the following read fails.
+      setSaved(true);
+      const refreshed = await changed();
+      setStale(!refreshed);
+      if (refreshed) setOpen(false);
+    } catch (failure) {
+      if (failure instanceof ApiError && failure.code === 'availability_conflict') {
+        setConflict(true);
+        setError(t('conflict'));
+      } else if (failure instanceof ApiError && [401, 403].includes(failure.status)) {
+        setError(t('permissionError'));
+      } else {
+        setError(t('writeError'));
+      }
+    } finally {
+      writing.current = false;
+      setBusy(false);
+      onBusy?.(false);
+    }
+  }
+  return (
+    <Dialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (!busy) setOpen(next);
+      }}
+    >
+      <Dialog.Trigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={disabled || !nativeSetId || stale}
+          onClick={() => {
+            setTarget(!withdrawn);
+            setReason('');
+            setError('');
+            setConflict(false);
+            setSaved(false);
+          }}
+        >
+          {t(withdrawn ? 'restore' : 'withdraw')}
+        </Button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="map-availability-overlay" />
+        <Dialog.Content className="map-availability-dialog glass" aria-busy={busy}>
+          <Dialog.Title asChild>
+            <h2>{t(target ? 'withdrawTitle' : 'restoreTitle')}</h2>
+          </Dialog.Title>
+          <Dialog.Description className="hint">
+            {t(target ? 'withdrawHint' : 'restoreHint')}
+          </Dialog.Description>
+          <p className="map-availability-context">
+            <strong>
+              {map.artist} — {map.title}
+            </strong>
+            <span>
+              {t('setId', { id: nativeSetId ?? 0 })} · {t('revision', { revision })}
+            </span>
+          </p>
+          <form onSubmit={submit}>
+            <div className="field">
+              <label htmlFor={`set-${map.id}-reason`}>{t('reason')}</label>
+              <Textarea
+                id={`set-${map.id}-reason`}
+                value={reason}
+                required
+                maxLength={1000}
+                disabled={busy || saved}
+                aria-describedby={`set-${map.id}-reason-hint`}
+                onChange={(event) => setReason(event.target.value)}
+              />
+              <p className="hint" id={`set-${map.id}-reason-hint`}>
+                {t('reasonHint')}
+              </p>
+            </div>
+            {error && (
+              <p className="form-error" role="alert">
+                {error}
+              </p>
+            )}
+            {saved && (
+              <p className="form-success" role="status">
+                {t(target ? 'withdrawnSaved' : 'restoredSaved')}
+              </p>
+            )}
+            {stale && (
+              <p className="hint" role="status">
+                {t('refreshFailed')}
+              </p>
+            )}
+            {!saved && !conflict && target === withdrawn && (
+              <p className="hint" role="status">
+                {t('alreadyChanged')}
+              </p>
+            )}
+            <div className="actions">
+              {stale || conflict ? (
+                <Button type="button" variant="outline" disabled={busy} onClick={refresh}>
+                  {busy && <LoaderCircle className="spin" aria-hidden="true" />}
+                  {t('refresh')}
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  variant="outline"
+                  className={target ? 'admin-danger-action' : undefined}
+                  disabled={busy || disabled || saved || target === withdrawn || !reason.trim()}
+                >
+                  {busy && <LoaderCircle className="spin" aria-hidden="true" />}
+                  {t(target ? 'confirmWithdraw' : 'confirmRestore')}
+                </Button>
+              )}
+              <Dialog.Close asChild>
+                <Button type="button" variant="ghost" disabled={busy}>
+                  {c(saved ? 'close' : 'cancel')}
+                </Button>
+              </Dialog.Close>
+            </div>
+          </form>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
 function MapModerationRow({
   map,
   returnTo,
   busy,
   disabled,
   save,
+  canModerate,
+  changed,
+  onBusy,
 }: {
   map: Beatmap;
   returnTo: string;
   busy: boolean;
   disabled: boolean;
   save: (map: Beatmap, status: MapStatus) => Promise<boolean>;
+  canModerate: boolean;
+  changed: RefreshAdmin;
+  onBusy: (busy: boolean) => void;
 }) {
   const t = useTranslations('mapModeration');
   const c = useTranslations('common');
+  const availability = useTranslations('mapAvailability');
+  const a = useTranslations('admin');
   const describeError = useAdminError();
   const [chosen, setChosen] = useState<MapStatus | null>(null);
   const [error, setError] = useState('');
   const status = chosen ?? map.status;
   const detail = new URLSearchParams({
+    management: '1',
     mode: String(map.mode),
     variant: 'vanilla',
     returnTo,
@@ -687,51 +917,70 @@ function MapModerationRow({
         <span className={`status-text status-${map.status}`}>{c(map.status)}</span>
       </td>
       <td>
-        <form
-          className="admin-map-actions"
-          aria-label={t('statusFor', { title: map.title })}
-          onSubmit={async (event) => {
-            event.preventDefault();
-            if (disabled || status === map.status) return;
-            setError('');
-            try {
-              if (await save(map, status as MapStatus)) setChosen(null);
-            } catch (error) {
-              setError(describeError(error));
-            }
-          }}
-        >
-          <div className="actions">
-            <select
-              className="native-select"
+        <Badge variant="outline">
+          {availability(map.availability?.withdrawn ? 'withdrawn' : 'active')}
+        </Badge>
+      </td>
+      <td>
+        {canModerate ? (
+          <>
+            <form
+              className="admin-map-actions"
               aria-label={t('statusFor', { title: map.title })}
-              aria-describedby={error ? `map-status-${map.id}-error` : undefined}
-              value={status}
-              disabled={disabled}
-              onChange={(event) => setChosen(event.target.value as MapStatus)}
+              onSubmit={async (event) => {
+                event.preventDefault();
+                if (disabled || status === map.status) return;
+                setError('');
+                try {
+                  if (await save(map, status as MapStatus)) setChosen(null);
+                } catch (error) {
+                  setError(describeError(error));
+                }
+              }}
             >
-              {mapStatuses.map((value) => (
-                <option key={value} value={value}>
-                  {c(value)}
-                </option>
-              ))}
-            </select>
-            <Button
-              type="submit"
-              size="sm"
-              variant="outline"
-              disabled={disabled || status === map.status}
-            >
-              {busy && <LoaderCircle className="spin" aria-hidden="true" />}
-              {t('updateStatus')}
-            </Button>
-          </div>
-          {error && (
-            <div id={`map-status-${map.id}-error`}>
-              <Feedback error={error} />
+              <div className="actions">
+                <select
+                  className="native-select"
+                  aria-label={t('statusFor', { title: map.title })}
+                  aria-describedby={error ? `map-status-${map.id}-error` : undefined}
+                  value={status}
+                  disabled={disabled}
+                  onChange={(event) => setChosen(event.target.value as MapStatus)}
+                >
+                  {mapStatuses.map((value) => (
+                    <option key={value} value={value}>
+                      {c(value)}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="outline"
+                  disabled={disabled || status === map.status}
+                >
+                  {busy && <LoaderCircle className="spin" aria-hidden="true" />}
+                  {t('updateStatus')}
+                </Button>
+              </div>
+              {error && (
+                <div id={`map-status-${map.id}-error`}>
+                  <Feedback error={error} />
+                </div>
+              )}
+            </form>
+            <div className="admin-map-availability-action">
+              <BeatmapAvailabilityAction
+                map={map}
+                disabled={disabled}
+                changed={changed}
+                onBusy={onBusy}
+              />
             </div>
-          )}
-        </form>
+          </>
+        ) : (
+          <p className="hint">{a('actionsReadOnly')}</p>
+        )}
       </td>
     </tr>
   );
@@ -741,10 +990,19 @@ function MapModeration() {
   const t = useTranslations('mapModeration');
   const a = useTranslations('admin');
   const c = useTranslations('common');
+  const availability = useTranslations('mapAvailability');
+  const { user, loading } = useSession();
+  const canModerate = !!user && hasPermission(user.permissions, 'beatmaps.moderate');
   const query = useSearchParams();
   const filters = readMapFilters(query);
   const key = mapListKey(filters);
-  const { cache } = useSWRConfig();
+  const { cache, mutate: mutateCache } = useSWRConfig();
+  const requestKey =
+    !loading && user && hasPermission(user.permissions, 'admin.view')
+      ? ([key, user.id] as const)
+      : null;
+  const serializedKey = requestKey ? unstable_serialize(requestKey) : '';
+  const [accessFailures, setAccessFailures] = useState<Record<string, ApiError>>({});
   const describeError = useAdminError();
   const [searchError, setSearchError] = useState('');
   const [busy, setBusy] = useState<number | null>(null);
@@ -771,27 +1029,56 @@ function MapModeration() {
     window.history.pushState(null, '', `?${params}`);
     setSearchError('');
   }
-  const { data, error, isLoading, mutate } = useSWR<Page<Beatmap>>(key, fetcher, {
-    keepPreviousData: false,
-    dedupingInterval: 0,
-    onSuccess: (result, requestedKey) => {
-      // A response for a previous filter, page or tab cannot move the current view.
-      if (!currentRequest(requestedKey) || result.page_size < 1) return;
-      setStale(false);
-      const lastPage = Math.max(1, Math.ceil(result.total / result.page_size));
-      if (result.page > lastPage) {
-        const current = new URLSearchParams(window.location.search);
-        const params = mapQuery(current.toString(), { ...readMapFilters(current), page: lastPage });
-        window.history.replaceState(null, '', `?${params}`);
-      }
+  const {
+    data: result,
+    error: requestError,
+    isLoading,
+    mutate,
+  } = useSWR<Page<Beatmap>>(
+    requestKey,
+    (key: readonly [string, number]) => fetcher<Page<Beatmap>>(key[0]),
+    {
+      keepPreviousData: false,
+      dedupingInterval: 0,
+      shouldRetryOnError: false,
+      onError: (failure, requestedKey) => {
+        if (!(failure instanceof ApiError) || ![401, 403, 404].includes(failure.status)) return;
+        setAccessFailures((current) => ({ ...current, [requestedKey]: failure }));
+        void mutateCache(requestedKey, undefined, { revalidate: false });
+      },
+      onSuccess: (result, requestedKey) => {
+        setAccessFailures((current) => {
+          if (!current[requestedKey]) return current;
+          const next = { ...current };
+          delete next[requestedKey];
+          return next;
+        });
+        // A response for a previous filter, page or tab cannot move the current view.
+        if (requestedKey !== serializedKey || !currentRequest(key) || result.page_size < 1) return;
+        setStale(false);
+        const lastPage = Math.max(1, Math.ceil(result.total / result.page_size));
+        if (result.page > lastPage) {
+          const current = new URLSearchParams(window.location.search);
+          const params = mapQuery(current.toString(), {
+            ...readMapFilters(current),
+            page: lastPage,
+          });
+          window.history.replaceState(null, '', `?${params}`);
+        }
+      },
     },
-  });
+  );
+  const error = requestError ?? accessFailures[serializedKey];
+  const data =
+    loading || !requestKey || (error instanceof ApiError && [401, 403, 404].includes(error.status))
+      ? undefined
+      : result;
   async function refreshList() {
     setRefreshing(true);
     try {
       const result = await mutate();
       // A failed SWR revalidation may resolve with previously cached records.
-      const refreshed = Boolean(result) && !cache.get(key)?.error;
+      const refreshed = Boolean(result) && !cache.get(serializedKey)?.error;
       if (currentRequest(key)) setStale(!refreshed);
       return refreshed;
     } catch {
@@ -817,6 +1104,7 @@ function MapModeration() {
   }
   const filtered =
     filters.q !== '' ||
+    filters.availability !== 'active' ||
     [filters.mode, filters.source, filters.status].some((value) => value !== 'all');
   const returnTo = `/admin?${mapQuery(query.toString(), filters)}`;
   return (
@@ -830,7 +1118,7 @@ function MapModeration() {
           type="button"
           variant="outline"
           disabled={busy !== null}
-          onClick={() => select({ source: 'local', status: 'pending' })}
+          onClick={() => select({ source: 'local', status: 'pending', availability: 'active' })}
         >
           {t('pendingCommunity')}
         </Button>
@@ -871,7 +1159,7 @@ function MapModeration() {
             {c('search')}
           </Button>
         </div>
-        <div className="admin-map-filters">
+        <div className="admin-map-filters admin-map-availability-filters">
           <div className="field">
             <label htmlFor="admin-map-mode">{c('mode')}</label>
             <select
@@ -923,12 +1211,31 @@ function MapModeration() {
               ))}
             </select>
           </div>
+          <div className="field">
+            <label htmlFor="admin-map-availability">{availability('label')}</label>
+            <select
+              id="admin-map-availability"
+              name="availability"
+              className="native-select"
+              value={filters.availability}
+              disabled={busy !== null}
+              onChange={(event) => select({ availability: event.target.value })}
+            >
+              {['active', 'withdrawn', 'all'].map((value) => (
+                <option key={value} value={value}>
+                  {value === 'all' ? c('all') : availability(value)}
+                </option>
+              ))}
+            </select>
+          </div>
           {filtered && (
             <Button
               type="button"
               variant="ghost"
               disabled={busy !== null}
-              onClick={() => select({ q: '', mode: 'all', source: 'all', status: 'all' })}
+              onClick={() =>
+                select({ q: '', mode: 'all', source: 'all', status: 'all', availability: 'active' })
+              }
             >
               {t('clearFilters')}
             </Button>
@@ -958,7 +1265,7 @@ function MapModeration() {
       >
         <div className="admin-map-summary">
           {data && <p role="status">{t('results', { count: data.total })}</p>}
-          <p className="hint">{t('actionHint')}</p>
+          <p className="hint">{canModerate ? availability('actionHint') : a('actionsReadOnly')}</p>
         </div>
         {isLoading ? (
           <Loading />
@@ -986,13 +1293,18 @@ function MapModeration() {
               <table className="data-table admin-map-table">
                 <thead>
                   <tr>
-                    {[a('beatmaps'), c('mode'), t('source'), c('status'), a('action')].map(
-                      (label) => (
-                        <th scope="col" key={label}>
-                          {label}
-                        </th>
-                      ),
-                    )}
+                    {[
+                      a('beatmaps'),
+                      c('mode'),
+                      t('source'),
+                      c('status'),
+                      availability('label'),
+                      a('action'),
+                    ].map((label) => (
+                      <th scope="col" key={label}>
+                        {label}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -1004,6 +1316,9 @@ function MapModeration() {
                       busy={busy === map.id}
                       disabled={busy !== null || stale}
                       save={save}
+                      canModerate={canModerate}
+                      changed={refreshList}
+                      onBusy={(writing) => setBusy(writing ? map.id : null)}
                     />
                   ))}
                 </tbody>
@@ -1038,7 +1353,7 @@ function AdminContents() {
   if (['users.moderate', 'roles.manage', 'users.sessions.revoke'].some(allowed))
     sections.push('users');
   if (allowed('roles.manage')) sections.push('roles');
-  if (allowed('beatmaps.moderate')) sections.push('beatmaps');
+  if (allowed('admin.view')) sections.push('beatmaps');
   if (allowed('scores.moderate')) sections.push('scores');
   if (allowed('audit.read')) sections.push('audit');
   const requestedSection = query.get('tab') as Section | null;

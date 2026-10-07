@@ -39,6 +39,12 @@ impl IntoResponse for ApiError {
 }
 impl From<sqlx::Error> for ApiError {
     fn from(error: sqlx::Error) -> Self {
+        if error
+            .as_database_error()
+            .is_some_and(|error| error.code().as_deref() == Some("P2001"))
+        {
+            return Self(StatusCode::GONE, "beatmap_withdrawn");
+        }
         tracing::error!(%error, "protocol database operation failed");
         Self(StatusCode::INTERNAL_SERVER_ERROR, "database_error")
     }

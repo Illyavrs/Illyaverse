@@ -330,7 +330,7 @@ async fn rest_room(
         let rating = map.get::<f64, _>("stars");
         stars.push(rating);
         rulesets.insert(item["rulesetID"].as_i64().unwrap_or(0));
-        let beatmap = crate::native_maps::map_json(state, map.get("id")).await?;
+        let beatmap = crate::native_maps::retained_map_json(state, map.get("id")).await?;
         let attempts = if let Some(id) = item["id"].as_i64() {
             if crate::room_results::item_history_authorized(state, viewer, room, id).await? {
                 crate::room_results::item_attempts(state, viewer, room, id).await?
@@ -776,8 +776,15 @@ fn integer(value: &Value) -> Result<i64, &'static str> {
 fn argument(args: &[Value], index: usize) -> Result<&Value, &'static str> {
     args.get(index).ok_or("missing_argument")
 }
-fn db(_: sqlx::Error) -> &'static str {
-    "database_error"
+fn db(error: sqlx::Error) -> &'static str {
+    if error
+        .as_database_error()
+        .is_some_and(|error| error.code().as_deref() == Some("P2001"))
+    {
+        "beatmap_withdrawn"
+    } else {
+        "database_error"
+    }
 }
 fn text(value: &Value, max: usize) -> Result<String, &'static str> {
     value
@@ -859,12 +866,15 @@ async fn playlist_item(
         return Err("invalid_ruleset");
     }
     let checksum = text(field(value, "beatmapChecksum", 3), 32)?;
-    let row = sqlx::query("SELECT md5,mode,stars FROM beatmaps WHERE native_id=$1")
+    let row = sqlx::query("SELECT md5,mode,stars,native_set_id FROM beatmaps WHERE native_id=$1")
         .bind(beatmap_id)
         .fetch_optional(&mut **tx)
         .await
         .map_err(db)?
         .ok_or("beatmap_not_found")?;
+    crate::native_maps::lock_active_set(tx, row.get("native_set_id"))
+        .await
+        .map_err(|error| error.1)?;
     let mapmode: i16 = row.get("mode");
     if mapmode != 0 && i64::from(mapmode) != ruleset {
         return Err("invalid_ruleset_conversion");
@@ -1233,6 +1243,24 @@ async fn multiplayer(
             {
                 return Err("max_below_member_count");
             }
+            if settings["playlistItemId"] != row.get::<Value, _>("settings")["playlistItemId"] {
+                let selected = playlist
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|item| item["id"] == settings["playlistItemId"])
+                    .ok_or("playlist_item_not_found")?;
+                let set: i64 =
+                    sqlx::query_scalar("SELECT native_set_id FROM beatmaps WHERE native_id=$1")
+                        .bind(selected["beatmapID"].as_i64().unwrap_or(0))
+                        .fetch_optional(&mut *tx)
+                        .await
+                        .map_err(db)?
+                        .ok_or("beatmap_not_found")?;
+                crate::native_maps::lock_active_set(&mut tx, set)
+                    .await
+                    .map_err(|error| error.1)?;
+            }
             settings["_slots"] = row.get::<Value, _>("settings")["_slots"].clone();
             let slots = slots_for(&settings, &users);
             settings["_slots"] = slots.clone();
@@ -1354,6 +1382,18 @@ async fn multiplayer(
             }
             let room = row.get("id");
             let users = room_members(&mut tx, room).await?;
+            if let Some(native) = beatmap {
+                let set: i64 =
+                    sqlx::query_scalar("SELECT native_set_id FROM beatmaps WHERE native_id=$1")
+                        .bind(native)
+                        .fetch_optional(&mut *tx)
+                        .await
+                        .map_err(db)?
+                        .ok_or("beatmap_not_found")?;
+                crate::native_maps::lock_active_set(&mut tx, set)
+                    .await
+                    .map_err(|error| error.1)?;
+            }
             sqlx::query("UPDATE lazer_room_members SET beatmap_id=$2,ruleset_id=$3,state=CASE WHEN state=1 THEN 0 ELSE state END WHERE user_id=$1").bind(uid).bind(beatmap).bind(ruleset.map(|r|r as i16)).execute(&mut *tx).await.map_err(db)?;
             bump(&mut tx, room).await?;
             tx.commit().await.map_err(db)?;
@@ -1651,7 +1691,7 @@ async fn change_state(state: &AppState, uid: i64, headers: &HeaderMap, next: i64
             if let Some(item) = items.iter_mut().find(|i| i["id"] == current) {
                 item["expired"] = json!(true);
                 playlist_change = Some(item.clone());
-                crate::room_rounds::record_playlist(&mut tx, room, item)
+                crate::room_rounds::record_retained_playlist(&mut tx, room, item)
                     .await
                     .map_err(|e| e.1)?;
             }

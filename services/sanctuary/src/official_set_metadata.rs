@@ -63,6 +63,7 @@ pub async fn metadata(
         return Err(official_namespace_conflict());
     }
     require_active_user(&state, input.user_id).await?;
+    availability::require_active_set(&state.db, input.official_set_id).await?;
     let result = match tokio::time::timeout(
         OPERATION_DEADLINE,
         resolve_metadata(&state, input.user_id, input.official_set_id),
@@ -84,6 +85,7 @@ pub async fn metadata(
     // must take precedence over both success and cached upstream failures.
     require_service_key(&state, &headers)?;
     require_active_user(&state, input.user_id).await?;
+    availability::require_active_set(&state.db, input.official_set_id).await?;
     Ok(Json(
         serde_json::to_value(result?).map_err(ApiError::internal)?,
     ))
@@ -111,6 +113,7 @@ async fn resolve_metadata(
     user_id: i64,
     set_id: i64,
 ) -> ApiResult<OfficialSetMetadata> {
+    availability::require_active_set(&state.db, set_id).await?;
     let selector = MapSelector::OfficialSet(set_id);
     let (flight, slots) = {
         let mut official = state.official.lock().await;
@@ -134,6 +137,7 @@ async fn resolve_metadata(
     };
     let _flight = flight.lock().await;
     require_active_user(state, user_id).await?;
+    availability::require_active_set(&state.db, set_id).await?;
     {
         let mut official = state.official.lock().await;
         if let Some(result) = cached(&mut official, set_id) {
@@ -142,6 +146,7 @@ async fn resolve_metadata(
     }
     let _permit = slots.try_acquire_owned().map_err(|_| busy())?;
     let result = fetch_metadata(state, set_id).await;
+    availability::require_active_set(&state.db, set_id).await?;
     match &result {
         Ok(value) => {
             let bytes = serde_json::to_vec(value).map_err(ApiError::internal)?.len();

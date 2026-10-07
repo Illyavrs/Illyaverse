@@ -734,6 +734,7 @@ pub async fn beatmap_file(
         .await?
         .ok_or(ApiError(StatusCode::NOT_FOUND, "beatmap_not_found"))?;
     let bytes = common::stored_file(&state, &path, "maps", 8_388_608).await?;
+    crate::native_maps::require_active_map(&state.pool, id).await?;
     Ok(([("content-type", "text/plain; charset=utf-8")], bytes).into_response())
 }
 pub async fn beatmap_archive(
@@ -748,6 +749,7 @@ pub async fn beatmap_archive(
         .await?
         .ok_or(ApiError(StatusCode::NOT_FOUND, "archive_not_available"))?;
     let bytes = common::stored_file(&state, &path, "maps", 104_857_600).await?;
+    crate::native_maps::require_active(&state.pool, id).await?;
     Ok((
         [
             ("content-type", "application/x-osu-beatmap-archive"),
@@ -833,6 +835,7 @@ async fn leaderboard(
         .find(|r| r.get::<i64, _>("user_id") == player.id)
         .map(|row| score_line(row, row.get::<i64, _>("placement") as usize))
         .unwrap_or_default();
+    crate::native_maps::require_active_map(&state.pool, id).await?;
     Ok(format!(
         "{status}|false|{public_id}|{set_id}|{}|0|\n0\n{map_name}\n0\n{personal}\n{}\n",
         lines.len(),
@@ -888,7 +891,7 @@ async fn search(
     if !(-1..=3).contains(&mode) {
         return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_mode"));
     }
-    let sets = sqlx::query_scalar::<_, i64>("SELECT b.native_set_id FROM beatmaps b LEFT JOIN beatmap_packages p ON p.id=b.local_package_id LEFT JOIN official_beatmapset_archives a ON a.official_set_id=b.official_set_id WHERE COALESCE(p.archive_path,a.archive_path,b.archive_path) IS NOT NULL AND ($1=-1 OR b.mode=$1) AND (b.title ILIKE $2 OR b.artist ILIKE $2 OR b.creator ILIKE $2) GROUP BY b.native_set_id ORDER BY max(b.created_at) DESC,b.native_set_id DESC LIMIT 100 OFFSET $3").bind(mode).bind(format!("%{search}%")).bind(page*100).fetch_all(&state.pool).await?;
+    let sets = sqlx::query_scalar::<_, i64>("SELECT b.native_set_id FROM active_beatmaps b LEFT JOIN beatmap_packages p ON p.id=b.local_package_id LEFT JOIN official_beatmapset_archives a ON a.official_set_id=b.official_set_id WHERE COALESCE(p.archive_path,a.archive_path,b.archive_path) IS NOT NULL AND ($1=-1 OR b.mode=$1) AND (b.title ILIKE $2 OR b.artist ILIKE $2 OR b.creator ILIKE $2) GROUP BY b.native_set_id ORDER BY max(b.created_at) DESC,b.native_set_id DESC LIMIT 100 OFFSET $3").bind(mode).bind(format!("%{search}%")).bind(page*100).fetch_all(&state.pool).await?;
     let mut output = format!("{}\n", sets.len());
     for set in sets {
         output.push_str(
@@ -968,6 +971,7 @@ async fn direct_set_line(state: &AppState, id: i64) -> Result<Option<String>, Ap
         })
         .collect::<Vec<_>>()
         .join(",");
+    crate::native_maps::require_active(&state.pool, id).await?;
     Ok(Some(format!(
         "{id}.osz|{}|{}|{}|{status}|0|{}|{id}|0|0|0|0|{difficulties}",
         clean(&row.get::<String, _>("artist")),
@@ -1012,7 +1016,7 @@ async fn beatmap_info(
         }
     }
     let mut lines = Vec::new();
-    for (index, local_id) in resolved {
+    for (index, local_id) in &resolved {
         if let Some(row) =
             sqlx::query("SELECT id,native_id,native_set_id,md5,status FROM beatmaps WHERE id=$1")
                 .bind(local_id)
@@ -1031,6 +1035,9 @@ async fn beatmap_info(
                 row.get::<String, _>("md5")
             ));
         }
+    }
+    for (_, local_id) in &resolved {
+        crate::native_maps::require_active_map(&state.pool, *local_id).await?;
     }
     Ok(lines.join("\n"))
 }

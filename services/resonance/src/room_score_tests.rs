@@ -45,6 +45,12 @@ async fn ingest(
     assert!(input.get("room_id").is_none());
     assert!(input.get("round_id").is_none());
     let mode = state.mode.load(Ordering::SeqCst);
+    if mode == 3 {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error":"fixture_disconnect_before_publication"})),
+        );
+    }
     if mode == 2 {
         state.entered.notify_one();
         state.release.notified().await;
@@ -67,6 +73,19 @@ async fn ingest(
     let id = if let Some(id) = existing {
         id
     } else {
+        let active: bool = sqlx::query_scalar(
+            "SELECT illya_beatmapset_active(native_set_id) FROM beatmaps WHERE id=$1",
+        )
+        .bind(input["beatmap_id"].as_i64().unwrap())
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+        if !active {
+            return (
+                StatusCode::GONE,
+                Json(json!({"error":{"code":"beatmap_withdrawn"}})),
+            );
+        }
         let mods = input["mods"].as_i64().unwrap();
         sqlx::query_scalar::<_,i64>("INSERT INTO scores(user_id,beatmap_id,mode,score,accuracy,max_combo,mods,pp,passed,hit_counts,client,ingestion_key,api_mods,native_submission,score_variant) VALUES($1,$2,$3,$4,$5,$6,$7,0,$8,$9,'lazer',$10,$11,$12,$13) RETURNING id")
             .bind(input["user_id"].as_i64().unwrap()).bind(input["beatmap_id"].as_i64().unwrap())
@@ -1077,5 +1096,66 @@ async fn room_lifecycle_rechecks_queued_credentials_and_locks_users_in_order() {
     f.cleanup().await;
     if let Err(error) = result {
         std::panic::resume_unwind(error);
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires ILLYA_TEST_DATABASE_URL pointing at disposable local PostgreSQL"]
+async fn room_withdrawal_blocks_admission_defers_unsaved_intents_and_links_persisted_receipts() {
+    let f = Fixture::new().await;
+    let result=std::panic::AssertUnwindSafe(async {
+        let room=f.room(&[0,1,2]).await; let round=f.round(room,1,&[0,1,2]).await;
+        let saved=f.token(0,room,1).await; let unsaved=f.token(1,room,1).await; let issued=f.token(2,room,1).await;
+        let payload=submission(123456);
+        f.ingress.mode.store(1,Ordering::SeqCst);
+        f.put(0,room,1,saved,&payload,503).await;
+        assert_eq!(f.count("SELECT count(*) FROM scores").await,1);
+        f.ingress.mode.store(3,Ordering::SeqCst); f.put(1,room,1,unsaved,&payload,503).await;
+        let received_before:Value=sqlx::query_scalar("SELECT jsonb_build_object('submission',submission,'sha',submission_sha256,'attempts',processing_attempts,'status',processing_status) FROM lazer_score_tokens WHERE id=$1").bind(unsaved).fetch_one(&f.state.pool).await.unwrap();
+        let calls_before=f.ingress.calls.load(Ordering::SeqCst);
+        let set:i64=sqlx::query_scalar("SELECT native_set_id FROM beatmaps WHERE id=$1").bind(f.map).fetch_one(&f.state.pool).await.unwrap();
+        sqlx::query("INSERT INTO beatmapset_availability(native_set_id,withdrawn,revision,reason,actor_id) VALUES($1,true,1,'Room fixture withdrawal',$2)").bind(set).bind(f.users[0]).execute(&f.state.pool).await.unwrap();
+        for action in ["playlist","play","round"] {
+            let mut tx=f.state.pool.begin().await.unwrap();
+            let error=match action {
+                "playlist"=>room_rounds::record_playlist(&mut tx,room,&f.playlist(3)).await.unwrap_err(),
+                "play"=>room_rounds::mark_playing(&mut tx,round).await.unwrap_err(),
+                _=>room_rounds::freeze_round(&mut tx,room,&f.playlist(1),&[f.users[0]]).await.unwrap_err(),
+            };
+            assert_eq!(error.0,StatusCode::GONE); assert_eq!(error.1,"beatmap_withdrawn");
+            tx.rollback().await.unwrap();
+        }
+        let denied=body(f.http.post(f.url(&format!("/api/v2/rooms/{room}/playlist/1/scores"))).bearer_auth(&f.tokens[1]).json(&json!({"beatmap_id":f.native_map,"beatmap_hash":HASH,"version_hash":VERSION,"ruleset_id":0})).send().await.unwrap(),410).await;
+        assert_eq!(denied["error"],"beatmap_withdrawn");
+        assert_eq!(f.put(2,room,1,issued,&payload,410).await["error"],"beatmap_withdrawn");
+        let issued_after=sqlx::query("SELECT submission,processing_status,processing_attempts FROM lazer_score_tokens WHERE id=$1").bind(issued).fetch_one(&f.state.pool).await.unwrap();
+        assert!(issued_after.get::<Option<Value>,_>("submission").is_none()); assert_eq!(issued_after.get::<String,_>("processing_status"),"issued"); assert_eq!(issued_after.get::<i32,_>("processing_attempts"),0);
+        assert_eq!(f.put(1,room,1,unsaved,&payload,410).await["error"],"beatmap_withdrawn");
+        let received_after:Value=sqlx::query_scalar("SELECT jsonb_build_object('submission',submission,'sha',submission_sha256,'attempts',processing_attempts,'status',processing_status) FROM lazer_score_tokens WHERE id=$1").bind(unsaved).fetch_one(&f.state.pool).await.unwrap();
+        assert_eq!(received_before,received_after); assert_eq!(f.ingress.calls.load(Ordering::SeqCst),calls_before);
+        f.ingress.mode.store(0,Ordering::SeqCst);
+        f.due(saved).await;
+        assert_eq!(room_scores::recover_pending(&f.state).await.unwrap(),1);
+        let accepted=f.put(0,room,1,saved,&payload,200).await;
+        assert!(accepted["id"].as_i64().is_some());
+        assert_eq!(f.put(1,room,1,unsaved,&payload,410).await["error"],"beatmap_withdrawn");
+        // A long withdrawal retains the saved intent, without extending its
+        // existing security window. Restoration applies the normal expiry rule.
+        sqlx::query("UPDATE lazer_score_tokens SET expires_at=now()-interval '1 second',retry_at=now()-interval '1 second' WHERE id=$1").bind(unsaved).execute(&f.state.pool).await.unwrap();
+        assert_eq!(room_scores::recover_pending(&f.state).await.unwrap(),0);
+        let retained=sqlx::query("SELECT processing_status,processing_error,revoked_at,submission FROM lazer_score_tokens WHERE id=$1").bind(unsaved).fetch_one(&f.state.pool).await.unwrap();
+        assert_eq!(retained.get::<String,_>("processing_status"),"received"); assert_eq!(retained.get::<Option<String>,_>("processing_error").as_deref(),Some("beatmap_withdrawn")); assert!(retained.get::<Option<chrono::DateTime<chrono::Utc>>,_>("revoked_at").is_none()); assert!(retained.get::<Option<Value>,_>("submission").is_some());
+        let summary=f.get(0,&format!("/api/v2/rooms/{room}"),200).await;
+        assert_eq!(summary["playlist"][0]["beatmap"]["is_scoreable"],false);
+        assert_eq!(f.count("SELECT count(*) FROM scores").await,1);
+        sqlx::query("UPDATE beatmapset_availability SET withdrawn=false,revision=revision+1,reason='Room fixture restoration' WHERE native_set_id=$1").bind(set).execute(&f.state.pool).await.unwrap();
+        f.due(unsaved).await; assert_eq!(room_scores::recover_pending(&f.state).await.unwrap(),0);
+        assert_eq!(sqlx::query_scalar::<_,String>("SELECT processing_status FROM lazer_score_tokens WHERE id=$1").bind(unsaved).fetch_one(&f.state.pool).await.unwrap(),"revoked");
+        assert_eq!(f.put(0,room,1,saved,&payload,200).await["id"],accepted["id"]);
+        assert!(f.put(2,room,1,issued,&payload,200).await["id"].as_i64().is_some());
+    }).catch_unwind().await;
+    f.cleanup().await;
+    if let Err(panic) = result {
+        std::panic::resume_unwind(panic);
     }
 }

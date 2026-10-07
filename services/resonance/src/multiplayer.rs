@@ -190,6 +190,39 @@ pub async fn cleanup(db: &mut PgConnection) -> Result<(), ApiError> {
     Ok(())
 }
 
+/// Empty matches may be created before a map is selected. Every selected map
+/// checks every retained canonical selector, and admission holds its shared set
+/// gate until the enclosing stable poll transaction commits. An entirely unknown
+/// client map remains playable; score publication resolves its authority later.
+async fn active_match_map(db: &mut PgConnection, m: &room::Match) -> Result<(), ApiError> {
+    if m.map_md5.is_empty() && m.map_id <= 0 {
+        return Ok(());
+    }
+    let maps = sqlx::query("SELECT native_id,native_set_id,mode,md5 FROM beatmaps WHERE md5=$1 OR native_id=$2 ORDER BY id LIMIT 2")
+        .bind(m.map_md5.to_ascii_lowercase())
+        .bind(i64::from(m.map_id))
+        .fetch_all(&mut *db)
+        .await?;
+    let Some(map) = maps.first() else {
+        return Ok(());
+    };
+    crate::native_maps::lock_active_set(db, map.get("native_set_id")).await?;
+    if maps.len() != 1
+        || i64::from(m.map_id) != map.get::<i64, _>("native_id")
+        || !m.map_md5.eq_ignore_ascii_case(&map.get::<String, _>("md5"))
+    {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "beatmap_id_mismatch"));
+    }
+    let mode: i16 = map.get("mode");
+    if mode != 0 && mode != i16::from(m.mode) {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "unsupported_ruleset_conversion",
+        ));
+    }
+    Ok(())
+}
+
 pub async fn handle(
     state: &AppState,
     db: &mut PgConnection,
@@ -265,6 +298,7 @@ pub async fn handle(
                 return Ok(true);
             }
             let mut m = room::Match::decode(payload)?;
+            active_match_map(db, &m).await?;
             let hash = password_hash(m.password.clone()).await?;
             let next=sqlx::query_scalar::<_,i32>("SELECT n FROM generate_series(1,32767) n WHERE NOT EXISTS(SELECT 1 FROM stable_rooms WHERE id=n) ORDER BY n LIMIT 1").fetch_optional(&mut *db).await?.ok_or(ApiError(StatusCode::SERVICE_UNAVAILABLE,"room_limit_reached"))?;
             m.id = next as u16;
@@ -426,6 +460,7 @@ pub async fn handle(
                 return Err(invalid());
             }
             let input = room::Match::decode(payload)?;
+            active_match_map(db, &input).await?;
             let changed = input.map_md5 != m.map_md5 || input.mode != m.mode;
             m.name = input.name;
             m.map_name = input.map_name;
@@ -467,6 +502,10 @@ pub async fn handle(
             empty(payload)?;
             if m.in_progress {
                 return Err(invalid());
+            }
+            active_match_map(db, &m).await?;
+            if m.map_md5.is_empty() {
+                return Err(ApiError(StatusCode::BAD_REQUEST, "beatmap_required"));
             }
             let mut participants = 0;
             for status in &mut m.statuses {

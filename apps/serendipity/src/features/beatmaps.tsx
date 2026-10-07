@@ -1,9 +1,9 @@
 'use client';
-import { useDeferredValue, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import useSWR from 'swr';
+import useSWR, { unstable_serialize, useSWRConfig } from 'swr';
 import {
   ArrowRight,
   Search,
@@ -31,6 +31,7 @@ import { useSession } from '@/components/providers';
 import { api, ApiError, fetcher, hasPermission } from '@/lib/api';
 import type {
   Beatmap,
+  BeatmapAvailability,
   BeatmapDifficulty,
   BeatmapUploadResult,
   Page,
@@ -39,6 +40,7 @@ import type {
 } from '@/lib/types';
 import { ScoreTable } from './scores';
 import { ScoreVariantControl, useScoreSelection } from '@/components/score-selection';
+import { BeatmapAvailabilityAction } from './admin';
 
 function duration(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
@@ -371,13 +373,86 @@ export function BeatmapPage({ id }: { id: number }) {
   const t = useTranslations('maps');
   const c = useTranslations('common');
   const review = useTranslations('mapModeration');
-  const { user } = useSession();
-  const canReview =
-    !!user &&
-    hasPermission(user.permissions, 'admin.view') &&
-    hasPermission(user.permissions, 'beatmaps.moderate');
-  const { data: map, error, isLoading, mutate } = useSWR<Beatmap>(`/beatmaps/${id}`, fetcher);
+  const availability = useTranslations('mapAvailability');
+  const { user, loading: sessionLoading } = useSession();
   const search = useSearchParams();
+  const management = search.get('management') === '1';
+  const canManage = !sessionLoading && !!user && hasPermission(user.permissions, 'admin.view');
+  const canReview = canManage && hasPermission(user.permissions, 'beatmaps.moderate');
+  const { cache, mutate: mutateCache } = useSWRConfig();
+  const mapKey = management
+    ? canManage
+      ? ([`/admin/beatmaps/${id}`, user.id] as const)
+      : null
+    : `/beatmaps/${id}`;
+  const serializedKey = mapKey ? unstable_serialize(mapKey) : '';
+  const [accessFailures, setAccessFailures] = useState<Record<string, ApiError>>({});
+  const [acceptedAvailability, setAcceptedAvailability] = useState<
+    Record<string, BeatmapAvailability>
+  >({});
+  const [availabilityStale, setAvailabilityStale] = useState(false);
+  const {
+    data: requestedMap,
+    error: requestError,
+    isLoading,
+    mutate,
+  } = useSWR<Beatmap>(
+    mapKey,
+    (key: string | readonly [string, number]) =>
+      fetcher<Beatmap>(typeof key === 'string' ? key : key[0]),
+    {
+      keepPreviousData: false,
+      dedupingInterval: 0,
+      shouldRetryOnError: false,
+      onError: (failure, requestedKey) => {
+        if (!(failure instanceof ApiError) || ![401, 403, 404, 410].includes(failure.status))
+          return;
+        setAccessFailures((current) => ({ ...current, [requestedKey]: failure }));
+        void mutateCache(requestedKey, undefined, { revalidate: false });
+      },
+      onSuccess: (_result, requestedKey) => {
+        setAccessFailures((current) => {
+          if (!current[requestedKey]) return current;
+          const next = { ...current };
+          delete next[requestedKey];
+          return next;
+        });
+        setAcceptedAvailability((current) => {
+          if (!current[requestedKey]) return current;
+          const next = { ...current };
+          delete next[requestedKey];
+          return next;
+        });
+        if (requestedKey === serializedKey) setAvailabilityStale(false);
+      },
+    },
+  );
+  const error = requestError ?? accessFailures[serializedKey];
+  const usableMap =
+    !mapKey ||
+    (management && !canManage) ||
+    (error instanceof ApiError && [401, 403, 404, 410].includes(error.status))
+      ? undefined
+      : requestedMap;
+  const map = useMemo(
+    () =>
+      usableMap && acceptedAvailability[serializedKey]
+        ? { ...usableMap, availability: acceptedAvailability[serializedKey] }
+        : usableMap,
+    [usableMap, acceptedAvailability, serializedKey],
+  );
+  const withdrawn = map?.availability?.withdrawn ?? false;
+  async function refreshAvailability() {
+    try {
+      const result = await mutate();
+      const refreshed = !!result && !cache.get(serializedKey)?.error;
+      setAvailabilityStale(!refreshed);
+      return refreshed;
+    } catch {
+      setAvailabilityStale(true);
+      return false;
+    }
+  }
   const { mode: requestedMode, select } = useScoreSelection(map?.mode ?? 0);
   const mode = map && map.mode !== 0 ? String(map.mode) : requestedMode;
   const variant: ScoreVariant =
@@ -385,7 +460,7 @@ export function BeatmapPage({ id }: { id: number }) {
   const selection = new URLSearchParams({ mode, variant });
   const requestedReturn = search.get('returnTo');
   let reviewReturn: string | null = null;
-  if (canReview && requestedReturn) {
+  if (canManage && requestedReturn) {
     try {
       const url = new URL(requestedReturn, 'https://illya.invalid');
       if (
@@ -415,7 +490,7 @@ export function BeatmapPage({ id }: { id: number }) {
     error: scoreError,
     mutate: reloadScores,
   } = useSWR<ScoreBoard>(
-    map ? `/beatmaps/${id}/scores?${selection}&page=${page}&page_size=24` : null,
+    map && !withdrawn ? `/beatmaps/${id}/scores?${selection}&page=${page}&page_size=24` : null,
     fetcher,
   );
   return (
@@ -423,13 +498,24 @@ export function BeatmapPage({ id }: { id: number }) {
       <Link href={reviewReturn ?? '/beatmaps'} className="back-link">
         {reviewReturn ? review('backToQueue') : t('back')}
       </Link>
-      {isLoading ? (
+      {management && sessionLoading ? (
         <Loading />
-      ) : error ? (
+      ) : management && !canManage ? (
+        <Empty title={c(user ? 'noPermission' : 'signInRequired')} />
+      ) : isLoading ? (
+        <Loading />
+      ) : error instanceof ApiError &&
+        error.status === 410 &&
+        error.code === 'beatmap_withdrawn' ? (
+        <section className="glass content-panel map-withdrawn-public">
+          <Empty title={availability('publicTitle')} description={availability('publicHint')} />
+        </section>
+      ) : error && !map ? (
         <LoadError retry={() => mutate()} />
       ) : (
         map && (
           <>
+            {error && <LoadError retry={() => mutate()} />}
             <section className="map-detail-cover glass">
               <div className="map-detail-art" aria-hidden="true">
                 <Music2 />
@@ -445,16 +531,31 @@ export function BeatmapPage({ id }: { id: number }) {
                   <Badge variant="secondary">
                     {c(map.source === 'local' ? 'local' : 'official')}
                   </Badge>
+                  {management && (
+                    <Badge variant="outline">
+                      {availability(withdrawn ? 'withdrawn' : 'active')}
+                    </Badge>
+                  )}
                 </div>
               </div>
               <div className="map-detail-actions">
-                <MapDownloads map={map} />
-                {canReview && (
+                {!withdrawn && <MapDownloads map={map} />}
+                {management && canReview && (
+                  <BeatmapAvailabilityAction
+                    map={map}
+                    disabled={availabilityStale}
+                    changed={refreshAvailability}
+                    accepted={(value) =>
+                      setAcceptedAvailability((current) => ({ ...current, [serializedKey]: value }))
+                    }
+                  />
+                )}
+                {canManage && (
                   <Button asChild variant="outline">
                     <Link
                       href={
                         reviewReturn ??
-                        `/admin?${new URLSearchParams({ tab: 'beatmaps', q: boundedReviewSearch(map.title), mode: String(map.mode), source: map.source })}`
+                        `/admin?${new URLSearchParams({ tab: 'beatmaps', q: boundedReviewSearch(map.title), mode: String(map.mode), source: map.source, availability: withdrawn ? 'withdrawn' : 'active' })}`
                       }
                     >
                       {review('manageMap')}
@@ -463,6 +564,51 @@ export function BeatmapPage({ id }: { id: number }) {
                 )}
               </div>
             </section>
+            {management && (
+              <section
+                className="glass content-panel map-availability-summary"
+                aria-label={availability('label')}
+              >
+                <h2>{availability(withdrawn ? 'withdrawn' : 'active')}</h2>
+                <p className="hint">
+                  {availability(withdrawn ? 'retainedHint' : 'managementHint')}
+                </p>
+                <p className="hint">
+                  {(map.native_set_id ?? map.package?.native_set_id) !== undefined && (
+                    <>
+                      {availability('setId', {
+                        id: (map.native_set_id ?? map.package?.native_set_id)!,
+                      })}{' '}
+                      ·{' '}
+                    </>
+                  )}
+                  {availability('revision', { revision: map.availability?.revision ?? 0 })}
+                </p>
+                {map.availability?.reason && (
+                  <p className="map-availability-reason">
+                    <strong>{availability('lastReason')}</strong>
+                    {map.availability.reason}
+                  </p>
+                )}
+                {map.availability?.changed_at && (
+                  <p className="hint">
+                    {availability('changedAt')}:{' '}
+                    <time dateTime={map.availability.changed_at}>
+                      {map.availability.changed_at}
+                    </time>
+                  </p>
+                )}
+                {!canReview && <p className="hint">{availability('readOnly')}</p>}
+                {availabilityStale && (
+                  <div role="status">
+                    <p className="hint">{availability('refreshFailed')}</p>
+                    <Button type="button" variant="outline" onClick={refreshAvailability}>
+                      {availability('refresh')}
+                    </Button>
+                  </div>
+                )}
+              </section>
+            )}
             <dl className="map-detail-stats glass">
               {[
                 [t('stars'), `${map.stars.toFixed(2)} ★`],
@@ -476,53 +622,55 @@ export function BeatmapPage({ id }: { id: number }) {
                 </div>
               ))}
             </dl>
-            {map.package && (
+            {map.package && !withdrawn && (
               <PackageDifficulties
                 key={`${map.id}:${map.package.id}`}
                 mapId={map.id}
                 currentVersion={map.version}
               />
             )}
-            <section className="glass content-panel">
-              <header className="section-heading">
-                <h2>{t('leaderboard')}</h2>
-              </header>
-              <div className="filter-bar">
-                <GameMode
-                  value={mode}
-                  allowedModes={map.mode === 0 ? undefined : [String(map.mode)]}
-                  onChange={(v) => {
-                    select(v, variant);
-                    setPage(1);
-                  }}
-                />
-                <ScoreVariantControl
-                  mode={mode}
-                  value={variant}
-                  onChange={(v) => {
-                    select(mode, v);
-                    setPage(1);
-                  }}
-                />
-              </div>
-              <p className="hint">
-                {mode === '3'
-                  ? c('relaxUnsupported')
-                  : t(variant === 'relax' ? 'relaxBoard' : 'normalBoard')}
-              </p>
-              {scoreError ? (
-                <LoadError retry={() => reloadScores()} />
-              ) : !scores ? (
-                <Loading />
-              ) : scores.items.length ? (
-                <>
-                  <ScoreTable scores={scores.items} leaderboard orderedBy={scores.ordered_by} />
-                  <Pagination page={page} total={scores.total} onChange={setPage} />
-                </>
-              ) : (
-                <Empty title={c('empty')} />
-              )}
-            </section>
+            {!withdrawn && (
+              <section className="glass content-panel">
+                <header className="section-heading">
+                  <h2>{t('leaderboard')}</h2>
+                </header>
+                <div className="filter-bar">
+                  <GameMode
+                    value={mode}
+                    allowedModes={map.mode === 0 ? undefined : [String(map.mode)]}
+                    onChange={(v) => {
+                      select(v, variant);
+                      setPage(1);
+                    }}
+                  />
+                  <ScoreVariantControl
+                    mode={mode}
+                    value={variant}
+                    onChange={(v) => {
+                      select(mode, v);
+                      setPage(1);
+                    }}
+                  />
+                </div>
+                <p className="hint">
+                  {mode === '3'
+                    ? c('relaxUnsupported')
+                    : t(variant === 'relax' ? 'relaxBoard' : 'normalBoard')}
+                </p>
+                {scoreError ? (
+                  <LoadError retry={() => reloadScores()} />
+                ) : !scores ? (
+                  <Loading />
+                ) : scores.items.length ? (
+                  <>
+                    <ScoreTable scores={scores.items} leaderboard orderedBy={scores.ordered_by} />
+                    <Pagination page={page} total={scores.total} onChange={setPage} />
+                  </>
+                ) : (
+                  <Empty title={c('empty')} />
+                )}
+              </section>
+            )}
           </>
         )
       )}

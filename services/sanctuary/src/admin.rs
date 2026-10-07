@@ -483,7 +483,7 @@ pub async fn update_map(
     sqlx::query("INSERT INTO audit_events(actor_id,action,target_type,target_id,details) VALUES($1,'beatmaps.status','beatmap',$2,$3)").bind(user.id).bind(id.to_string()).bind(json!({"status":input.status})).execute(&mut *tx).await?;
     auth::ensure_mutation_actor(&mut tx, &user).await?;
     tx.commit().await?;
-    Ok(Json(crate::maps::get(&state, id).await?))
+    Ok(Json(crate::maps::get_retained(&state, id).await?))
 }
 #[derive(Deserialize)]
 pub struct ScorePatch {

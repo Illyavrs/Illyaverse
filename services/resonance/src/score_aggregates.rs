@@ -27,7 +27,7 @@ pub(crate) async fn ranking<'e>(
 ) -> Result<PgRow, sqlx::Error> {
     sqlx::query(
         "WITH eligible AS (
-           SELECT s.* FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id
+           SELECT s.* FROM scores s JOIN active_beatmaps b ON b.id=s.beatmap_id
            WHERE s.verification='verified' AND s.passed AND b.status='ranked' AND s.pp_eligible AND s.mode=$2 AND s.score_variant=$3
          ), best_pp AS (
            SELECT user_id,beatmap_id,max(pp) pp FROM eligible GROUP BY user_id,beatmap_id
@@ -62,7 +62,7 @@ pub(crate) async fn ranking_page(
 ) -> Result<Vec<PgRow>, sqlx::Error> {
     sqlx::query(
         "WITH eligible AS (
-           SELECT s.user_id,s.beatmap_id,s.pp FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id
+           SELECT s.user_id,s.beatmap_id,s.pp FROM scores s JOIN active_beatmaps b ON b.id=s.beatmap_id
            WHERE s.verification='verified' AND s.passed AND b.status='ranked' AND s.pp_eligible AND s.mode=$1 AND s.score_variant=$2
          ), best_pp AS (
            SELECT user_id,beatmap_id,max(pp) pp FROM eligible GROUP BY user_id,beatmap_id

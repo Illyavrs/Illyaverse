@@ -36,6 +36,9 @@ const UNKNOWN: &str = "-1|false|0|0|0|0|\n0\nUnknown beatmap\n0\n\n";
 // Generated independently with Windows .NET Framework RijndaelManaged, 256-bit
 // blocks/key, CBC/PKCS7 and IV bytes 0..31. No reference server code is used.
 const ENVELOPE: &str = "W/e0n+xIjbOV/5+FZx6k4O0i4OnLIKpNqh/p1B37gg2c/rGmmE24SeizXZnGztd63nNMJb8dulf/rXwbwfufVeSW1aVv9xQRZBJFEPsdncaU50HMcvZvSguZjc/gmlah50viEsE+2WfQHHcPG2WULY7WtpDXXwp9n7bLy20BDs8tWkSnUCrrJ3D04tOA/jUvKcV6ehOyGCUVm0a04d4Rsw==";
+// Independently encrypted with the same .NET implementation. Only the separate
+// judgement counts change from 2/0 to 1/1; the online checksum remains identical.
+const CHANGED_JUDGEMENTS: &str = "W/e0n+xIjbOV/5+FZx6k4O0i4OnLIKpNqh/p1B37gg2c/rGmmE24SeizXZnGztd63nNMJb8dulf/rXwbwfufVX6hVoaiP1oH7n7t9jOslWDq3sqpLJhRP5q/XrZfcXaaAuMnpg0hPWWLj4GLSeSB4qmXEoptUoVegsK8pDg9KdN4Rhf8XxMfoCXOLCw21DUH1Bnu7ZX2xA4YNmzzwpB41Q==";
 const ENCRYPTED_CLIENT: &str = "NKrV9nP+VMd7l6FwV1C7IfGW0MyuaqjDVfvZ4hkYWwo=";
 const IV: &str = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
 // Python's standard-library LZMA encoder, FORMAT_ALONE, three original frames.
@@ -44,12 +47,19 @@ const FRAMES: &[u8] = &[
     147, 222, 218, 150, 237, 232, 154, 181, 230, 127, 105, 39, 21, 108, 38, 89, 217, 166, 59, 158,
     63, 254, 78, 28, 179, 241, 0, 34, 216, 255, 244, 58, 112, 0,
 ];
+// Original alternative cursor frames, Python stdlib LZMA FORMAT_ALONE/preset 0.
+const DIFFERENT_FRAMES: &[u8] = &[
+    93, 0, 0, 4, 0, 255, 255, 255, 255, 255, 255, 255, 255, 0, 24, 31, 2, 195, 67, 105, 105, 115,
+    102, 218, 22, 4, 13, 4, 75, 59, 128, 41, 212, 33, 251, 228, 238, 18, 17, 178, 181, 216, 63,
+    100, 143, 255, 255, 58, 124, 0, 0,
+];
 
 #[derive(Clone)]
 struct Backend {
     pool: PgPool,
     status: Arc<AtomicU16>,
     invalid: Arc<AtomicU8>,
+    winner_judgements: Arc<AtomicU8>,
     calls: Arc<Mutex<Vec<Value>>>,
     ingested: Arc<Mutex<Vec<Value>>>,
 }
@@ -90,15 +100,41 @@ async fn ingest(
     State(state): State<Backend>,
     headers: HeaderMap,
     Json(input): Json<Value>,
-) -> Json<Value> {
+) -> (StatusCode, Json<Value>) {
     assert_eq!(headers["x-illya-service-key"], SERVICE_KEY);
     assert_eq!(input["client"], "stable");
     state.ingested.lock().await.push(input.clone());
-    let id: i64 = sqlx::query_scalar("INSERT INTO scores(user_id,beatmap_id,mode,score,accuracy,max_combo,mods,pp,passed,hit_counts,client,ingestion_key) VALUES($1,$2,0,600,100,2,0,1,true,$3,'stable',$4) RETURNING id")
+    let existing: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM scores WHERE ingestion_key=$1)")
+            .bind(input["ingestion_key"].as_str().unwrap())
+            .fetch_one(&state.pool)
+            .await
+            .unwrap();
+    let active: bool = sqlx::query_scalar(
+        "SELECT illya_beatmapset_active(native_set_id) FROM beatmaps WHERE id=$1",
+    )
+    .bind(input["beatmap_id"].as_i64().unwrap())
+    .fetch_one(&state.pool)
+    .await
+    .unwrap();
+    if !active && !existing {
+        return (
+            StatusCode::GONE,
+            Json(json!({"error":{"code":"beatmap_withdrawn"}})),
+        );
+    }
+    let (hit_counts, accuracy) = if state.winner_judgements.load(Ordering::SeqCst) == 1 {
+        // Models an already committed same-checksum winner with different
+        // individual judgements discovered only after the ingestion request.
+        (json!({"n300":1,"n100":1}), 200.0 / 3.0)
+    } else {
+        (input["hit_counts"].clone(), 100.0)
+    };
+    let id: i64 = sqlx::query_scalar("INSERT INTO scores(user_id,beatmap_id,mode,score,accuracy,max_combo,mods,pp,passed,hit_counts,client,ingestion_key) VALUES($1,$2,0,600,$5,2,0,1,true,$3,'stable',$4) ON CONFLICT(ingestion_key) DO UPDATE SET ingestion_key=excluded.ingestion_key RETURNING id")
         .bind(input["user_id"].as_i64().unwrap()).bind(input["beatmap_id"].as_i64().unwrap())
-        .bind(&input["hit_counts"]).bind(input["ingestion_key"].as_str().unwrap())
+        .bind(hit_counts).bind(input["ingestion_key"].as_str().unwrap()).bind(accuracy)
         .fetch_one(&state.pool).await.unwrap();
-    Json(json!({"id":id,"pp":1}))
+    (StatusCode::OK, Json(json!({"id":id,"pp":1})))
 }
 
 struct Fixture {
@@ -168,6 +204,7 @@ impl Fixture {
             pool: pool.clone(),
             status: Arc::new(AtomicU16::new(200)),
             invalid: Arc::new(AtomicU8::new(0)),
+            winner_judgements: Arc::new(AtomicU8::new(0)),
             calls: Default::default(),
             ingested: Default::default(),
         };
@@ -196,7 +233,9 @@ impl Fixture {
         };
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
-        let router = stable::router().with_state(state.clone());
+        let router = stable::router()
+            .merge(crate::lazer::router())
+            .with_state(state.clone());
         let gateway_task = tokio::spawn(async move {
             axum::serve(listener, router).await.unwrap();
         });
@@ -243,6 +282,10 @@ impl Fixture {
     }
 
     async fn submit(&self, envelope: &str) -> reqwest::Response {
+        self.submit_frames(envelope, FRAMES).await
+    }
+
+    async fn submit_frames(&self, envelope: &str, frames: &[u8]) -> reqwest::Response {
         let boundary = "original-native-map-fixture-boundary";
         let password = format!("{:x}", md5::compute(PASSWORD));
         let mut body = Vec::new();
@@ -258,7 +301,7 @@ impl Fixture {
             body.extend(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n").as_bytes());
         }
         body.extend(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"score\"; filename=\"fixture.osr\"\r\nContent-Type: application/octet-stream\r\n\r\n").as_bytes());
-        body.extend(FRAMES);
+        body.extend(frames);
         body.extend(format!("\r\n--{boundary}--\r\n").as_bytes());
         self.state
             .http
@@ -305,10 +348,201 @@ fn native_map_encrypted_fixture_has_valid_checksum() {
         CLIENT
     );
     score.validate_checksum("20261007", CLIENT, "").unwrap();
+    let changed =
+        StableSubmission::parse(&decrypt_score_field(CHANGED_JUDGEMENTS, IV, "20261007").unwrap())
+            .unwrap();
+    changed.validate_checksum("20261007", CLIENT, "").unwrap();
+    assert_eq!(score.checksum, changed.checksum);
+    assert_eq!(score.hit_counts, [2, 0, 0, 0, 0, 0]);
+    assert_eq!(changed.hit_counts, [1, 1, 0, 0, 0, 0]);
     assert_eq!(
         resonance_protocol::submission::validate_compressed_frames(FRAMES).unwrap(),
         3
     );
+    assert_eq!(
+        resonance_protocol::submission::validate_compressed_frames(DIFFERENT_FRAMES).unwrap(),
+        3
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires ILLYA_TEST_DATABASE_URL; creates and removes isolated schemas"]
+async fn stable_saved_payload_guards_missing_replay_before_and_after_withdrawal() {
+    for withdrawn in [false, true] {
+        let f = Fixture::new().await;
+        let result = std::panic::AssertUnwindSafe(async {
+            assert_eq!(f.board(HASH).await.status(), StatusCode::OK);
+            let map: i64 = sqlx::query_scalar("SELECT id FROM beatmaps WHERE md5=$1")
+                .bind(HASH).fetch_one(&f.state.pool).await.unwrap();
+            let original = StableSubmission::parse(&decrypt_score_field(ENVELOPE, IV, "20261007").unwrap()).unwrap();
+            let ingestion_key = format!("stable:{}:{}", f.user, original.checksum);
+            let session_expiry: chrono::DateTime<chrono::Utc> = sqlx::query_scalar("SELECT expires_at FROM bancho_sessions WHERE user_id=$1")
+                .bind(f.user).fetch_one(&f.state.pool).await.unwrap();
+            // A real saved receipt without replay models process interruption
+            // between Sanctuary's publication and gateway replay attachment.
+            // Optional tick fields are absent, as in older stored JSON rows.
+            let id: i64 = sqlx::query_scalar("INSERT INTO scores(user_id,beatmap_id,mode,score,accuracy,max_combo,mods,pp,passed,hit_counts,client,ingestion_key) VALUES($1,$2,0,600,100,2,0,17,true,'{\"n300\":2}','stable',$3) RETURNING id")
+                .bind(f.user).bind(map).bind(&ingestion_key).fetch_one(&f.state.pool).await.unwrap();
+            if withdrawn {
+                sqlx::query("INSERT INTO beatmapset_availability(native_set_id,withdrawn,revision,reason,actor_id) VALUES($1,true,1,'Orphaned stable receipt withdrawal',$2)")
+                    .bind(SET_ID).bind(f.user).execute(&f.state.pool).await.unwrap();
+            }
+            let changed = f.submit(CHANGED_JUDGEMENTS).await;
+            assert_eq!(changed.status(), StatusCode::CONFLICT);
+            assert_eq!(changed.json::<Value>().await.unwrap()["error"], "duplicate_score_payload_mismatch");
+            let missing: Option<String> = sqlx::query_scalar("SELECT replay_path FROM scores WHERE id=$1")
+                .bind(id).fetch_one(&f.state.pool).await.unwrap();
+            assert!(missing.is_none(), "Changed judgements attached a replay to an orphaned receipt");
+            assert!(f.backend.ingested.lock().await.is_empty(), "Mismatch must be denied before ingestion HTTP");
+            assert!(tokio::fs::read_dir(f.storage.join("replays")).await.unwrap().next_entry().await.unwrap().is_none());
+
+            let exact = f.submit(ENVELOPE).await;
+            assert_eq!(exact.status(), StatusCode::OK);
+            assert!(exact.text().await.unwrap().contains(&format!("onlineScoreId:{id}|")));
+            let bearer = common::secret();
+            sqlx::query("INSERT INTO lazer_sessions(id,user_id,access_hash,refresh_hash,access_expires_at,refresh_expires_at) VALUES($1,$2,$3,$4,now()+interval '1 hour',now()+interval '1 day')")
+                .bind(uuid::Uuid::new_v4()).bind(f.user).bind(common::token_hash(&bearer)).bind(common::secret()).execute(&f.state.pool).await.unwrap();
+            let response = f.state.http.get(format!("{}/api/v2/scores/{id}/download", f.base)).bearer_auth(&bearer).send().await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let bytes = response.bytes().await.unwrap();
+            let header = resonance_protocol::replay::LegacyReplay::parse(&bytes).unwrap();
+            assert_eq!(header.hit_counts, original.hit_counts);
+            assert_eq!(header.total_score, original.total_score);
+            assert_eq!(header.max_combo, original.max_combo);
+            assert_eq!(header.mods, original.mods);
+            assert_eq!(header.perfect, original.perfect);
+            assert_eq!(header.client_version, 20261007);
+            assert_eq!(header.timestamp_ticks, original.played_at.and_utc().timestamp() * 10_000_000 + 621_355_968_000_000_000);
+            assert_eq!(header.replay_md5, original.checksum);
+            assert_eq!(header.online_score_id, Some(id));
+            assert_eq!(header.compressed_frames, FRAMES);
+            assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM scores").fetch_one(&f.state.pool).await.unwrap(), 1);
+            assert_eq!(f.backend.calls.lock().await.len(), 1);
+
+            // Moderator/cache changes do not alter immutable input identity.
+            sqlx::query("UPDATE scores SET pp=42,verification='verified' WHERE id=$1").bind(id).execute(&f.state.pool).await.unwrap();
+            assert_eq!(f.submit(ENVELOPE).await.status(), StatusCode::OK);
+            assert_eq!(f.submit(CHANGED_JUDGEMENTS).await.status(), StatusCode::CONFLICT);
+            let changed_frames = f.submit_frames(ENVELOPE, DIFFERENT_FRAMES).await;
+            assert_eq!(changed_frames.status(), StatusCode::CONFLICT);
+            assert_eq!(changed_frames.json::<Value>().await.unwrap()["error"], "duplicate_score_replay_mismatch");
+            let retained = sqlx::query("SELECT pp,verification,hit_counts,replay_path FROM scores WHERE id=$1").bind(id).fetch_one(&f.state.pool).await.unwrap();
+            assert_eq!(retained.get::<f64,_>("pp"), 42.0);
+            assert_eq!(retained.get::<String,_>("verification"), "verified");
+            assert_eq!(retained.get::<Value,_>("hit_counts"), json!({"n300":2}));
+            assert!(retained.get::<Option<String>,_>("replay_path").is_some());
+            let replay_path = f.storage.join("replays").join(retained.get::<String,_>("replay_path"));
+            let mut changed_header = original.clone();
+            changed_header.hit_counts = [1, 1, 0, 0, 0, 0];
+            tokio::fs::write(&replay_path, changed_header.replay_container(20261007, FRAMES, id).unwrap()).await.unwrap();
+            let damaged_header = f.submit(ENVELOPE).await;
+            assert_eq!(damaged_header.status(), StatusCode::CONFLICT);
+            assert_eq!(damaged_header.json::<Value>().await.unwrap()["error"], "duplicate_score_payload_mismatch");
+            tokio::fs::write(&replay_path, &bytes).await.unwrap();
+            // Harmless float8 precision is tolerated, material drift is not.
+            sqlx::query("UPDATE scores SET accuracy=99.99999995 WHERE id=$1").bind(id).execute(&f.state.pool).await.unwrap();
+            assert_eq!(f.submit(ENVELOPE).await.status(), StatusCode::OK);
+            sqlx::query("UPDATE scores SET accuracy=99.9 WHERE id=$1").bind(id).execute(&f.state.pool).await.unwrap();
+            assert_eq!(f.submit(ENVELOPE).await.status(), StatusCode::CONFLICT);
+            sqlx::query("UPDATE scores SET accuracy=100 WHERE id=$1").bind(id).execute(&f.state.pool).await.unwrap();
+            let expiry_after: chrono::DateTime<chrono::Utc> = sqlx::query_scalar("SELECT expires_at FROM bancho_sessions WHERE user_id=$1")
+                .bind(f.user).fetch_one(&f.state.pool).await.unwrap();
+            assert_eq!(expiry_after, session_expiry, "Retained retry extended client authority");
+            sqlx::query("UPDATE bancho_sessions SET expires_at=now()-interval '1 second' WHERE user_id=$1")
+                .bind(f.user).execute(&f.state.pool).await.unwrap();
+            let calls_before_expiry = f.backend.ingested.lock().await.len();
+            let expired = f.submit(ENVELOPE).await;
+            assert_eq!(expired.status(), StatusCode::OK);
+            assert_eq!(expired.text().await.unwrap(), "");
+            assert_eq!(f.backend.ingested.lock().await.len(), calls_before_expiry);
+        }).catch_unwind().await;
+        f.cleanup().await;
+        if let Err(panic) = result {
+            std::panic::resume_unwind(panic);
+        }
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires ILLYA_TEST_DATABASE_URL; creates and removes an isolated schema"]
+async fn stable_checks_ingestion_winner_before_attaching_replay() {
+    let f = Fixture::new().await;
+    let result = std::panic::AssertUnwindSafe(async {
+        assert_eq!(f.board(HASH).await.status(), StatusCode::OK);
+        f.backend.winner_judgements.store(1, Ordering::SeqCst);
+        // No score is visible in the first retained lookup. Ingestion returns
+        // a same-checksum winner with different 300/100 counts; the final locked
+        // row guard must reject it, including after a publication wait.
+        assert_eq!(f.submit(ENVELOPE).await.status(), StatusCode::CONFLICT);
+        assert_eq!(f.backend.ingested.lock().await.len(), 1);
+        let row = sqlx::query("SELECT id,replay_path,hit_counts FROM scores").fetch_one(&f.state.pool).await.unwrap();
+        assert_eq!(row.get::<Value,_>("hit_counts"), json!({"n300":1,"n100":1}));
+        assert!(row.get::<Option<String>,_>("replay_path").is_none());
+        assert!(tokio::fs::read_dir(f.storage.join("replays")).await.unwrap().next_entry().await.unwrap().is_none());
+        // The saved winner is now visible. Its exact altered input can recover;
+        // the original input cannot gain the withdrawn retained bypass.
+        sqlx::query("INSERT INTO beatmapset_availability(native_set_id,withdrawn,revision,reason,actor_id) VALUES($1,true,1,'Winner stable receipt withdrawal',$2)")
+            .bind(SET_ID).bind(f.user).execute(&f.state.pool).await.unwrap();
+        assert_eq!(f.submit(ENVELOPE).await.status(), StatusCode::CONFLICT);
+        assert_eq!(f.backend.ingested.lock().await.len(), 1);
+        let exact_winner = f.submit(CHANGED_JUDGEMENTS).await;
+        assert_eq!(exact_winner.status(), StatusCode::OK);
+        assert!(exact_winner.text().await.unwrap().contains(&format!("onlineScoreId:{}|", row.get::<i64,_>("id"))));
+    }).catch_unwind().await;
+    f.cleanup().await;
+    if let Err(panic) = result {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires ILLYA_TEST_DATABASE_URL; creates and removes an isolated schema"]
+async fn stable_withdrawal_is_terminal_for_cached_selectors_and_retains_score_retry() {
+    let f = Fixture::new().await;
+    let result = std::panic::AssertUnwindSafe(async {
+        assert_eq!(f.board(HASH).await.status(), StatusCode::OK);
+        let map: i64 = sqlx::query_scalar("SELECT id FROM beatmaps WHERE md5=$1").bind(HASH).fetch_one(&f.state.pool).await.unwrap();
+        sqlx::query("INSERT INTO beatmap_filename_aliases(filename,beatmap_id) VALUES('Original fixture.osu',$1)").bind(map).execute(&f.state.pool).await.unwrap();
+        sqlx::query("UPDATE beatmaps SET archive_path='fixture.osu' WHERE id=$1").bind(map).execute(&f.state.pool).await.unwrap();
+        let submitted = f.submit(ENVELOPE).await;
+        assert_eq!(submitted.status(), StatusCode::OK);
+        let receipt = submitted.text().await.unwrap();
+        for (index, status) in ["ranked", "loved", "pending", "unranked"].into_iter().enumerate() {
+            sqlx::query("UPDATE beatmaps SET status=$2 WHERE id=$1").bind(map).bind(status).execute(&f.state.pool).await.unwrap();
+            if index == 0 {
+                sqlx::query("INSERT INTO beatmapset_availability(native_set_id,withdrawn,revision,reason,actor_id) VALUES($1,true,1,'Fixture withdrawal',$2)").bind(SET_ID).bind(f.user).execute(&f.state.pool).await.unwrap();
+            }
+            assert_eq!(f.board(HASH).await.status(), StatusCode::GONE);
+            assert_eq!(f.info(json!({"Ids":[OFFICIAL_ID]})).await.status(), StatusCode::GONE);
+            assert_eq!(f.info(json!({"Filenames":["Original fixture.osu"]})).await.status(), StatusCode::GONE);
+            for path in [format!("/osu/{OFFICIAL_ID}"), format!("/d/{SET_ID}")] {
+                assert_eq!(f.state.http.get(format!("{}{path}", f.base)).send().await.unwrap().status(), StatusCode::GONE);
+            }
+            for selector in [vec![("b", OFFICIAL_ID.to_string())],vec![("s", SET_ID.to_string())],vec![("c",HASH.to_owned())]] {
+                let mut query = f.auth(); query.extend(selector);
+                assert_eq!(f.state.http.get(format!("{}/web/osu-search-set.php",f.base)).query(&query).send().await.unwrap().status(), StatusCode::GONE);
+            }
+            let search = f.state.http.get(format!("{}/web/osu-search.php",f.base)).query(&f.auth()).send().await.unwrap();
+            assert_eq!(search.text().await.unwrap(), "0\n");
+        }
+        let retry = f.submit(ENVELOPE).await;
+        assert_eq!(retry.status(), StatusCode::OK);
+        let retry_body = retry.text().await.unwrap();
+        let score_id: i64 = sqlx::query_scalar("SELECT id FROM scores WHERE user_id=$1").bind(f.user).fetch_one(&f.state.pool).await.unwrap();
+        assert!(receipt.contains(&format!("onlineScoreId:{score_id}")));
+        assert!(retry_body.contains(&format!("onlineScoreId:{score_id}")));
+        assert_eq!(f.backend.calls.lock().await.len(),1);
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM scores").fetch_one(&f.state.pool).await.unwrap(),1);
+        assert!(native_maps::retained_map_json(&f.state,map).await.unwrap()["is_scoreable"] == false);
+        sqlx::query("UPDATE beatmapset_availability SET withdrawn=false,revision=revision+1,reason='Fixture restoration' WHERE native_set_id=$1").bind(SET_ID).execute(&f.state.pool).await.unwrap();
+        assert_eq!(f.board(HASH).await.status(), StatusCode::OK);
+        assert_eq!(native_maps::known_id(&f.state,OFFICIAL_ID).await.unwrap(),Some(map));
+        assert_eq!(f.backend.calls.lock().await.len(),1);
+    }).catch_unwind().await;
+    f.cleanup().await;
+    if let Err(panic) = result {
+        std::panic::resume_unwind(panic);
+    }
 }
 
 #[tokio::test]
@@ -729,5 +963,42 @@ async fn stable_official_archive_direct_search_uses_set_manifest_and_canonical_i
     f.cleanup().await;
     if let Err(error) = result {
         std::panic::resume_unwind(error);
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires ILLYA_TEST_DATABASE_URL; creates and removes an isolated schema"]
+async fn stable_multiplayer_withdrawal_denies_create_map_change_and_round_start() {
+    let f = Fixture::new().await;
+    let result=std::panic::AssertUnwindSafe(async {
+        assert_eq!(f.board(HASH).await.status(),StatusCode::OK);
+        let player=common::account(&f.state,f.user).await.unwrap();
+        let mut m=resonance_protocol::multiplayer::Match { id:0,in_progress:false,mods:0,name:"Original withdrawal match".into(),password:String::new(),map_name:"Original fixture".into(),map_id:OFFICIAL_ID as i32,map_md5:HASH.into(),statuses:[resonance_protocol::multiplayer::OPEN;16],teams:[0;16],users:[None;16],host_id:f.user as i32,mode:0,win_condition:0,team_type:0,freemods:false,slot_mods:[0;16],seed:0 };
+        m.statuses[0]=resonance_protocol::multiplayer::NOT_READY; m.users[0]=Some(f.user as i32);
+        sqlx::query("INSERT INTO beatmapset_availability(native_set_id,withdrawn,revision,reason,actor_id) VALUES($1,true,1,'Stable match withdrawal',$2)").bind(SET_ID).bind(f.user).execute(&f.state.pool).await.unwrap();
+        let mut tx=f.state.pool.begin().await.unwrap(); let mut out=Vec::new();
+        let error=crate::multiplayer::handle(&f.state,&mut tx,&player,31,&m.encode(false).unwrap(),&mut out).await.unwrap_err();
+        assert_eq!(error.0,StatusCode::GONE); tx.rollback().await.unwrap();
+        let mut unknown=m.clone(); unknown.map_id=i32::try_from(OFFICIAL_ID+99).unwrap(); unknown.map_md5="ffffffffffffffffffffffffffffffff".into();
+        let mut tx=f.state.pool.begin().await.unwrap();
+        assert!(crate::multiplayer::handle(&f.state,&mut tx,&player,31,&unknown.encode(false).unwrap(),&mut out).await.unwrap()); tx.rollback().await.unwrap();
+        // A different ID cannot disguise the known withdrawn checksum.
+        unknown.map_md5=HASH.into(); let mut tx=f.state.pool.begin().await.unwrap();
+        assert_eq!(crate::multiplayer::handle(&f.state,&mut tx,&player,31,&unknown.encode(false).unwrap(),&mut out).await.unwrap_err().0,StatusCode::GONE); tx.rollback().await.unwrap();
+        sqlx::query("UPDATE beatmapset_availability SET withdrawn=false,revision=revision+1,reason='Stable match restoration' WHERE native_set_id=$1").bind(SET_ID).execute(&f.state.pool).await.unwrap();
+        let mut tx=f.state.pool.begin().await.unwrap();
+        assert!(crate::multiplayer::handle(&f.state,&mut tx,&player,31,&m.encode(false).unwrap(),&mut out).await.unwrap()); tx.commit().await.unwrap();
+        sqlx::query("UPDATE beatmapset_availability SET withdrawn=true,revision=revision+1,reason='Stable match withdrawal again' WHERE native_set_id=$1").bind(SET_ID).execute(&f.state.pool).await.unwrap();
+        for (packet,payload) in [(41,m.encode(false).unwrap()),(44,Vec::new())] {
+            let mut tx=f.state.pool.begin().await.unwrap();
+            let error=crate::multiplayer::handle(&f.state,&mut tx,&player,packet,&payload,&mut out).await.unwrap_err();
+            assert_eq!(error.0,StatusCode::GONE); assert_eq!(error.1,"beatmap_withdrawn"); tx.rollback().await.unwrap();
+        }
+        let state:Value=sqlx::query_scalar("SELECT state FROM stable_rooms").fetch_one(&f.state.pool).await.unwrap();
+        assert_eq!(state["in_progress"],false); assert_eq!(state["map_id"],OFFICIAL_ID);
+    }).catch_unwind().await;
+    f.cleanup().await;
+    if let Err(panic) = result {
+        std::panic::resume_unwind(panic);
     }
 }

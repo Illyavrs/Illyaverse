@@ -42,6 +42,7 @@ async fn discover(
     user_id: i64,
     id: i64,
 ) -> Result<OfficialSetMetadata, ApiError> {
+    native_maps::require_active(&state.pool, id).await?;
     if state.service_key.len() < 32 {
         return Err(ApiError(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -72,6 +73,7 @@ async fn discover(
             return Err(ApiError(StatusCode::BAD_GATEWAY, "set_metadata_failed"));
         }
         return Err(match status {
+            StatusCode::GONE => ApiError(StatusCode::GONE, "beatmap_withdrawn"),
             StatusCode::UNAUTHORIZED => ApiError(StatusCode::UNAUTHORIZED, "invalid_account"),
             StatusCode::SERVICE_UNAVAILABLE => ApiError(status, "set_metadata_unavailable"),
             StatusCode::TOO_MANY_REQUESTS => ApiError(status, "set_metadata_rate_limited"),
@@ -84,6 +86,7 @@ async fn discover(
     metadata
         .validate(id)
         .map_err(|_| ApiError(StatusCode::BAD_GATEWAY, "invalid_set_metadata_response"))?;
+    native_maps::require_active(&state.pool, id).await?;
     Ok(metadata)
 }
 
@@ -119,6 +122,7 @@ pub(crate) async fn set_json(state: &AppState, user_id: i64, id: i64) -> Result<
     if !native_maps::valid_id(id) {
         return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_beatmapset_id"));
     }
+    native_maps::require_active(&state.pool, id).await?;
     if id >= native_maps::LOCAL_ID_MIN {
         return beatmaps::local_set_json(state, id).await;
     }
@@ -135,7 +139,8 @@ pub(crate) async fn set_json(state: &AppState, user_id: i64, id: i64) -> Result<
         Ok(metadata) => metadata,
         // Stored local content remains authoritative during an upstream outage
         // or missing metadata. This fallback only advertises already saved maps.
-        Err(error) if error.0 != StatusCode::UNAUTHORIZED => {
+        Err(error) if !matches!(error.0, StatusCode::UNAUTHORIZED | StatusCode::GONE) => {
+            native_maps::require_active(&state.pool, id).await?;
             let stored: bool =
                 sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM beatmaps WHERE native_set_id=$1)")
                     .bind(id)
@@ -282,5 +287,6 @@ pub(crate) async fn set_json(state: &AppState, user_id: i64, id: i64) -> Result<
             set["status"] = json!(status);
         }
     }
+    native_maps::require_active(&state.pool, id).await?;
     Ok(set)
 }

@@ -27,6 +27,97 @@ pub(crate) fn require_id(id: i64) -> Result<(), ApiError> {
     }
 }
 
+/// Availability is independent of moderation and of retained map identities.
+/// Readers check again after waits; publication uses the transaction gate.
+pub(crate) async fn require_active<'e>(
+    db: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
+    set: i64,
+) -> Result<(), ApiError> {
+    require_id(set)?;
+    if !sqlx::query_scalar::<_, bool>("SELECT illya_beatmapset_active($1)")
+        .bind(set)
+        .fetch_one(db)
+        .await?
+    {
+        return Err(ApiError(StatusCode::GONE, "beatmap_withdrawn"));
+    }
+    Ok(())
+}
+
+pub(crate) async fn require_active_map<'e>(
+    db: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
+    internal: i64,
+) -> Result<(), ApiError> {
+    let active = sqlx::query_scalar::<_, bool>(
+        "SELECT illya_beatmapset_active(native_set_id) FROM beatmaps WHERE id=$1",
+    )
+    .bind(internal)
+    .fetch_optional(db)
+    .await?
+    .ok_or(ApiError(StatusCode::NOT_FOUND, "beatmap_not_found"))?;
+    if !active {
+        return Err(ApiError(StatusCode::GONE, "beatmap_withdrawn"));
+    }
+    Ok(())
+}
+
+/// Called only inside a short transaction, never across network ingestion.
+pub(crate) async fn lock_active_set(db: &mut sqlx::PgConnection, set: i64) -> Result<(), ApiError> {
+    require_id(set)?;
+    sqlx::query("SELECT illya_lock_active_beatmapset($1)")
+        .bind(set)
+        .execute(db)
+        .await?;
+    Ok(())
+}
+
+/// A saved exact ingestion context can finish linking after withdrawal. New
+/// intents take the shared set fence and recheck saved publication after its
+/// wait before consulting availability. The caller releases it before HTTP.
+pub(crate) async fn lock_score_admission(
+    db: &mut sqlx::PgConnection,
+    token: i64,
+    user: i64,
+    map: i64,
+    mode: i16,
+    variant: illya_domain::ScoreVariant,
+) -> Result<(), ApiError> {
+    let key = format!("lazer:{token}");
+    let saved = "SELECT EXISTS(SELECT 1 FROM scores WHERE ingestion_key=$1 AND user_id=$2 AND beatmap_id=$3 AND mode=$4 AND score_variant=$5 AND client='lazer')";
+    if sqlx::query_scalar::<_, bool>(saved)
+        .bind(&key)
+        .bind(user)
+        .bind(map)
+        .bind(mode)
+        .bind(variant.as_str())
+        .fetch_one(&mut *db)
+        .await?
+    {
+        return Ok(());
+    }
+    let set: i64 = sqlx::query_scalar("SELECT native_set_id FROM beatmaps WHERE id=$1")
+        .bind(map)
+        .fetch_optional(&mut *db)
+        .await?
+        .ok_or(ApiError(StatusCode::NOT_FOUND, "beatmap_not_found"))?;
+    sqlx::query("SELECT illya_lock_beatmapset($1)")
+        .bind(set)
+        .execute(&mut *db)
+        .await?;
+    if sqlx::query_scalar::<_, bool>(saved)
+        .bind(&key)
+        .bind(user)
+        .bind(map)
+        .bind(mode)
+        .bind(variant.as_str())
+        .fetch_one(&mut *db)
+        .await?
+    {
+        return Ok(());
+    }
+    require_active(&mut *db, set).await
+}
+
 /// Internal row keys never enter the native identity namespace.
 pub(crate) fn row_ids(row: &sqlx::postgres::PgRow) -> Result<(i64, i64), ApiError> {
     let id: i64 = row.get("native_id");
@@ -44,6 +135,11 @@ pub(crate) fn row_ids(row: &sqlx::postgres::PgRow) -> Result<(i64, i64), ApiErro
 /// archives have a complete verified set manifest; ordinary discovery has none.
 pub(crate) async fn archive_path(state: &AppState, set: i64) -> Result<Option<String>, ApiError> {
     require_id(set)?;
+    require_active(&state.pool, set).await?;
+    retained_archive_path(state, set).await
+}
+
+async fn retained_archive_path(state: &AppState, set: i64) -> Result<Option<String>, ApiError> {
     if set >= LOCAL_ID_MIN {
         return Ok(sqlx::query_scalar(
             "SELECT archive_path FROM beatmap_packages WHERE native_set_id=$1",
@@ -84,6 +180,18 @@ pub(crate) async fn map_json(
     state: &AppState,
     internal: i64,
 ) -> Result<serde_json::Value, ApiError> {
+    require_active_map(&state.pool, internal).await?;
+    let result = retained_map_json(state, internal).await?;
+    require_active_map(&state.pool, internal).await?;
+    Ok(result)
+}
+
+/// Historical score and frozen-room serializers retain immutable identities.
+/// They advertise withdrawn content as unscoreable with downloads disabled.
+pub(crate) async fn retained_map_json(
+    state: &AppState,
+    internal: i64,
+) -> Result<serde_json::Value, ApiError> {
     let row = sqlx::query("SELECT * FROM beatmaps WHERE id=$1")
         .bind(internal)
         .fetch_optional(&state.pool)
@@ -99,10 +207,15 @@ pub(crate) async fn map_json(
         &stored_status
     };
     let mode = row.get::<i16, _>("mode") as usize;
-    let disabled = archive_path(state, set).await?.is_none();
-    Ok(
-        json!({"id":id,"beatmapset_id":set,"checksum":row.get::<String,_>("md5"),"version":row.get::<String,_>("version"),"mode":(["osu","taiko","fruits","mania"][mode]),"mode_int":mode,"status":status,"ranked":if status=="ranked"{1}else if status=="loved"{4}else{0},"difficulty_rating":row.get::<f64,_>("stars"),"bpm":row.get::<f64,_>("bpm"),"total_length":row.get::<i32,_>("length_seconds"),"hit_length":row.get::<i32,_>("length_seconds"),"max_combo":row.get::<i32,_>("max_combo"),"user_id":row.get::<Option<i64>,_>("uploaded_by").unwrap_or(0),"is_scoreable":true,"url":format!("/beatmaps/{internal}"),"beatmapset":{"id":set,"artist":row.get::<String,_>("artist"),"artist_unicode":row.get::<String,_>("artist"),"title":row.get::<String,_>("title"),"title_unicode":row.get::<String,_>("title"),"creator":row.get::<String,_>("creator"),"status":status,"user_id":row.get::<Option<i64>,_>("uploaded_by").unwrap_or(0),"covers":{"cover":"","cover@2x":"","card":"","card@2x":"","list":"","list@2x":"","slimcover":"","slimcover@2x":""},"preview_url":"","download_disabled":disabled,"video":false,"storyboard":false,"availability":{"download_disabled":disabled,"more_information":null},"beatmaps":[]}}),
-    )
+    let active: bool = sqlx::query_scalar("SELECT illya_beatmapset_active($1)")
+        .bind(set)
+        .fetch_one(&state.pool)
+        .await?;
+    let disabled = !active || retained_archive_path(state, set).await?.is_none();
+    let mut output = json!({"id":id,"beatmapset_id":set,"checksum":row.get::<String,_>("md5"),"version":row.get::<String,_>("version"),"mode":(["osu","taiko","fruits","mania"][mode]),"mode_int":mode,"status":status,"ranked":if status=="ranked"{1}else if status=="loved"{4}else{0},"difficulty_rating":row.get::<f64,_>("stars"),"bpm":row.get::<f64,_>("bpm"),"total_length":row.get::<i32,_>("length_seconds"),"hit_length":row.get::<i32,_>("length_seconds"),"max_combo":row.get::<i32,_>("max_combo"),"user_id":row.get::<Option<i64>,_>("uploaded_by").unwrap_or(0),"is_scoreable":true,"url":format!("/beatmaps/{internal}"),"beatmapset":{"id":set,"artist":row.get::<String,_>("artist"),"artist_unicode":row.get::<String,_>("artist"),"title":row.get::<String,_>("title"),"title_unicode":row.get::<String,_>("title"),"creator":row.get::<String,_>("creator"),"status":status,"user_id":row.get::<Option<i64>,_>("uploaded_by").unwrap_or(0),"covers":{"cover":"","cover@2x":"","card":"","card@2x":"","list":"","list@2x":"","slimcover":"","slimcover@2x":""},"preview_url":"","download_disabled":disabled,"video":false,"storyboard":false,"availability":{"download_disabled":disabled,"more_information":null},"beatmaps":[]}});
+    output["is_scoreable"] = json!(active);
+    output["beatmapset"]["availability"]["withdrawn"] = json!(!active);
+    Ok(output)
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -173,12 +286,14 @@ impl Identity {
 /// primary key to masquerade as a different official difficulty.
 pub async fn known_id(state: &AppState, id: i64) -> Result<Option<i64>, ApiError> {
     require_id(id)?;
-    Ok(
-        sqlx::query_scalar("SELECT id FROM beatmaps WHERE native_id=$1")
-            .bind(id)
-            .fetch_optional(&state.pool)
-            .await?,
-    )
+    let known = sqlx::query_scalar("SELECT id FROM beatmaps WHERE native_id=$1")
+        .bind(id)
+        .fetch_optional(&state.pool)
+        .await?;
+    if let Some(internal) = known {
+        require_active_map(&state.pool, internal).await?;
+    }
+    Ok(known)
 }
 
 /// Resolve a public ID only after native bearer authentication. A local-only
@@ -218,6 +333,7 @@ pub async fn resolve_checksum(
         .fetch_optional(&state.pool)
         .await?
     {
+        require_active_map(&state.pool, id).await?;
         return Ok(Some(id));
     }
     discover(state, user_id, Selector::Checksum(&checksum)).await
@@ -243,6 +359,9 @@ pub(crate) async fn known_filename(
     .await?;
     if ids.len() > 1 {
         return Err(ApiError(StatusCode::CONFLICT, "beatmap_filename_ambiguous"));
+    }
+    if let Some(id) = ids.first() {
+        require_active_map(&state.pool, *id).await?;
     }
     Ok(ids.first().copied())
 }
@@ -341,6 +460,7 @@ async fn discover(
             )
         })?;
     match response.status() {
+        StatusCode::GONE => return Err(ApiError(StatusCode::GONE, "beatmap_withdrawn")),
         StatusCode::NOT_FOUND => {
             // An absent internal route can also return 404. Only Sanctuary's
             // explicit official lookup miss means the beatmap is unknown.
@@ -413,6 +533,7 @@ async fn discover(
             "invalid_map_resolution_response",
         ));
     }
+    require_active_map(&state.pool, identity.id).await?;
     Ok(Some(identity.id))
 }
 

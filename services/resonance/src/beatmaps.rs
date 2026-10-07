@@ -81,6 +81,7 @@ pub(crate) async fn local_set_json(state: &AppState, id: i64) -> Result<Value, A
     if !crate::native_maps::valid_id(id) {
         return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_beatmapset_id"));
     }
+    crate::native_maps::require_active(&state.pool, id).await?;
     let rows = sqlx::query("SELECT id FROM beatmaps WHERE native_set_id=$1 ORDER BY id")
         .bind(id)
         .fetch_all(&state.pool)
@@ -108,6 +109,7 @@ pub(crate) async fn local_set_json(state: &AppState, id: i64) -> Result<Value, A
         "invalid_beatmapset",
     ))?;
     set["beatmaps"] = json!(maps);
+    crate::native_maps::require_active(&state.pool, id).await?;
     Ok(set)
 }
 async fn beatmapset(
@@ -153,6 +155,7 @@ async fn download(
         .await?
         .ok_or(ApiError(StatusCode::NOT_FOUND, "archive_not_available"))?;
     let bytes = common::stored_file(&state, &path, "maps", 104_857_600).await?;
+    crate::native_maps::require_active(&state.pool, id).await?;
     Ok((
         [
             ("content-type", "application/x-osu-beatmap-archive"),
@@ -190,8 +193,8 @@ async fn search(
         return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_search_cursor"));
     }
     // Search the canonical set membership, including every package difficulty.
-    let total:i64=sqlx::query_scalar("SELECT count(DISTINCT b.native_set_id) FROM beatmaps b WHERE concat_ws(' ',b.title,b.artist,b.creator,b.version) ILIKE '%'||$1||'%' AND ($2::smallint IS NULL OR b.mode=$2) AND ($3::text IS NULL OR b.status=$3)").bind(&q).bind(mode).bind(status).fetch_one(&state.pool).await?;
-    let ids=sqlx::query_scalar::<_,i64>("SELECT DISTINCT b.native_set_id FROM beatmaps b WHERE concat_ws(' ',b.title,b.artist,b.creator,b.version) ILIKE '%'||$1||'%' AND ($2::smallint IS NULL OR b.mode=$2) AND ($3::text IS NULL OR b.status=$3) ORDER BY 1 DESC LIMIT 50 OFFSET $4").bind(q).bind(mode).bind(status).bind(offset).fetch_all(&state.pool).await?;
+    let total:i64=sqlx::query_scalar("SELECT count(DISTINCT b.native_set_id) FROM active_beatmaps b WHERE concat_ws(' ',b.title,b.artist,b.creator,b.version) ILIKE '%'||$1||'%' AND ($2::smallint IS NULL OR b.mode=$2) AND ($3::text IS NULL OR b.status=$3)").bind(&q).bind(mode).bind(status).fetch_one(&state.pool).await?;
+    let ids=sqlx::query_scalar::<_,i64>("SELECT DISTINCT b.native_set_id FROM active_beatmaps b WHERE concat_ws(' ',b.title,b.artist,b.creator,b.version) ILIKE '%'||$1||'%' AND ($2::smallint IS NULL OR b.mode=$2) AND ($3::text IS NULL OR b.status=$3) ORDER BY 1 DESC LIMIT 50 OFFSET $4").bind(q).bind(mode).bind(status).bind(offset).fetch_all(&state.pool).await?;
     let mut sets = Vec::new();
     for id in ids {
         sets.push(local_set_json(&state, id).await?);
@@ -308,6 +311,7 @@ async fn scores(
             scores.push(score);
         }
     }
+    crate::native_maps::require_active_map(&state.pool, map).await?;
     Ok(Json(
         json!({"scores":scores,"user_score":own,"score_count":score_count,"score_variant":variant,"ruleset_id":mode}),
     ))

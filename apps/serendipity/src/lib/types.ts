@@ -75,6 +75,8 @@ export type BeatmapPackage = {
   source?: 'local' | 'official';
 };
 export type Beatmap = BeatmapDifficulty & {
+  native_set_id?: number;
+  availability?: BeatmapAvailability;
   official_id: number | null;
   bpm: number;
   max_combo: number;
@@ -83,6 +85,12 @@ export type Beatmap = BeatmapDifficulty & {
   download_url: string;
   download_kind: 'osu' | 'osz';
   package: BeatmapPackage | null;
+};
+export type BeatmapAvailability = {
+  withdrawn: boolean;
+  revision: number;
+  reason: string | null;
+  changed_at: string | null;
 };
 export type BeatmapUploadResult = {
   items: Beatmap[];

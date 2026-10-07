@@ -1279,3 +1279,45 @@ fixture_test!(
         assert_eq!(count, 1);
     }
 );
+
+fixture_test!(
+    native_set_withdrawal_during_metadata_wait_is_terminal_and_never_uses_stored_fallback,
+    f,
+    {
+        f.stored(0, SET, HASHES[0], 0).await;
+        f.backend.pause.store(true, Ordering::SeqCst);
+        let request = f
+            .state
+            .http
+            .get(format!("{}/api/v2/beatmapsets/{SET}", f.base))
+            .bearer_auth(ACCESS);
+        let task = tokio::spawn(async move { request.send().await.unwrap() });
+        tokio::time::timeout(Duration::from_secs(3), f.backend.entered.notified())
+            .await
+            .expect("metadata reached actual service wait");
+        sqlx::query("INSERT INTO beatmapset_availability(native_set_id,withdrawn,revision,reason,actor_id) VALUES($1,true,1,'Metadata fixture withdrawal',$2)").bind(SET).bind(f.user).execute(&f.state.pool).await.unwrap();
+        f.backend.release.notify_one();
+        assert_eq!(
+            body(task.await.unwrap(), StatusCode::GONE).await["error"],
+            "beatmap_withdrawn"
+        );
+        assert_eq!(
+            body(
+                f.get(&format!("/api/v2/beatmapsets/{SET}")).await,
+                StatusCode::GONE
+            )
+            .await["error"],
+            "beatmap_withdrawn"
+        );
+        assert_eq!(f.backend.calls.lock().await.len(), 1);
+        let absent = SET + 1;
+        sqlx::query("INSERT INTO beatmapset_availability(native_set_id,withdrawn,revision,reason,actor_id) VALUES($1,true,1,'Absent set fixture withdrawal',$2)").bind(absent).bind(f.user).execute(&f.state.pool).await.unwrap();
+        assert_eq!(
+            f.get(&format!("/api/v2/beatmapsets/{absent}"))
+                .await
+                .status(),
+            StatusCode::GONE
+        );
+        assert_eq!(f.backend.calls.lock().await.len(), 1);
+    }
+);

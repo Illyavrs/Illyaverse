@@ -95,6 +95,11 @@ async fn create(
         return Err(invalid("room_loading_participant_required"));
     }
     let map: i64 = participant.get("beatmap_id");
+    let set: i64 = sqlx::query_scalar("SELECT native_set_id FROM beatmaps WHERE id=$1")
+        .bind(map)
+        .fetch_one(&mut *tx)
+        .await?;
+    crate::native_maps::lock_active_set(&mut tx, set).await?;
     if participant.get::<i64, _>("native_id") != input.beatmap_id
         || participant.get::<i16, _>("ruleset_id") != i16::from(input.ruleset_id)
         || !participant
@@ -295,17 +300,40 @@ async fn preflight(
         return Ok(Preflight::Done);
     }
     validate_window(&row)?;
+    if row.get::<String, _>("processing_status") != "issued"
+        && !originating_session_valid(&mut tx, &row).await?
+    {
+        return Err(ApiError(
+            StatusCode::UNAUTHORIZED,
+            "invalid_originating_session",
+        ));
+    }
+    let mods = crate::lazer::legacy_mods(input.ruleset_id, &input.mods)?;
+    let variant = illya_domain::ScoreVariant::from_legacy(input.ruleset_id, mods)
+        .map_err(|_| invalid("invalid_score_mods"))?;
+    if let Err(error) = crate::native_maps::lock_score_admission(
+        &mut tx,
+        token,
+        uid,
+        row.get("beatmap_id"),
+        i16::from(input.ruleset_id),
+        variant,
+    )
+    .await
+    {
+        if error.0 == StatusCode::GONE && row.get::<String, _>("processing_status") == "received" {
+            sqlx::query("UPDATE lazer_score_tokens SET processing_error='beatmap_withdrawn',retry_at=now()+interval '5 minutes' WHERE id=$1 AND processing_status='received'")
+                .bind(token).execute(&mut *tx).await?;
+            tx.commit().await?;
+        }
+        return Err(error);
+    }
     if row.get::<String, _>("processing_status") == "issued" {
         let session: uuid::Uuid = sqlx::query_scalar("SELECT id FROM lazer_sessions WHERE user_id=$1 AND access_hash=$2 AND access_expires_at>clock_timestamp()")
             .bind(uid).bind(common::bearer_hash(headers)?).fetch_optional(&mut *tx).await?
             .ok_or(ApiError(StatusCode::UNAUTHORIZED, "invalid_token"))?;
         sqlx::query("UPDATE lazer_score_tokens SET submission=$2,submission_sha256=$3,received_at=now(),received_session_id=$4,processing_status='received',retry_at=now() WHERE id=$1")
             .bind(token).bind(payload).bind(sha).bind(session).execute(&mut *tx).await?;
-    } else if !originating_session_valid(&mut tx, &row).await? {
-        return Err(ApiError(
-            StatusCode::UNAUTHORIZED,
-            "invalid_originating_session",
-        ));
     }
     let claimed = claim(&mut tx, token, true).await?;
     tx.commit().await?; // Canonical input is durable before the HTTP request.
@@ -414,6 +442,9 @@ async fn process(
         .timeout(std::time::Duration::from_secs(30)).send().await
         .map_err(|_| unavailable("score_ingestion_unavailable"))?;
     if !response.status().is_success() {
+        if response.status() == StatusCode::GONE {
+            return Err(ApiError(StatusCode::GONE, "beatmap_withdrawn"));
+        }
         return Err(
             if response.status().is_server_error()
                 || matches!(response.status().as_u16(), 401 | 403 | 404)
@@ -544,6 +575,21 @@ pub(crate) async fn recover_pending(state: &AppState) -> Result<usize, ApiError>
                 .is_some();
         let row = bound_token(&mut tx, room, item, token, uid).await?;
         if row.get::<String, _>("processing_status") != "received" {
+            continue;
+        }
+        let map: i64 = row.get("beatmap_id");
+        let withdrawn: bool = sqlx::query_scalar(
+            "SELECT NOT illya_beatmapset_active(native_set_id) FROM beatmaps WHERE id=$1",
+        )
+        .bind(map)
+        .fetch_one(&mut *tx)
+        .await?;
+        let persisted: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM scores WHERE ingestion_key=$1 AND user_id=$2 AND beatmap_id=$3 AND mode=$4 AND client='lazer')")
+            .bind(format!("lazer:{token}")).bind(uid).bind(map).bind(row.get::<i16, _>("ruleset_id")).fetch_one(&mut *tx).await?;
+        if withdrawn && !persisted {
+            sqlx::query("UPDATE lazer_score_tokens SET processing_error='beatmap_withdrawn',retry_at=now()+interval '5 minutes' WHERE id=$1 AND processing_status='received'")
+                .bind(token).execute(&mut *tx).await?;
+            tx.commit().await?;
             continue;
         }
         let payload: Value = row

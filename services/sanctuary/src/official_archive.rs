@@ -67,6 +67,7 @@ pub(super) async fn lock_set(
         .bind(key)
         .execute(&mut **tx)
         .await?;
+    availability::lock_active_set(tx, set_id).await?;
     Ok(())
 }
 
@@ -298,6 +299,7 @@ async fn archive_flight(
 }
 
 async fn fetch_members(state: &AppState, set_id: i64) -> ApiResult<HashMap<i64, MemberMetadata>> {
+    availability::require_active_set(&state.db, set_id).await?;
     let selector = MapSelector::OfficialSet(set_id);
     if let Some(error) = state
         .official
@@ -334,6 +336,7 @@ async fn fetch_members(state: &AppState, set_id: i64) -> ApiResult<HashMap<i64, 
         metadata_members(&metadata, set_id)
     }
     .await;
+    availability::require_active_set(&state.db, set_id).await?;
     if let Err(error) = &result {
         let duration = if error.0 == StatusCode::NOT_FOUND {
             Duration::from_secs(60)
@@ -464,6 +467,7 @@ async fn try_retry(
     user: &auth::User,
     input: &ArchiveInput,
 ) -> ApiResult<Option<Vec<i64>>> {
+    availability::require_active_set(&state.db, input.set_id).await?;
     let exists: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM official_beatmapset_archives WHERE official_set_id=$1)",
     )
@@ -637,6 +641,7 @@ pub async fn import_archive(
     user.require("beatmaps.import")?;
     let _upload = state.upload_permit()?;
     let input = read_input(multipart.map_err(|_| archive_invalid())?).await?;
+    availability::require_active_set(&state.db, input.set_id).await?;
     if let Some(ids) = try_retry(&state, &user, &input).await? {
         return response(&state, ids, true).await;
     }
@@ -664,6 +669,7 @@ pub async fn import_archive(
             .await?;
         }
         let (_flight, slots) = archive_flight(&state, input.set_id).await?;
+        availability::require_active_set(&state.db, input.set_id).await?;
         if let Some(ids) = try_retry(&state, &user, &input).await? {
             return Ok(Publication {
                 ids,

@@ -1,6 +1,9 @@
 mod account_recovery;
 mod admin;
 mod auth;
+mod beatmap_availability;
+#[cfg(test)]
+mod beatmap_availability_tests;
 #[cfg(test)]
 mod beatmap_filename_tests;
 mod chat;
@@ -147,6 +150,11 @@ impl IntoResponse for ApiError {
 impl From<sqlx::Error> for ApiError {
     fn from(value: sqlx::Error) -> Self {
         if value
+            .as_database_error()
+            .is_some_and(|e| e.code().as_deref() == Some("P2001"))
+        {
+            beatmap_availability::withdrawn()
+        } else if value
             .as_database_error()
             .is_some_and(|e| e.is_unique_violation())
         {
@@ -474,7 +482,14 @@ fn router(state: AppState) -> Router {
             patch(admin::update_role).delete(admin::delete_role),
         )
         .route("/api/v1/admin/beatmaps", get(maps::admin_list))
-        .route("/api/v1/admin/beatmaps/{id}", patch(admin::update_map))
+        .route(
+            "/api/v1/admin/beatmaps/{id}",
+            get(maps::admin_detail).patch(admin::update_map),
+        )
+        .route(
+            "/api/v1/admin/beatmapsets/{id}/availability",
+            patch(beatmap_availability::update),
+        )
         .route("/api/v1/admin/scores/{id}", patch(admin::update_score))
         .route(
             "/api/v1/admin/scores/recalculate-relax",
@@ -514,7 +529,7 @@ async fn auth_capabilities(State(state): State<AppState>) -> Json<Value> {
     Json(json!({"password_reset":enabled,"email_verification":enabled}))
 }
 async fn status(State(state): State<AppState>) -> ApiResult {
-    let value:Value=sqlx::query_scalar("SELECT jsonb_build_object('registered_players',(SELECT count(*) FROM users WHERE NOT is_restricted),'ranked_scores',(SELECT count(*) FROM scores s JOIN users u ON u.id=s.user_id JOIN beatmaps b ON b.id=s.beatmap_id WHERE s.verification='verified' AND s.passed AND b.status='ranked' AND NOT u.is_restricted AND s.pp_eligible),'beatmap_count',(SELECT count(*) FROM beatmaps))").fetch_one(&state.db).await?;
+    let value:Value=sqlx::query_scalar("SELECT jsonb_build_object('registered_players',(SELECT count(*) FROM users WHERE NOT is_restricted),'ranked_scores',(SELECT count(*) FROM scores s JOIN users u ON u.id=s.user_id JOIN active_beatmaps b ON b.id=s.beatmap_id WHERE s.verification='verified' AND s.passed AND b.status='ranked' AND NOT u.is_restricted AND s.pp_eligible),'beatmap_count',(SELECT count(*) FROM active_beatmaps))").fetch_one(&state.db).await?;
     let mut value = value;
     let online:i64=sqlx::query_scalar("SELECT count(DISTINCT active.user_id) FROM (SELECT user_id FROM bancho_sessions WHERE expires_at>now() UNION SELECT user_id FROM lazer_sessions WHERE access_expires_at>now() AND last_seen_at>now()-interval '3 minutes') active JOIN users u ON u.id=active.user_id WHERE NOT u.is_restricted").fetch_one(&state.db).await?;
     value["players_online"] = json!(online);

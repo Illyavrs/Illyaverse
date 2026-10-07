@@ -1,4 +1,6 @@
-use crate::{ApiError, ApiResult, AppState, auth, page, score_scales};
+use crate::{
+    ApiError, ApiResult, AppState, auth, beatmap_availability as availability, page, score_scales,
+};
 use axum::{
     Json,
     extract::{Multipart, Path, Query, State},
@@ -55,7 +57,7 @@ pub async fn best_for_user(
         ),eligible AS (
             SELECT s.*,u.username,b.title,b.version
             FROM scores s JOIN public_player u ON u.id=s.user_id
-            JOIN beatmaps b ON b.id=s.beatmap_id
+            JOIN active_beatmaps b ON b.id=s.beatmap_id
             WHERE s.mode=$2 AND s.score_variant=$3 AND s.verification='verified'
                 AND s.passed AND b.status='ranked' AND s.pp_eligible
         ),best AS (
@@ -225,7 +227,7 @@ fn validate_country(country: Option<&str>) -> ApiResult<()> {
 }
 
 const RANKING_CTE: &str = "WITH eligible AS (
-    SELECT s.* FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id
+    SELECT s.* FROM scores s JOIN active_beatmaps b ON b.id=s.beatmap_id
     WHERE s.mode=$1 AND s.score_variant=$2 AND s.verification='verified' AND s.passed AND b.status='ranked' AND s.pp_eligible
 ),best AS (
     SELECT user_id,beatmap_id,max(pp) pp FROM eligible GROUP BY user_id,beatmap_id
@@ -305,6 +307,7 @@ pub async fn beatmap_leaderboard(
     let variant = query.variant.unwrap_or_default();
     validate_partition(mode, variant)?;
     validate_country(query.country.as_deref())?;
+    let native_set_id = availability::require_active_map(&state.db, beatmap_id).await?;
     let map = sqlx::query("SELECT mode,title,version FROM beatmaps WHERE id=$1")
         .bind(beatmap_id)
         .fetch_optional(&state.db)
@@ -330,6 +333,7 @@ pub async fn beatmap_leaderboard(
     response["mode"] = json!(mode);
     response["score_variant"] = json!(variant);
     response["ordered_by"] = json!(if rx { "pp" } else { "standardised_score" });
+    availability::require_active_set(&state.db, native_set_id).await?;
     Ok(Json(response))
 }
 #[derive(Clone, Deserialize)]
@@ -415,18 +419,9 @@ async fn ingest(
         {
             let mut tx = state.db.begin().await?;
             let actor = score_publication_actor(&mut tx, user_id, website).await?;
-            let existing=sqlx::query_scalar::<_,Value>("SELECT to_jsonb(s)-'replay_path'||jsonb_build_object('accuracy_source',CASE WHEN s.client='lazer' THEN 'client_reported' ELSE 'judgements' END) FROM scores s WHERE ingestion_key=$1 FOR SHARE OF s").bind(key).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::missing)?;
-            if existing["user_id"].as_i64() != Some(user_id)
-                || existing["beatmap_id"].as_i64() != Some(input.beatmap_id)
-                || existing["mode"].as_i64() != Some(i64::from(input.mode))
-                || existing["score_variant"].as_str() != Some(variant.as_str())
-            {
-                return Err(ApiError(
-                    axum::http::StatusCode::CONFLICT,
-                    "ingestion_conflict",
-                    "The ingestion key belongs to another score partition.".into(),
-                ));
-            }
+            let existing = retained_submission(&mut tx, key, user_id, &input, client, variant)
+                .await?
+                .ok_or_else(ApiError::missing)?;
             if let Some(actor) = &actor {
                 auth::ensure_mutation_actor(&mut tx, actor).await?;
             }
@@ -459,11 +454,29 @@ async fn ingest(
     if !valid {
         return Err(ApiError::unauthorized());
     }
-    let map = sqlx::query("SELECT osu_path,mode,max_combo FROM beatmaps WHERE id=$1")
+    let map = sqlx::query("SELECT osu_path,mode,max_combo,native_set_id FROM beatmaps WHERE id=$1")
         .bind(input.beatmap_id)
         .fetch_optional(&state.db)
         .await?
         .ok_or_else(ApiError::missing)?;
+    let native_set_id: i64 = map.get("native_set_id");
+    if let Err(error) = availability::require_active_set(&state.db, native_set_id).await {
+        // An exact score may have committed after the initial retry lookup.
+        if let Some(key) = &input.ingestion_key {
+            let mut tx = state.db.begin().await?;
+            let actor = score_publication_actor(&mut tx, user_id, website).await?;
+            if let Some(value) =
+                retained_submission(&mut tx, key, user_id, &input, client, variant).await?
+            {
+                if let Some(actor) = &actor {
+                    auth::ensure_mutation_actor(&mut tx, actor).await?;
+                }
+                tx.commit().await?;
+                return Ok(value);
+            }
+        }
+        return Err(error);
+    }
     let source_mode = map.get::<i16, _>("mode");
     if source_mode != input.mode && source_mode != 0 {
         return Err(ApiError::bad(
@@ -494,8 +507,29 @@ async fn ingest(
     let scales = calculated.scales;
     let mut tx = state.db.begin().await?;
     let actor = score_publication_actor(&mut tx, user_id, website).await?;
+    sqlx::query("SELECT illya_lock_beatmapset($1)")
+        .bind(native_set_id)
+        .execute(&mut *tx)
+        .await?;
+    // A publisher holding this shared fence may have saved the exact result
+    // while our calculation or admission wait ran. Retained retries survive
+    // withdrawal; incomplete intent never establishes that exception.
+    if let Some(key) = &input.ingestion_key
+        && let Some(value) =
+            retained_submission(&mut tx, key, user_id, &input, client, variant).await?
+    {
+        if let Some(actor) = &actor {
+            auth::ensure_mutation_actor(&mut tx, actor).await?;
+        }
+        tx.commit().await?;
+        return Ok(value);
+    }
+    availability::lock_active_set(&mut tx, native_set_id).await?;
     let mut value:Value=sqlx::query_scalar("INSERT INTO scores(user_id,beatmap_id,mode,score,accuracy,max_combo,mods,pp,passed,hit_counts,client,ingestion_key,api_mods,pp_eligible,standardised_score,standardised_without_mods,classic_score,native_submission,native_basic_maximum,score_scale_status,score_scale_version,score_scale_reason,legacy_attributes,score_variant,pp_calculation_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,'rosu_pp4.v1') ON CONFLICT(ingestion_key) DO UPDATE SET ingestion_key=scores.ingestion_key WHERE scores.user_id=excluded.user_id AND scores.beatmap_id=excluded.beatmap_id AND scores.mode=excluded.mode AND scores.score_variant=excluded.score_variant RETURNING to_jsonb(scores)-'replay_path'")
-        .bind(user_id).bind(input.beatmap_id).bind(input.mode).bind(input.score).bind(accuracy).bind(input.max_combo as i32).bind(i64::from(input.mods)).bind(calculated.pp).bind(input.passed).bind(json!(input.hit_counts)).bind(client).bind(input.ingestion_key).bind(input.api_mods).bind(pp_eligible).bind(scales.standardised_score).bind(scales.standardised_without_mods).bind(scales.classic_score).bind(scales.native_submission).bind(scales.native_basic_maximum).bind(scales.status).bind(scales.version).bind(scales.reason).bind(scales.legacy_attributes).bind(variant.as_str()).fetch_optional(&mut *tx).await?.ok_or_else(||ApiError(axum::http::StatusCode::CONFLICT,"ingestion_conflict","The ingestion key belongs to another score.".into()))?;
+        .bind(user_id).bind(input.beatmap_id).bind(input.mode).bind(input.score).bind(accuracy).bind(input.max_combo as i32).bind(i64::from(input.mods)).bind(calculated.pp).bind(input.passed).bind(json!(input.hit_counts)).bind(client).bind(&input.ingestion_key).bind(&input.api_mods).bind(pp_eligible).bind(scales.standardised_score).bind(scales.standardised_without_mods).bind(scales.classic_score).bind(scales.native_submission).bind(scales.native_basic_maximum).bind(scales.status).bind(scales.version).bind(scales.reason).bind(scales.legacy_attributes).bind(variant.as_str()).fetch_optional(&mut *tx).await?.ok_or_else(||ApiError(axum::http::StatusCode::CONFLICT,"ingestion_conflict","The ingestion key belongs to another score.".into()))?;
+    // ON CONFLICT may observe a winner published after the locked retry lookup.
+    // Compare its immutable input before committing even the no-op update.
+    ensure_retained_input(&value, user_id, &input, client, variant)?;
     if let Some(actor) = &actor {
         auth::ensure_mutation_actor(&mut tx, actor).await?;
     }
@@ -506,6 +540,126 @@ async fn ingest(
         "judgements"
     });
     Ok(value)
+}
+
+async fn retained_submission(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    key: &str,
+    user_id: i64,
+    input: &Submission,
+    client: &str,
+    variant: ScoreVariant,
+) -> ApiResult<Option<Value>> {
+    let value: Option<Value> = sqlx::query_scalar("SELECT to_jsonb(s)-'replay_path'||jsonb_build_object('accuracy_source',CASE WHEN s.client='lazer' THEN 'client_reported' ELSE 'judgements' END) FROM scores s WHERE ingestion_key=$1 FOR SHARE OF s")
+        .bind(key).fetch_optional(&mut **tx).await?;
+    if let Some(value) = &value {
+        ensure_retained_input(value, user_id, input, client, variant)?;
+    }
+    Ok(value)
+}
+
+fn ingestion_conflict() -> ApiError {
+    ApiError(
+        axum::http::StatusCode::CONFLICT,
+        "ingestion_conflict",
+        "The ingestion key belongs to a different score submission.".into(),
+    )
+}
+
+fn same_structured_mods(mode: i16, saved: &Value, supplied: Option<&Value>) -> bool {
+    // Historical NULL and an empty structured array both mean that no native
+    // modifier parameters were supplied. Raw legacy bits are checked separately.
+    let empty = json!([]);
+    let saved = if saved.is_null() { &empty } else { saved };
+    let supplied = supplied.unwrap_or(&empty);
+    match (
+        ValidatedMods::parse(mode as u8, saved),
+        ValidatedMods::parse(mode as u8, supplied),
+    ) {
+        (Ok(saved), Ok(supplied)) => saved.mods == supplied.mods,
+        _ => false,
+    }
+}
+
+fn same_native_context(
+    saved: &Value,
+    supplied: Option<&resonance_protocol::lazer::SoloScoreSubmission>,
+) -> bool {
+    match (saved.is_null(), supplied) {
+        (true, None) => true,
+        (false, Some(supplied)) => {
+            let Ok(mut saved) = serde_json::from_value::<
+                resonance_protocol::lazer::SoloScoreSubmission,
+            >(saved.clone()) else {
+                return false;
+            };
+            if saved.validate().is_err()
+                || !same_structured_mods(
+                    i16::from(supplied.ruleset_id),
+                    &json!(saved.mods),
+                    Some(&json!(supplied.mods)),
+                )
+                || (saved.accuracy - supplied.accuracy).abs() > 1e-12
+            {
+                return false;
+            }
+            // Modifier order and explicit zero counters do not change input
+            // semantics. All remaining typed native fields stay immutable.
+            let mut supplied = supplied.clone();
+            for context in [&mut saved, &mut supplied] {
+                context.mods.clear();
+                context.accuracy = 0.0;
+                context.statistics.retain(|_, value| *value != 0);
+                context.maximum_statistics.retain(|_, value| *value != 0);
+            }
+            json!(saved) == json!(supplied)
+        }
+        _ => false,
+    }
+}
+
+/// Compare submitted semantic context, not mutable review or calculation caches.
+/// Historical sparse counters deserialize with the same default-zero semantics
+/// as incoming HitCounts. Derived scale/PP versions may legitimately change.
+fn ensure_retained_input(
+    saved: &Value,
+    user_id: i64,
+    input: &Submission,
+    client: &str,
+    variant: ScoreVariant,
+) -> ApiResult<()> {
+    let counts = serde_json::from_value::<HitCounts>(saved["hit_counts"].clone())
+        .map_err(|_| ingestion_conflict())?;
+    let expected_accuracy = if client == "lazer" {
+        input.accuracy
+    } else {
+        // The stable/API caller's accuracy is not authoritative: publication
+        // derives it from judgements, and retries retain that same meaning.
+        accuracy(input.mode, &input.hit_counts).map_err(|_| ingestion_conflict())?
+    };
+    let same_accuracy = saved["accuracy"]
+        .as_f64()
+        .is_some_and(|saved| saved.is_finite() && (saved - expected_accuracy).abs() <= 1e-7);
+    if saved["user_id"].as_i64() != Some(user_id)
+        || saved["beatmap_id"].as_i64() != Some(input.beatmap_id)
+        || saved["mode"].as_i64() != Some(i64::from(input.mode))
+        || saved["score_variant"].as_str() != Some(variant.as_str())
+        || saved["client"].as_str() != Some(client)
+        || saved["score"].as_i64() != Some(input.score)
+        || saved["max_combo"].as_u64() != Some(u64::from(input.max_combo))
+        || saved["mods"].as_u64() != Some(u64::from(input.mods))
+        || saved["passed"].as_bool() != Some(input.passed)
+        || json!(counts) != json!(input.hit_counts)
+        || !same_accuracy
+        || !same_structured_mods(input.mode, &saved["api_mods"], input.api_mods.as_ref())
+        || !same_native_context(
+            &saved["native_submission"],
+            input.native_submission.as_ref(),
+        )
+    {
+        return Err(ingestion_conflict());
+    }
+    Ok(())
 }
 
 async fn score_publication_actor(

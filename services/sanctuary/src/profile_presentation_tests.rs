@@ -231,6 +231,12 @@ async fn fixture_checks(db: PgPool, application: String) {
     assert_eq!(upgraded["banner_position_y"], 50);
     assert_eq!(upgraded["preferences"], preferences);
     assert_eq!(upgraded["accent_color"], "#123456");
+    // Preserve the explicit presentation upgrade check above, then bring the
+    // fixture to the schema used by the current profile/statistics handlers.
+    for migration in migrator.iter().filter(|migration| migration.version > 19) {
+        sqlx::raw_sql(&migration.sql).execute(&db).await.unwrap();
+    }
+    assert_eq!(presentation(&db, owner).await, upgraded);
     let peer = player(&db, "PresentationPeer").await;
     let peer_initial = presentation(&db, peer).await;
     assert_eq!(peer_initial["banner_position_x"], 50);

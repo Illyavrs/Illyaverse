@@ -1,4 +1,4 @@
-use crate::{ApiError, ApiResult, AppState, auth, page};
+use crate::{ApiError, ApiResult, AppState, auth, beatmap_availability as availability, page};
 use axum::{
     Json,
     extract::{Multipart, Path, Query, State},
@@ -221,9 +221,10 @@ pub struct Filter {
     mode: Option<i16>,
     source: Option<String>,
     status: Option<String>,
+    availability: Option<String>,
 }
 pub async fn list(State(state): State<AppState>, Query(filter): Query<Filter>) -> ApiResult {
-    list_inner(&state, filter).await
+    list_inner(&state, filter, false).await
 }
 pub async fn admin_list(
     State(state): State<AppState>,
@@ -233,9 +234,9 @@ pub async fn admin_list(
     auth::require(&state, &headers)
         .await?
         .require("admin.view")?;
-    list_inner(&state, filter).await
+    list_inner(&state, filter, true).await
 }
-async fn list_inner(state: &AppState, filter: Filter) -> ApiResult {
+async fn list_inner(state: &AppState, filter: Filter, admin: bool) -> ApiResult {
     if filter.q.as_ref().is_some_and(|v| v.len() > 100) {
         return Err(ApiError::bad("Search is too long."));
     }
@@ -245,9 +246,38 @@ async fn list_inner(state: &AppState, filter: Filter) -> ApiResult {
     }
     .bounds();
     let q = filter.q.map(|q| format!("%{q}%"));
-    let total:i64=sqlx::query_scalar("SELECT count(*) FROM beatmaps WHERE ($1::text IS NULL OR title ILIKE $1 OR artist ILIKE $1 OR creator ILIKE $1 OR version ILIKE $1) AND ($2::smallint IS NULL OR mode=$2) AND ($3::text IS NULL OR source=$3) AND ($4::text IS NULL OR status=$4)").bind(&q).bind(filter.mode).bind(&filter.source).bind(&filter.status).fetch_one(&state.db).await?;
+    let available = if admin {
+        filter.availability.as_deref().unwrap_or("active")
+    } else {
+        "active"
+    };
+    if !matches!(available, "active" | "withdrawn" | "all") {
+        return Err(ApiError::bad("Unknown availability filter."));
+    }
+    let predicate = match available {
+        "active" => "illya_beatmapset_active(b.native_set_id)",
+        "withdrawn" => "NOT illya_beatmapset_active(b.native_set_id)",
+        _ => "true",
+    };
+    let where_clause = format!(
+        "{predicate} AND ($1::text IS NULL OR title ILIKE $1 OR artist ILIKE $1 OR creator ILIKE $1 OR version ILIKE $1) AND ($2::smallint IS NULL OR mode=$2) AND ($3::text IS NULL OR source=$3) AND ($4::text IS NULL OR status=$4)"
+    );
+    let total: i64 = sqlx::query_scalar(&format!(
+        "SELECT count(*) FROM beatmaps b WHERE {where_clause}"
+    ))
+    .bind(&q)
+    .bind(filter.mode)
+    .bind(&filter.source)
+    .bind(&filter.status)
+    .fetch_one(&state.db)
+    .await?;
+    let state_projection = if admin {
+        availability::ADMIN_STATE
+    } else {
+        availability::PUBLIC_STATE
+    };
     let query = format!(
-        "SELECT {PUBLIC_MAP} FROM beatmaps b WHERE ($1::text IS NULL OR title ILIKE $1 OR artist ILIKE $1 OR creator ILIKE $1 OR version ILIKE $1) AND ($2::smallint IS NULL OR mode=$2) AND ($3::text IS NULL OR source=$3) AND ($4::text IS NULL OR status=$4) ORDER BY b.created_at DESC,b.id DESC LIMIT $5 OFFSET $6"
+        "SELECT {PUBLIC_MAP}||jsonb_build_object('availability',{state_projection}) FROM beatmaps b LEFT JOIN beatmapset_availability av ON av.native_set_id=b.native_set_id WHERE {where_clause} ORDER BY b.created_at DESC,b.id DESC LIMIT $5 OFFSET $6"
     );
     let items = sqlx::query_scalar::<_, Value>(&query)
         .bind(q)
@@ -261,12 +291,40 @@ async fn list_inner(state: &AppState, filter: Filter) -> ApiResult {
     Ok(page(items, total, p, size))
 }
 pub async fn get(state: &AppState, id: i64) -> ApiResult<Value> {
-    let query = format!("SELECT {PUBLIC_MAP} FROM beatmaps b WHERE id=$1");
+    let query = format!(
+        "SELECT {PUBLIC_MAP}||jsonb_build_object('availability',{}) FROM beatmaps b LEFT JOIN beatmapset_availability av ON av.native_set_id=b.native_set_id WHERE b.id=$1",
+        availability::PUBLIC_STATE
+    );
+    let value: Value = sqlx::query_scalar(&query)
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(ApiError::missing)?;
+    if value["availability"]["withdrawn"] == true {
+        return Err(availability::withdrawn());
+    }
+    Ok(value)
+}
+pub async fn get_retained(state: &AppState, id: i64) -> ApiResult<Value> {
+    let query = format!(
+        "SELECT {PUBLIC_MAP}||jsonb_build_object('availability',{}) FROM beatmaps b LEFT JOIN beatmapset_availability av ON av.native_set_id=b.native_set_id WHERE b.id=$1",
+        availability::ADMIN_STATE
+    );
     sqlx::query_scalar(&query)
         .bind(id)
         .fetch_optional(&state.db)
         .await?
         .ok_or_else(ApiError::missing)
+}
+pub async fn admin_detail(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> ApiResult {
+    auth::require(&state, &headers)
+        .await?
+        .require("admin.view")?;
+    Ok(Json(get_retained(&state, id).await?))
 }
 pub async fn detail(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult {
     Ok(Json(get(&state, id).await?))
@@ -277,6 +335,7 @@ pub async fn package_difficulties(
     Path(id): Path<i64>,
     Query(pagination): Query<Pagination>,
 ) -> ApiResult {
+    let native_set_id = availability::require_active_map(&state.db, id).await?;
     let membership = sqlx::query("SELECT COALESCE(b.local_package_id,am.archive_id) AS package_id,b.local_package_id IS NOT NULL AS is_local FROM beatmaps b LEFT JOIN official_beatmapset_archive_members am ON am.beatmap_id=b.id WHERE b.id=$1 AND COALESCE(b.local_package_id,am.archive_id) IS NOT NULL")
     .bind(id)
     .fetch_optional(&state.db)
@@ -313,9 +372,11 @@ pub async fn package_difficulties(
         .bind(offset)
         .fetch_all(&state.db)
         .await?;
+    availability::require_active_set(&state.db, native_set_id).await?;
     Ok(page(items, total, p, size))
 }
 async fn file_response(state: &AppState, id: i64, archive: bool) -> ApiResult<Response> {
+    let native_set_id = availability::require_active_map(&state.db, id).await?;
     let row = sqlx::query("SELECT b.osu_path,COALESCE(a.archive_path,b.archive_path) AS archive_path FROM beatmaps b LEFT JOIN official_beatmapset_archive_members am ON am.beatmap_id=b.id LEFT JOIN official_beatmapset_archives a ON a.id=am.archive_id WHERE b.id=$1")
         .bind(id)
         .fetch_optional(&state.db)
@@ -330,7 +391,9 @@ async fn file_response(state: &AppState, id: i64, archive: bool) -> ApiResult<Re
     if std::path::Path::new(&path).is_absolute() || path.contains("..") {
         return Err(ApiError::internal("unsafe stored map path"));
     }
-    let bytes = tokio::fs::read(state.maps_root.join(&path)).await?;
+    let bytes = tokio::fs::read(state.maps_root.join(&path)).await;
+    availability::require_active_set(&state.db, native_set_id).await?;
+    let bytes = bytes?;
     let filename = format!(
         "illyaverse-{id}.{}",
         if path.ends_with(".osz") { "osz" } else { "osu" }
@@ -826,15 +889,34 @@ pub async fn upload(
             let path = directory.join(format!("{}.osu", map.md5));
             write_owned_map_file(path, &map.bytes, &mut owned_files).await?;
         }
+        for attempt in 0..4 {
         let mut tx = state.db.begin().await?;
         let actor = auth::mutation_actor(&mut tx, &user, &[], auth::MutationScope::Permissions).await?;
         actor.require("beatmaps.upload")?;
-        let retry_candidate: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM beatmaps WHERE md5=ANY($1))")
-            .bind(&manifest).fetch_one(&mut *tx).await?;
+        // Discover immutable set identities before filename/checksum/row locks.
+        // A new winner discovered after those locks requires a fresh transaction
+        // so its set fence is never acquired in inverted order.
+        let mut known_sets = sqlx::query_scalar::<_, i64>("SELECT DISTINCT native_set_id FROM beatmaps WHERE md5=ANY($1) ORDER BY native_set_id")
+            .bind(&manifest).fetch_all(&mut *tx).await?;
+        let retry_candidate = !known_sets.is_empty();
+        let new_set_id: Option<i64> = if retry_candidate { None } else {
+            Some(sqlx::query_scalar("SELECT nextval('local_beatmapset_native_ids')").fetch_one(&mut *tx).await?)
+        };
+        if let Some(id) = new_set_id { known_sets.push(id); }
+        known_sets.sort_unstable();
+        for set_id in &known_sets {
+            availability::lock_exclusive_set(&mut tx, *set_id).await?;
+            availability::lock_active_set(&mut tx, *set_id).await?;
+        }
         if !retry_candidate { lock_filename_aliases(&mut tx, &filenames).await?; }
         lock_package_checksums(&mut tx, &manifest).await?;
-        let existing = sqlx::query("SELECT id,md5,source,uploaded_by,local_package_id,archive_path,osu_path FROM beatmaps WHERE md5=ANY($1) ORDER BY md5 FOR UPDATE")
+        let existing = sqlx::query("SELECT id,md5,source,uploaded_by,local_package_id,archive_path,osu_path,native_set_id FROM beatmaps WHERE md5=ANY($1) ORDER BY md5 FOR UPDATE")
             .bind(&manifest).fetch_all(&mut *tx).await?;
+        if existing.iter().any(|row| !known_sets.contains(&row.get::<i64,_>("native_set_id"))) {
+            tx.rollback().await?;
+            if attempt == 3 { return Err(package_conflict("The package changed during publication. Retry the original complete upload.")); }
+            continue;
+        }
         if !existing.is_empty() {
             let fingerprint = Fingerprint { kind, sha256: &sha256, byte_length };
             let ids = retry_local_package(&state, &mut tx, &actor, &existing, &manifest, &fingerprint).await?;
@@ -853,13 +935,13 @@ pub async fn upload(
                 "This file contains an official beatmap or set ID. Use official beatmap import instead of local upload.".into(),
             ));
         }
-        sqlx::query("INSERT INTO beatmap_packages(id,uploaded_by,kind,sha256,byte_length,member_md5,archive_path) VALUES($1,$2,$3,$4,$5,$6,$7)")
-            .bind(package_id).bind(actor.id).bind(kind).bind(&sha256).bind(byte_length).bind(&manifest).bind(&archive_path).execute(&mut *tx).await.map_err(package_write_error)?;
+        sqlx::query("INSERT INTO beatmap_packages(id,uploaded_by,kind,sha256,byte_length,member_md5,archive_path,native_set_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)")
+            .bind(package_id).bind(actor.id).bind(kind).bind(&sha256).bind(byte_length).bind(&manifest).bind(&archive_path).bind(new_set_id.ok_or_else(||ApiError::internal("missing allocated package identity"))?).execute(&mut *tx).await.map_err(package_write_error)?;
         let mut ids = Vec::new();
-        for input in parsed {
+        for input in &parsed {
             let UploadMap { filename, map } = input;
             let path = format!("{package}/{}.osu", map.md5);
-            let id:i64=sqlx::query_scalar("INSERT INTO beatmaps(uploaded_by,title,artist,creator,version,mode,stars,bpm,length_seconds,max_combo,md5,osu_path,archive_path,local_package_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id").bind(actor.id).bind(map.title).bind(map.artist).bind(map.creator).bind(map.version).bind(map.mode).bind(map.stars).bind(map.bpm).bind(map.length).bind(map.max_combo).bind(map.md5).bind(path).bind(&archive_path).bind(package_id).fetch_one(&mut *tx).await.map_err(package_write_error)?;
+            let id:i64=sqlx::query_scalar("INSERT INTO beatmaps(uploaded_by,title,artist,creator,version,mode,stars,bpm,length_seconds,max_combo,md5,osu_path,archive_path,local_package_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id").bind(actor.id).bind(&map.title).bind(&map.artist).bind(&map.creator).bind(&map.version).bind(map.mode).bind(map.stars).bind(map.bpm).bind(map.length).bind(map.max_combo).bind(&map.md5).bind(path).bind(&archive_path).bind(package_id).fetch_one(&mut *tx).await.map_err(package_write_error)?;
             sqlx::query("INSERT INTO beatmap_filename_aliases(filename,beatmap_id) VALUES($1,$2)")
                 .bind(filename).bind(id).execute(&mut *tx).await?;
             ids.push(id);
@@ -873,7 +955,9 @@ pub async fn upload(
             retain_files = !commit_definitely_rolled_back(&error);
             return Err(error.into());
         }
-        Ok((ids, false))
+        return Ok((ids, false));
+        }
+        Err(package_conflict("The package changed during publication. Retry the original complete upload."))
     }.await;
     if !retain_files {
         for path in owned_files {
@@ -1239,16 +1323,29 @@ async fn stored_map<'e>(
         MapSelector::Filename(filename) => {
             // Bound the exact alias index lookup before joining primary keys.
             // Filename resolution must not scan the full beatmap catalogue.
-            let mut values = sqlx::query_scalar("SELECT jsonb_build_object('id',b.id,'native_id',b.native_id,'native_set_id',b.native_set_id,'official_id',b.official_id,'official_set_id',b.official_set_id,'md5',b.md5,'status',b.status,'source',b.source,'mode',b.mode) FROM (SELECT beatmap_id FROM beatmap_filename_aliases WHERE filename=$1 COLLATE \"C\" ORDER BY beatmap_id LIMIT 2) aliases JOIN beatmaps b ON b.id=aliases.beatmap_id ORDER BY b.id LIMIT 2")
+            let mut values: Vec<Value> = sqlx::query_scalar("SELECT jsonb_build_object('id',b.id,'native_id',b.native_id,'native_set_id',b.native_set_id,'official_id',b.official_id,'official_set_id',b.official_set_id,'md5',b.md5,'status',b.status,'source',b.source,'mode',b.mode,'_withdrawn',NOT illya_beatmapset_active(b.native_set_id)) FROM (SELECT beatmap_id FROM beatmap_filename_aliases WHERE filename=$1 COLLATE \"C\" ORDER BY beatmap_id LIMIT 2) aliases JOIN beatmaps b ON b.id=aliases.beatmap_id ORDER BY b.id LIMIT 2")
                 .bind(filename).fetch_all(executor).await?;
+            if values.iter().any(|value| value["_withdrawn"] == true) {
+                return Err(availability::withdrawn());
+            }
             if values.len() > 1 {
                 return Err(filename_ambiguous());
+            }
+            if let Some(value) = values.last_mut() {
+                value.as_object_mut().unwrap().remove("_withdrawn");
             }
             return Ok(values.pop());
         }
     };
-    Ok(sqlx::query_scalar("SELECT jsonb_build_object('id',id,'native_id',native_id,'native_set_id',native_set_id,'official_id',official_id,'official_set_id',official_set_id,'md5',md5,'status',status,'source',source,'mode',mode) FROM beatmaps WHERE ($1::text IS NOT NULL AND md5=$1) OR ($2::bigint IS NOT NULL AND official_id=$2)")
-        .bind(checksum).bind(official_id).fetch_optional(executor).await?)
+    let mut value: Option<Value> = sqlx::query_scalar("SELECT jsonb_build_object('id',id,'native_id',native_id,'native_set_id',native_set_id,'official_id',official_id,'official_set_id',official_set_id,'md5',md5,'status',status,'source',source,'mode',mode,'_withdrawn',NOT illya_beatmapset_active(native_set_id)) FROM beatmaps WHERE ($1::text IS NOT NULL AND md5=$1) OR ($2::bigint IS NOT NULL AND official_id=$2)")
+        .bind(checksum).bind(official_id).fetch_optional(executor).await?;
+    if let Some(value) = &mut value {
+        if value["_withdrawn"] == true {
+            return Err(availability::withdrawn());
+        }
+        value.as_object_mut().unwrap().remove("_withdrawn");
+    }
+    Ok(value)
 }
 
 struct OfficialMap {
@@ -1310,6 +1407,9 @@ async fn fetch_official_map(state: &AppState, selector: &MapSelector) -> ApiResu
     if id > MAX_OFFICIAL_ID || set_id > MAX_OFFICIAL_ID {
         return Err(official_namespace_conflict());
     }
+    // An uncached official difficulty can still belong to a withdrawn set.
+    // Resolve its canonical identity before making the .osu request.
+    availability::require_active_set(&state.db, set_id).await?;
     let mode = metadata["mode_int"]
         .as_i64()
         .filter(|mode| (0..=3).contains(mode))
@@ -1347,6 +1447,7 @@ async fn fetch_official_map(state: &AppState, selector: &MapSelector) -> ApiResu
             }
         })?;
     let bytes = read_official_bytes(response, MAX_OSU_BYTES).await?;
+    availability::require_active_set(&state.db, set_id).await?;
     let map = tokio::task::spawn_blocking(move || parse_map(bytes))
         .await
         .map_err(ApiError::internal)?
@@ -1368,6 +1469,7 @@ async fn fetch_official_map(state: &AppState, selector: &MapSelector) -> ApiResu
     {
         return Err(invalid_identity());
     }
+    availability::require_active_set(&state.db, set_id).await?;
     Ok(OfficialMap {
         id,
         set_id,
@@ -1477,7 +1579,9 @@ async fn insert_official_map(
     {
         tracing::warn!(%error, "could not remove unused official map file");
     }
-    outcome
+    let value = outcome?;
+    availability::require_active_set(&state.db, official.set_id).await?;
+    Ok(value)
 }
 
 async fn resolve_map(state: &AppState, user_id: i64, selector: MapSelector) -> ApiResult<Value> {
@@ -1507,13 +1611,18 @@ async fn finish_stored_resolution(
     website: Option<&auth::User>,
     value: Value,
 ) -> ApiResult<Value> {
+    let native_set_id = value["native_set_id"]
+        .as_i64()
+        .ok_or_else(|| ApiError::internal("missing native set identity"))?;
     let Some(snapshot) = website else {
+        availability::require_active_set(&state.db, native_set_id).await?;
         return Ok(value);
     };
     let mut tx = state.db.begin().await?;
     let actor =
         auth::mutation_actor(&mut tx, snapshot, &[], auth::MutationScope::Permissions).await?;
     actor.require("beatmaps.import")?;
+    availability::lock_active_set(&mut tx, native_set_id).await?;
     let id = value["id"]
         .as_i64()
         .ok_or_else(|| ApiError::internal("missing resolved map id"))?;
@@ -1528,6 +1637,7 @@ async fn finish_stored_resolution(
     audit_manual_import(&mut tx, &actor, selector, &value).await?;
     auth::ensure_mutation_actor(&mut tx, &actor).await?;
     tx.commit().await?;
+    availability::require_active_set(&state.db, native_set_id).await?;
     Ok(value)
 }
 

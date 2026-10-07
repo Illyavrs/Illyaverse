@@ -10,6 +10,7 @@
     "typecheck": "npm run typecheck --workspace @illyaverse/serendipity",
     "test:rust": "cargo test --workspace",
     "test:migrations": "node --test infra/tests/migration-source.test.mjs",
+    "test:availability:db": "node infra/beatmapset-availability-smoke.mjs",
     "test:web:disposable": "node infra/disposable-web-smoke.mjs"
   },
   "engines": {"node": ">=22.0.0"}

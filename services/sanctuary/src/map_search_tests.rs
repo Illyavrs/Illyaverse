@@ -122,10 +122,33 @@ async fn difficulty_search_preserves_filters_pagination_and_admin_authorization(
                 .await;
                 assert_eq!(status, StatusCode::OK);
                 assert_page(&value, &expected, 3, page.parse().unwrap(), 2);
+                for item in value["items"].as_array().unwrap() {
+                    let availability = &item["availability"];
+                    assert_eq!(availability["withdrawn"], false);
+                    assert_eq!(availability["revision"], 0);
+                    assert_eq!(availability["changed_at"], Value::Null);
+                    if cookie.is_none() {
+                        assert!(availability.get("reason").is_none());
+                    } else {
+                        assert_eq!(availability.get("reason"), Some(&Value::Null));
+                    }
+                }
                 if cookie.is_none() {
                     public_pages.push(value);
                 } else {
-                    assert_eq!(value, public_pages[page.parse::<usize>().unwrap() - 1]);
+                    // The authorized response adds only the private reason;
+                    // every catalogue field and pagination value must agree.
+                    let mut public_projection = value;
+                    for item in public_projection["items"].as_array_mut().unwrap() {
+                        item["availability"]
+                            .as_object_mut()
+                            .unwrap()
+                            .remove("reason");
+                    }
+                    assert_eq!(
+                        public_projection,
+                        public_pages[page.parse::<usize>().unwrap() - 1]
+                    );
                 }
             }
             for (source, status_filter, mode, expected) in [
