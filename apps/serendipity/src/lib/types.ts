@@ -7,6 +7,8 @@ export type User = {
   bio: string;
   avatar_url: string | null;
   banner_url: string | null;
+  banner_position_x: number;
+  banner_position_y: number;
   accent_color: string;
   roles: string[];
   permissions: string[];

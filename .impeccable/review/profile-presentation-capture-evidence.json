@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "scope": "Public profile presentation and existing profile media workflows",
+  "fixture": "Synthetic intercepted profile data/banner; disposable community API flows",
+  "project": "illya-web-smoke-ae8a215cad7bebc5",
+  "tests": 11,
+  "result": "pass",
+  "log": "data-profile-presentation/web-recapture.log",
+  "serendipityImage": "sha256:1f156b6306432c81c7f611a0c4228d75c624eb5bbb921f0ba8760a5ba293c839",
+  "caddyImage": "sha256:f77f856a30f0004200b36b322d61da17fade31e24875699d77fb968399b9eb77",
+  "captureStabilization": "Instant scroll to document top with smooth scrolling disabled, blur active element, move cursor away, assert scrollY zero, await two animation frames",
+  "captures": [
+    {
+      "file": "profile-presentation-settings-desktop-dark-zhTW.png",
+      "sha256": "20ebbc210fe5c00b68db98629c5b032f6de40a21bda4e5505938365df181e26d",
+      "width": 1440,
+      "height": 1822,
+      "capturedAt": "2026-10-07T19:04:50.0375327Z"
+    },
+    {
+      "file": "profile-presentation-public-desktop-dark-zhTW.png",
+      "sha256": "1447c0934e8dd0d562b23679d9020b2a613f20440794887150aa94dd6ca2f4b6",
+      "width": 1440,
+      "height": 1236,
+      "capturedAt": "2026-10-07T19:04:50.4844822Z"
+    },
+    {
+      "file": "profile-presentation-settings-mobile-light-en-error.png",
+      "sha256": "7ed6ccec876f7db0c91cf2d547d8e6bda320bc6ce09b11894c35efb00b33ce3a",
+      "width": 390,
+      "height": 1949,
+      "capturedAt": "2026-10-07T19:04:51.6135872Z"
+    },
+    {
+      "file": "profile-presentation-public-mobile-light-en.png",
+      "sha256": "1b7250a3af71b42bcb667a765c4667b4692d5c6b847447794a22c0e8715e6a1e",
+      "width": 390,
+      "height": 1525,
+      "capturedAt": "2026-10-07T19:04:51.8838819Z"
+    },
+    {
+      "file": "profile-presentation-settings-mobile-dark-ja.png",
+      "sha256": "abd54d19f2f8c96b9f4749720cc6352ef239f17c45cddb1436cee8a2078e1e3d",
+      "width": 390,
+      "height": 1861,
+      "capturedAt": "2026-10-07T19:04:52.6623737Z"
+    },
+    {
+      "file": "profile-presentation-public-mobile-dark-ja-no-banner.png",
+      "sha256": "8e1075046a84664afd81b92e0698ff1b09ad021b50d90c71976a809db6010d37",
+      "width": 390,
+      "height": 1525,
+      "capturedAt": "2026-10-07T19:04:53.0182494Z"
+    },
+    {
+      "file": "workflow-profile-media-desktop-zhTW.png",
+      "sha256": "a4e3e18c89758b081fbdbde810620e56b3b901ed2a73b2c9eb69b17c67807c10",
+      "width": 1440,
+      "height": 1822,
+      "capturedAt": "2026-10-07T19:04:47.0699971Z"
+    },
+    {
+      "file": "workflow-profile-media-mobile-ja-error.png",
+      "sha256": "361a1cbf138700ef1331b4d01f2275c22314a04deebad7a4f2458f1f450af265",
+      "width": 390,
+      "height": 1987,
+      "capturedAt": "2026-10-07T19:04:48.4312401Z"
+    }
+  ],
+  "sources": [
+    {
+      "path": "apps/serendipity/src/features/settings.tsx",
+      "sha256": "d6afdd4f9d5299c2a5196086dbd9429a9b1c4a7cbffee1bdc72fb2b7a736b657"
+    },
+    {
+      "path": "apps/serendipity/src/features/players.tsx",
+      "sha256": "15b233b64b31dfb6acf810fb17d178c6e28dd098925ad3dc01a877e8deb8f48d"
+    },
+    {
+      "path": "apps/serendipity/src/app/globals.css",
+      "sha256": "1bafe6d24e1fdef3d92b1f707e6180454f9d4a813b1f1fd4244efea03a0007bd"
+    },
+    {
+      "path": "apps/serendipity/tests/profile-media.spec.ts",
+      "sha256": "38d59aa3fd05d99ff2adb97551a7c649e4d65a93f1e5a7f8d9ca80b3e3a34199"
+    },
+    {
+      "path": "apps/serendipity/tests/profile-presentation.spec.ts",
+      "sha256": "ac263f35ee0cff66bd9bd13504fbfcd26988d627b25198b5657dc63a494b6fab"
+    }
+  ]
+}

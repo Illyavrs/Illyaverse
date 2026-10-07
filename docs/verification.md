@@ -1,5 +1,7 @@
 # Verification record
 
+The current public profile presentation and website chat visibility checkpoint is recorded in [profile presentation](profile-presentation.md), including scoped source/image/browser evidence and remaining native submission limits.
+
 Last recorded evidence: 2026-10-08. Local Docker deployments and isolated-schema tests use synthetic fixtures; they are not a production player community. The INITIAL checkpoint below predates the follow-up chat, replay, mod and connection work. Later source gates and image checks are recorded in the follow-up sections; keep the INITIAL results separate from those checkpoints.
 
 ## Native official set metadata checkpoint

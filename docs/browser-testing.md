@@ -49,3 +49,14 @@ cargo test -p sanctuary profile_media_removal_persistence_and_queued_authorizati
 ```
 
 網站與 HTTP 測試不代表 native stable／lazer 客戶端相容性已驗證；相關狀態仍以 [協定相容性](protocol-compatibility.md) 為準。
+
+## 公開個人頁與聊天可見性
+
+`profile-presentation.spec.ts` 使用攔截 API 的合成資料，檢查公開重點色與橫幅位置儲存／重讀、訪客 appearance 隔離、錯誤後完整草稿與重試、移除橫幅保留設定，以及相同檔案再次上傳。桌面繁中、手機英文淺色和手機日文深色的擷取依 `ILLYA_WEB_SMOKE_CAPTURE=1` 存入 `.impeccable/review/profile-presentation-*.png`；幾何測試圖片只用於裁切 fixture。
+
+後端另有 `profile_presentation_tests` 與 `chat_visibility_tests`，使用 `ILLYA_TEST_DATABASE_URL` 指定的 disposable PostgreSQL 17，建立獨立隨機 schema。前者驗證 migration 預設、部分更新、型別／範圍、私有設定隔離及排隊授權；後者驗證公開歷史與實際 WebSocket 傳輸的限制帳號／雙向封鎖篩選。
+
+```sh
+cargo test -p sanctuary profile_presentation_tests --locked -- --ignored --test-threads=1
+cargo test -p sanctuary chat_visibility_tests --locked -- --ignored --test-threads=1
+```

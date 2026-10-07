@@ -5,6 +5,8 @@ mod auth;
 mod beatmap_filename_tests;
 mod chat;
 #[cfg(test)]
+mod chat_visibility_tests;
+#[cfg(test)]
 mod integration_tests;
 mod legacy_scoring;
 mod mail_delivery;
@@ -21,6 +23,8 @@ mod official_archive_tests;
 mod official_set_metadata_tests;
 #[cfg(test)]
 mod profile_media_tests;
+#[cfg(test)]
+mod profile_presentation_tests;
 #[cfg(test)]
 mod rbac_tests;
 #[cfg(test)]

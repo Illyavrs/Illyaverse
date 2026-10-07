@@ -58,17 +58,18 @@ pub struct MessageQuery {
     after_id: Option<i64>,
     before_id: Option<i64>,
 }
-async fn fetch(state: &AppState, id: i64, query: MessageQuery) -> ApiResult {
+async fn fetch(state: &AppState, id: i64, viewer: Option<i64>, query: MessageQuery) -> ApiResult {
     let (p, size, offset) = Pagination {
         page: query.page,
         page_size: query.page_size,
     }
     .bounds();
-    let total: i64 = sqlx::query_scalar("SELECT count(*) FROM chat_messages WHERE channel_id=$1")
+    let total: i64 = sqlx::query_scalar("SELECT count(*) FROM chat_messages m JOIN users u ON u.id=m.user_id WHERE m.channel_id=$1 AND NOT u.is_restricted AND NOT EXISTS(SELECT 1 FROM user_relationships r WHERE r.relation_type='block' AND ((r.user_id=$2 AND r.target_id=m.user_id) OR (r.target_id=$2 AND r.user_id=m.user_id)))")
         .bind(id)
+        .bind(viewer)
         .fetch_one(&state.db)
         .await?;
-    let mut items=sqlx::query_scalar::<_,Value>("SELECT to_jsonb(m)||jsonb_build_object('username',u.username,'avatar_url',u.avatar_url) FROM chat_messages m JOIN users u ON u.id=m.user_id WHERE channel_id=$1 AND ($2::bigint IS NULL OR m.id>$2) AND ($3::bigint IS NULL OR m.id<$3) ORDER BY m.id DESC LIMIT $4 OFFSET $5").bind(id).bind(query.after_id).bind(query.before_id).bind(size).bind(offset).fetch_all(&state.db).await?;
+    let mut items=sqlx::query_scalar::<_,Value>("SELECT to_jsonb(m)||jsonb_build_object('username',u.username,'avatar_url',u.avatar_url) FROM chat_messages m JOIN users u ON u.id=m.user_id WHERE m.channel_id=$1 AND ($2::bigint IS NULL OR m.id>$2) AND ($3::bigint IS NULL OR m.id<$3) AND NOT u.is_restricted AND NOT EXISTS(SELECT 1 FROM user_relationships r WHERE r.relation_type='block' AND ((r.user_id=$4 AND r.target_id=m.user_id) OR (r.target_id=$4 AND r.user_id=m.user_id))) ORDER BY m.id DESC LIMIT $5 OFFSET $6").bind(id).bind(query.after_id).bind(query.before_id).bind(viewer).bind(size).bind(offset).fetch_all(&state.db).await?;
     items.reverse();
     Ok(page(items, total, p, size))
 }
@@ -79,7 +80,8 @@ pub async fn messages(
     Query(query): Query<MessageQuery>,
 ) -> ApiResult {
     can_read(&state, &headers, id).await?;
-    fetch(&state, id, query).await
+    let viewer = auth::optional(&state, &headers).await?.map(|user| user.id);
+    fetch(&state, id, viewer, query).await
 }
 #[derive(Deserialize)]
 pub struct NewMessage {
@@ -158,8 +160,11 @@ async fn connection(mut socket: WebSocket, state: AppState, headers: HeaderMap, 
         tokio::select! {
             incoming=socket.recv()=>{match incoming{Some(Ok(Message::Close(_)))|None|Some(Err(_))=>break,Some(Ok(Message::Ping(payload)))=>{if socket.send(Message::Pong(payload)).await.is_err(){break;}},_=>{}}},
             _=interval.tick()=>{
-                if auth::require(&state,&headers).await.is_err()||can_read(&state,&headers,id).await.is_err(){let _=socket.send(Message::Close(None)).await;break;}
-                let items=sqlx::query_scalar::<_,Value>("SELECT to_jsonb(m)||jsonb_build_object('username',u.username,'avatar_url',u.avatar_url) FROM chat_messages m JOIN users u ON u.id=m.user_id WHERE channel_id=$1 AND m.id>$2 ORDER BY m.id LIMIT 100").bind(id).bind(after_id).fetch_all(&state.db).await;
+                let Ok(user)=auth::require(&state,&headers).await else {let _=socket.send(Message::Close(None)).await;break;};
+                if can_read(&state,&headers,id).await.is_err(){let _=socket.send(Message::Close(None)).await;break;}
+                // Resolve sender restrictions and both block directions in every
+                // delivery query, including changes made after the upgrade.
+                let items=sqlx::query_scalar::<_,Value>("SELECT to_jsonb(m)||jsonb_build_object('username',u.username,'avatar_url',u.avatar_url) FROM chat_messages m JOIN users u ON u.id=m.user_id WHERE m.channel_id=$1 AND m.id>$2 AND NOT u.is_restricted AND NOT EXISTS(SELECT 1 FROM user_relationships r WHERE r.relation_type='block' AND ((r.user_id=$3 AND r.target_id=m.user_id) OR (r.target_id=$3 AND r.user_id=m.user_id))) ORDER BY m.id LIMIT 100").bind(id).bind(after_id).bind(user.id).fetch_all(&state.db).await;
                 match items{Ok(items) if !items.is_empty()=>{after_id=items.last().and_then(|v|v["id"].as_i64()).unwrap_or(after_id);if socket.send(Message::Text(json!({"type":"messages","items":items}).to_string().into())).await.is_err(){break;}},Err(_)=>break,_=>{}}
             }
         }

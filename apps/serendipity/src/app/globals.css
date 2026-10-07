@@ -1374,23 +1374,94 @@ svg {
 .settings-form {
   max-width: 700px;
 }
+.profile-accent-scope {
+  --user-accent: var(--profile-accent, #f28eb6);
+  --primary: var(--user-accent);
+  --primary-contrast: var(--profile-accent-contrast, #111111);
+  --primary-foreground: var(--primary-contrast);
+  --readable-accent: color-mix(in srgb, var(--user-accent) 40%, #f5f5f5);
+  --ring: var(--readable-accent);
+}
+.light .profile-accent-scope {
+  --readable-accent: color-mix(in srgb, var(--user-accent) 30%, #262626);
+}
+.profile-accent-scope :focus-visible {
+  outline-color: var(--readable-accent);
+}
+.profile-accent-field {
+  margin-top: 24px;
+}
+.profile-preview {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
 .profile-media-preview {
   display: flex;
   align-items: center;
   gap: 24px;
-  margin: 24px 0 32px;
+  padding: 24px;
 }
 .profile-media-preview strong {
   display: block;
   font-size: 22px;
-  margin-bottom: 12px;
+  overflow-wrap: anywhere;
 }
 .profile-banner-preview {
   width: 100%;
-  max-height: 180px;
-  object-fit: cover;
-  border-radius: var(--radius);
+  aspect-ratio: 282 / 55;
+  background-size: cover;
+  background-position: center;
+  border-bottom: 1px solid var(--border);
+}
+.profile-accent-example {
+  color: var(--readable-accent);
+  font-size: 13px;
+  margin-top: 8px;
+}
+.profile-media-actions {
+  margin-top: 16px;
   margin-bottom: 28px;
+}
+.profile-banner-position {
+  border: 0;
+  padding: 0;
+  margin: 0 0 28px;
+  min-width: 0;
+}
+.profile-banner-position legend {
+  font-size: 13px;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+.profile-banner-position > .hint {
+  margin-bottom: 20px;
+}
+.profile-banner-position .field {
+  margin-bottom: 20px;
+}
+.profile-banner-position [data-slot='slider'] {
+  min-height: 32px;
+}
+.profile-banner-empty {
+  margin-bottom: 28px;
+}
+.profile-pending {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+}
+.profile-pending svg {
+  width: 16px;
+  height: 16px;
+}
+.profile-draft {
+  margin: 12px 0;
+}
+.profile-form-error {
+  margin-bottom: 16px;
 }
 .country-input {
   max-width: 100px;
@@ -1502,7 +1573,7 @@ svg {
   margin-top: 12px;
 }
 .profile-cover {
-  height: 220px;
+  aspect-ratio: 282 / 55;
   background: var(--surface);
   background-position: center;
   background-size: cover;
@@ -2539,6 +2610,7 @@ input[type='checkbox'] {
   }
   .profile-media-preview {
     gap: 16px;
+    padding: 20px;
   }
   .avatar-large {
     width: 78px;
@@ -2548,8 +2620,9 @@ input[type='checkbox'] {
   .profile-media-preview strong {
     font-size: 18px;
   }
-  .profile-cover {
-    height: 150px;
+  .profile-cover,
+  .profile-banner-preview {
+    aspect-ratio: 12 / 5;
   }
   .profile-identity {
     padding: 20px;

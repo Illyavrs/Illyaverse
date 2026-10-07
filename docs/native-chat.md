@@ -37,6 +37,8 @@ A PostgreSQL commit notification carries only IDs. Before transmitting its paylo
 
 PM initiation and sends honor the recipient's friend-only preference, including the active stable setting. Ordered locks on both users serialize concurrent opposite sends and relationship changes. Client UUID reuse returns the existing message when the channel, content and action flag agree; conflicting reuse returns HTTP 409. Read markers cannot move backwards or claim a message in another channel.
 
+Sanctuary website public history excludes restricted senders for everyone. Signed-in readers also exclude either-direction blocked senders, including from the visible-message count. Its existing authenticated `/api/v1/channels/{id}/stream` WebSocket applies the same current sender/relationship filters to each batch and continues rechecking reader/channel authorization. Website public routes still exclude PM and private room channels, including for wildcard administrators. The website currently polls public history; this filtering change does not implement a website DM interface, switch the page to WebSocket delivery, or repair its stream's lower-ID late-commit cursor behavior.
+
 ## Bounds and recovery
 
 REST chat bodies are limited to 8 KiB, messages to 1,000 characters and client identifiers to 128 permitted ASCII characters. Socket commands are limited to 2 KiB and 60 per minute. The process admits at most 512 sockets and four per user. Each database-event receiver has a 256-event buffer, emitted JSON is limited to 64 KiB and socket writes time out after two seconds.

@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { useFormatter, useTranslations } from 'next-intl';
 import useSWR from 'swr';
@@ -21,6 +21,38 @@ import type { Leader, Page, User, Score } from '@/lib/types';
 import { ScoreTable } from './scores';
 import { RelationshipActions } from './social';
 import { ScoreVariantControl, useScoreSelection } from '@/components/score-selection';
+
+function profilePresentation(player: User): CSSProperties {
+  const accent =
+    typeof player.accent_color === 'string' && /^#[0-9a-f]{6}$/i.test(player.accent_color)
+      ? player.accent_color
+      : '#f28eb6';
+  const rgb = accent
+    .slice(1)
+    .match(/.{2}/g)!
+    .map((value) => parseInt(value, 16) / 255)
+    .map((value) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4));
+  const luminance = rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+  const darkLuminance = ((17 / 255 + 0.055) / 1.055) ** 2.4;
+  const darkContrast = (luminance + 0.05) / (darkLuminance + 0.05);
+  const lightContrast = 1.05 / (luminance + 0.05);
+  return {
+    '--profile-accent': accent,
+    '--profile-accent-contrast':
+      Math.max(darkContrast, lightContrast) < 4.5
+        ? '#000000'
+        : darkContrast >= lightContrast
+          ? '#111111'
+          : '#ffffff',
+  } as CSSProperties;
+}
+
+function bannerPosition(value: unknown): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 100
+    ? value
+    : 50;
+}
+
 export function RankingsPage() {
   const t = useTranslations('rankings');
   const c = useTranslations('common');
@@ -42,7 +74,14 @@ export function RankingsPage() {
             setPage(1);
           }}
         />
-        <ScoreVariantControl mode={mode} value={variant} onChange={(v) => { select(mode, v); setPage(1); }} />
+        <ScoreVariantControl
+          mode={mode}
+          value={variant}
+          onChange={(v) => {
+            select(mode, v);
+            setPage(1);
+          }}
+        />
         <input
           className="native-select country-input"
           placeholder="TW"
@@ -111,15 +150,29 @@ export function PlayerPage({ id }: { id: number }) {
   const { user } = useSession();
   const { mode, variant, select, selection } = useScoreSelection();
   const [page, setPage] = useState(1);
-  const { data: player, error, isLoading, mutate } = useSWR<User>(`/users/${id}?${selection}`, fetcher);
-  const query = new URLSearchParams({ user_id: String(id), mode, variant, page: String(page), page_size: '24' });
+  const {
+    data: player,
+    error,
+    isLoading,
+    mutate,
+  } = useSWR<User>(`/users/${id}?${selection}`, fetcher);
+  const query = new URLSearchParams({
+    user_id: String(id),
+    mode,
+    variant,
+    page: String(page),
+    page_size: '24',
+  });
   const {
     data: scores,
     error: scoreError,
     mutate: reloadScores,
   } = useSWR<Page<Score>>(player ? `/scores?${query}` : null, fetcher);
   return (
-    <div className="page-container">
+    <div
+      className={`page-container profile-page${player ? ' profile-accent-scope' : ''}`}
+      style={player ? profilePresentation(player) : undefined}
+    >
       {isLoading ? (
         <Loading />
       ) : error ? (
@@ -133,6 +186,7 @@ export function PlayerPage({ id }: { id: number }) {
                 backgroundImage: player.banner_url
                   ? `url(${JSON.stringify(player.banner_url)})`
                   : undefined,
+                backgroundPosition: `${bannerPosition(player.banner_position_x)}% ${bannerPosition(player.banner_position_y)}%`,
               }}
               role={player.banner_url ? 'img' : undefined}
               aria-label={player.banner_url ? t('banner') : undefined}
@@ -164,8 +218,21 @@ export function PlayerPage({ id }: { id: number }) {
             </section>
             <RelationshipActions target={id} />
             <div className="filter-bar glass">
-              <GameMode value={mode} onChange={(v) => { select(v, variant); setPage(1); }} />
-              <ScoreVariantControl mode={mode} value={variant} onChange={(v) => { select(mode, v); setPage(1); }} />
+              <GameMode
+                value={mode}
+                onChange={(v) => {
+                  select(v, variant);
+                  setPage(1);
+                }}
+              />
+              <ScoreVariantControl
+                mode={mode}
+                value={variant}
+                onChange={(v) => {
+                  select(mode, v);
+                  setPage(1);
+                }}
+              />
               {mode === '3' && <p className="hint">{c('relaxUnsupported')}</p>}
             </div>
             <div className="profile-layout">
@@ -181,10 +248,22 @@ export function PlayerPage({ id }: { id: number }) {
                     <dt>{c('plays')}</dt>
                     <dd>{f.number(player.play_count)}</dd>
                   </div>
-                  {player.statistics && <>
-                    <div><dt>{t('globalRank')}</dt><dd>{player.statistics.rank ? `#${f.number(player.statistics.rank)}` : '—'}</dd></div>
-                    <div><dt>{c('accuracy')}</dt><dd>{f.number(player.statistics.accuracy, { maximumFractionDigits: 2 })}%</dd></div>
-                  </>}
+                  {player.statistics && (
+                    <>
+                      <div>
+                        <dt>{t('globalRank')}</dt>
+                        <dd>
+                          {player.statistics.rank ? `#${f.number(player.statistics.rank)}` : '—'}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>{c('accuracy')}</dt>
+                        <dd>
+                          {f.number(player.statistics.accuracy, { maximumFractionDigits: 2 })}%
+                        </dd>
+                      </div>
+                    </>
+                  )}
                 </dl>
               </aside>
               <section className="content-panel glass">

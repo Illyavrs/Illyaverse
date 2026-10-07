@@ -103,7 +103,7 @@ test('registration, persistent locale/theme/profile, chat draft and server RBAC'
     .getByLabel('自己紹介', { exact: true })
     .fill('E2E test profile — original local fixture');
   await page.getByRole('button', { name: '変更を保存', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('保存しました');
+  await expect(page.locator('.settings-form .form-success')).toContainText('保存しました');
   await page.goto('/admin');
   await expect(
     page.getByRole('heading', { name: 'このエリアへのアクセス権がありません。' }),

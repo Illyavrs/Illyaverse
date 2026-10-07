@@ -12,6 +12,9 @@ async function profileFixture(page: Page, guest = false, locale = 'zh-TW') {
     permissions: [],
     avatar_url: '/media/profile-fixture-avatar.png' as string | null,
     banner_url: '/media/profile-fixture-banner.png' as string | null,
+    accent_color: '#f28eb6',
+    banner_position_x: 50,
+    banner_position_y: 50,
     joined_at: '2026-10-07T00:00:00Z',
   };
   const state = { user, writes: [] as { method: string; body: unknown }[], fail: false };
@@ -67,6 +70,20 @@ async function profileFixture(page: Page, guest = false, locale = 'zh-TW') {
 async function capture(page: Page, name: string) {
   if (process.env.ILLYA_CAPTURE_WORKFLOW_REVIEW === '1') {
     await page.evaluate(() => document.fonts.ready);
+    await page.evaluate(() => {
+      document.documentElement.style.setProperty('scroll-behavior', 'auto', 'important');
+      document.body.style.setProperty('scroll-behavior', 'auto', 'important');
+      (document.activeElement as HTMLElement | null)?.blur();
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    });
+    await page.mouse.move(0, 0);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
     await page.screenshot({
       path: `../../.impeccable/review/workflow-${name}.png`,
       fullPage: true,
@@ -90,7 +107,7 @@ test('removing profile images clears only the selected image and preserves unsav
   await page.getByLabel('國家代碼', { exact: true }).fill('JP');
   await capture(page, 'profile-media-desktop-zhTW');
   await page.getByRole('button', { name: '移除頭像', exact: true }).click();
-  await expect(page.getByRole('status')).toHaveText('圖片已移除');
+  await expect(page.locator('.form-success')).toHaveText('圖片已移除');
   await expect(page.getByRole('button', { name: '移除頭像', exact: true })).toHaveCount(0);
   await expect(page.locator('.profile-banner-preview')).toBeVisible();
   await expect(page.getByLabel('自我介紹', { exact: true })).toHaveValue('Unsaved profile draft');
@@ -100,11 +117,17 @@ test('removing profile images clears only the selected image and preserves unsav
   await expect(page.locator('.profile-banner-preview')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '移除橫幅', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '儲存變更', exact: true }).click();
-  await expect(page.getByRole('status')).toHaveText('已儲存變更');
+  await expect(page.locator('.form-success')).toHaveText('已儲存變更');
   expect(state.user.bio).toBe('Unsaved profile draft');
   expect(state.writes.at(-1)).toEqual({
     method: 'PATCH',
-    body: { bio: 'Unsaved profile draft', country: 'JP' },
+    body: {
+      bio: 'Unsaved profile draft',
+      country: 'JP',
+      accent_color: '#f28eb6',
+      banner_position_x: 50,
+      banner_position_y: 50,
+    },
   });
   expect(errors).toEqual([]);
 });
@@ -135,7 +158,7 @@ test('image-removal failure keeps previews and drafts and offers a working retry
   await capture(page, 'profile-media-mobile-ja-error');
   state.fail = false;
   await page.getByRole('button', { name: 'バナーを削除', exact: true }).click();
-  await expect(page.getByRole('status')).toHaveText('画像を削除しました');
+  await expect(page.locator('.form-success')).toHaveText('画像を削除しました');
   await expect(page.locator('.settings-form').getByRole('alert')).toHaveCount(0);
   await expect(page.locator('.profile-banner-preview')).toHaveCount(0);
   await expect(page.getByLabel('自己紹介', { exact: true })).toHaveValue('Retry draft');

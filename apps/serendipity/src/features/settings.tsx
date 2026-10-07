@@ -1,6 +1,5 @@
 'use client';
-import { Suspense, useState, type FormEvent } from 'react';
-import Image from 'next/image';
+import { Suspense, useState, type CSSProperties, type FormEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { ImagePlus, RotateCcw, Check, LoaderCircle } from 'lucide-react';
@@ -118,7 +117,11 @@ export function AppearanceControls({ compact = false }: { compact?: boolean }) {
               type="file"
               accept="image/png,image/jpeg,image/webp"
               disabled={!user || busy}
-              onChange={(e) => upload(e.target.files?.[0])}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                void upload(file);
+              }}
             />
           </label>
           {p.background_url && (
@@ -196,27 +199,63 @@ function ProfileControls() {
   const { user, refresh } = useSession();
   const [bio, setBio] = useState(user?.bio ?? '');
   const [country, setCountry] = useState(user?.country ?? 'TW');
-  const [busy, setBusy] = useState(false);
+  const [accent, setAccent] = useState(
+    typeof user?.accent_color === 'string' && /^#[0-9a-f]{6}$/i.test(user.accent_color)
+      ? user.accent_color
+      : '#f28eb6',
+  );
+  const validPosition = (value: unknown) =>
+    typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 100 ? value : 50;
+  const [bannerX, setBannerX] = useState(validPosition(user?.banner_position_x));
+  const [bannerY, setBannerY] = useState(validPosition(user?.banner_position_y));
+  const draft = {
+    bio,
+    country,
+    accent_color: accent,
+    banner_position_x: bannerX,
+    banner_position_y: bannerY,
+  };
+  const [savedDraft, setSavedDraft] = useState(draft);
+  const dirty = Object.entries(draft).some(
+    ([key, value]) => savedDraft[key as keyof typeof draft] !== value,
+  );
+  const [pending, setPending] = useState<'save' | 'upload' | 'remove' | null>(null);
+  const busy = pending !== null;
+  type MediaKind = 'avatar' | 'banner';
+  type FailedAction =
+    | { action: 'save' }
+    | { action: 'upload'; file: File; kind: MediaKind }
+    | { action: 'remove'; kind: MediaKind };
+  const [failedAction, setFailedAction] = useState<FailedAction | null>(null);
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
+  async function saveProfile() {
+    if (busy) return;
+    const submitted = { ...draft };
+    setPending('save');
+    setFailedAction(null);
     setError('');
     setFeedback('');
     try {
-      await api('/me/profile', { method: 'PATCH', body: JSON.stringify({ bio, country }) });
+      await api('/me/profile', { method: 'PATCH', body: JSON.stringify(submitted) });
       await refresh();
+      setSavedDraft(submitted);
       setFeedback(c('saved'));
     } catch {
-      setError(c('serviceError'));
+      setError(t('profileSaveError'));
+      setFailedAction({ action: 'save' });
     } finally {
-      setBusy(false);
+      setPending(null);
     }
   }
-  async function media(file: File | undefined, kind: string) {
-    if (!file) return;
-    setBusy(true);
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    await saveProfile();
+  }
+  async function media(file: File | undefined, kind: MediaKind) {
+    if (!file || busy) return;
+    setPending('upload');
+    setFailedAction(null);
     setError('');
     setFeedback('');
     const data = new FormData();
@@ -227,13 +266,16 @@ function ProfileControls() {
       await refresh();
       setFeedback(t('imageUploaded'));
     } catch {
-      setError(c('serviceError'));
+      setError(t('imageUploadError'));
+      setFailedAction({ action: 'upload', file, kind });
     } finally {
-      setBusy(false);
+      setPending(null);
     }
   }
-  async function removeMedia(kind: 'avatar' | 'banner') {
-    setBusy(true);
+  async function removeMedia(kind: MediaKind) {
+    if (busy) return;
+    setPending('remove');
+    setFailedAction(null);
     setError('');
     setFeedback('');
     try {
@@ -242,70 +284,164 @@ function ProfileControls() {
       setFeedback(t('imageRemoved'));
     } catch {
       setError(t('imageRemovalError'));
+      setFailedAction({ action: 'remove', kind });
     } finally {
-      setBusy(false);
+      setPending(null);
     }
   }
+  function retry() {
+    if (failedAction?.action === 'upload') void media(failedAction.file, failedAction.kind);
+    else if (failedAction?.action === 'remove') void removeMedia(failedAction.kind);
+  }
   return (
-    <form onSubmit={submit} className="settings-form">
+    <form onSubmit={submit} className="settings-form" aria-busy={busy}>
       <p className="hint">{t('profileHint')}</p>
-      <div className="profile-media-preview">
-        <Avatar name={user?.username ?? ''} url={user?.avatar_url} size="large" />
-        <div>
-          <strong>{user?.username}</strong>
-          <div className="actions">
-            {['avatar', 'banner'].map((kind) => (
-              <label className="upload-button" key={kind}>
-                <ImagePlus />
-                {t(kind)}
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  disabled={busy}
-                  onChange={(e) => media(e.target.files?.[0], kind)}
-                />
-              </label>
-            ))}
-            {user?.avatar_url && (
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={busy}
-                onClick={() => removeMedia('avatar')}
-              >
-                {t('removeAvatar')}
-              </Button>
-            )}
-            {user?.banner_url && (
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={busy}
-                onClick={() => removeMedia('banner')}
-              >
-                {t('removeBanner')}
-              </Button>
-            )}
+      <div className="field profile-accent-field">
+        <label htmlFor="profile-accent">{t('profileAccent')}</label>
+        <div className="colour-field">
+          <input
+            type="color"
+            id="profile-accent"
+            value={accent}
+            disabled={busy}
+            aria-describedby="profile-accent-hint"
+            onChange={(e) => {
+              setAccent(e.target.value);
+              setFeedback('');
+            }}
+          />
+          <span>{accent.toUpperCase()}</span>
+        </div>
+        <p className="hint" id="profile-accent-hint">
+          {t('profileAccentHint')}
+        </p>
+      </div>
+      <div
+        className="profile-preview profile-accent-scope"
+        style={{ '--profile-accent': accent } as CSSProperties}
+      >
+        {user?.banner_url && (
+          <div
+            className="profile-banner-preview"
+            style={{
+              backgroundImage: `url(${JSON.stringify(user.banner_url)})`,
+              backgroundPosition: `${bannerX}% ${bannerY}%`,
+            }}
+            role="img"
+            aria-label={t('bannerPreview')}
+          />
+        )}
+        <div className="profile-media-preview">
+          <Avatar name={user?.username ?? ''} url={user?.avatar_url} size="large" />
+          <div>
+            <strong>{user?.username}</strong>
+            <p className="profile-accent-example">{t('profileAccentPreview')}</p>
           </div>
         </div>
       </div>
-      {user?.banner_url && (
-        <Image
-          src={user.banner_url}
-          className="profile-banner-preview"
-          alt={t('banner')}
-          width={1200}
-          height={400}
-          unoptimized
-        />
+      <div className="actions profile-media-actions">
+        {(['avatar', 'banner'] as const).map((kind) => (
+          <label className={`upload-button ${busy ? 'disabled' : ''}`} key={kind}>
+            <ImagePlus />
+            {t(kind)}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              disabled={busy}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                void media(file, kind);
+              }}
+            />
+          </label>
+        ))}
+        {user?.avatar_url && (
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={busy}
+            onClick={() => removeMedia('avatar')}
+          >
+            {t('removeAvatar')}
+          </Button>
+        )}
+        {user?.banner_url && (
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={busy}
+            onClick={() => removeMedia('banner')}
+          >
+            {t('removeBanner')}
+          </Button>
+        )}
+      </div>
+      {user?.banner_url ? (
+        <fieldset
+          className="profile-banner-position"
+          disabled={busy}
+          aria-describedby="banner-position-hint"
+        >
+          <legend>{t('bannerPosition')}</legend>
+          <p className="hint" id="banner-position-hint">
+            {t('bannerPositionHint')}
+          </p>
+          {(
+            [
+              { axis: 'x', label: 'bannerPositionX', value: bannerX, update: setBannerX },
+              { axis: 'y', label: 'bannerPositionY', value: bannerY, update: setBannerY },
+            ] as const
+          ).map(({ axis, label, value, update }) => (
+            <div className="field slider-field" key={axis}>
+              <div>
+                <label htmlFor={`banner-position-${axis}`}>{t(label)}</label>
+                <output>{value}%</output>
+              </div>
+              <Slider
+                id={`banner-position-${axis}`}
+                min={0}
+                max={100}
+                step={1}
+                value={[value]}
+                disabled={busy}
+                aria-label={t(label)}
+                aria-valuetext={`${value}%`}
+                onValueChange={([position]) => {
+                  update(position);
+                  setFeedback('');
+                }}
+              />
+            </div>
+          ))}
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={busy}
+            onClick={() => {
+              setBannerX(50);
+              setBannerY(50);
+              setFeedback('');
+            }}
+          >
+            <RotateCcw />
+            {t('centerBanner')}
+          </Button>
+        </fieldset>
+      ) : (
+        <p className="hint profile-banner-empty">{t('bannerPositionNoImage')}</p>
       )}
       <div className="field">
         <label htmlFor="bio">{t('bio')}</label>
         <Textarea
           id="bio"
+          disabled={pending === 'save'}
           maxLength={4000}
           value={bio}
-          onChange={(e) => setBio(e.target.value)}
+          onChange={(e) => {
+            setBio(e.target.value);
+            setFeedback('');
+          }}
           rows={6}
         />
       </div>
@@ -313,17 +449,50 @@ function ProfileControls() {
         <label htmlFor="country">{t('country')}</label>
         <Input
           id="country"
+          disabled={pending === 'save'}
           value={country}
           pattern="[A-Z]{2}"
           minLength={2}
           maxLength={2}
-          onChange={(e) => setCountry(e.target.value.toUpperCase())}
+          onChange={(e) => {
+            setCountry(e.target.value.toUpperCase());
+            setFeedback('');
+          }}
           className="country-input"
         />
       </div>
       {error && (
-        <p role="alert" className="form-error">
-          {error}
+        <div className="profile-form-error">
+          <p role="alert" className="form-error">
+            {error}
+          </p>
+          {failedAction && (
+            <Button
+              type={failedAction.action === 'save' ? 'submit' : 'button'}
+              variant="outline"
+              disabled={busy}
+              onClick={failedAction.action === 'save' ? undefined : retry}
+            >
+              {c('retry')}
+            </Button>
+          )}
+        </div>
+      )}
+      {pending && (
+        <p role="status" className="hint profile-pending">
+          <LoaderCircle className="spin" />
+          {t(
+            pending === 'save'
+              ? 'profileSaving'
+              : pending === 'upload'
+                ? 'imageUploading'
+                : 'imageRemoving',
+          )}
+        </p>
+      )}
+      {dirty && (
+        <p role="status" className="hint profile-draft">
+          {t('profileDraft')}
         </p>
       )}
       {feedback && (
