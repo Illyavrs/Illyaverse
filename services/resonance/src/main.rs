@@ -10,6 +10,11 @@ mod registration;
 #[cfg(test)]
 mod relax_tests;
 mod replay_capture;
+mod room_results;
+mod room_rounds;
+#[cfg(test)]
+mod room_score_tests;
+mod room_scores;
 mod score_aggregates;
 mod signalr;
 #[cfg(test)]
@@ -72,6 +77,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ),
     };
     state.lazer_chat.start(pool).await?;
+    if let Err(error) = room_scores::recover_pending(&state).await {
+        tracing::warn!(
+            code = error.1,
+            "room score recovery will retry in background"
+        );
+    }
+    if let Err(error) = signalr::publish_room_score_events(&state).await {
+        tracing::warn!(code = error.1, "room score events will retry in background");
+    }
     if let Err(error) = replay_capture::recover_pending(&state).await {
         tracing::warn!(code = error.1, "replay recovery will retry in background");
     }
@@ -82,8 +96,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         interval.tick().await;
         loop {
             interval.tick().await;
+            if let Err(error) = room_scores::recover_pending(&recovery_state).await {
+                tracing::warn!(code = error.1, "room score recovery batch failed");
+            }
             if let Err(error) = replay_capture::recover_pending(&recovery_state).await {
                 tracing::warn!(code = error.1, "replay recovery batch failed");
+            }
+            if let Err(error) = signalr::publish_room_score_events(&recovery_state).await {
+                tracing::warn!(code = error.1, "room score event batch failed");
             }
         }
     });
@@ -93,6 +113,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .merge(stable::router())
         .merge(registration::router(&env::var("PUBLIC_ORIGIN").unwrap_or_else(|_| "http://localhost:3000".into()))?)
         .merge(lazer::router())
+        .merge(room_scores::router())
+        .merge(room_results::router())
         .merge(lazer_chat::router())
         .merge(signalr::router())
         .merge(beatmaps::router())
@@ -114,7 +136,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn index() -> Json<serde_json::Value> {
     Json(
-        json!({"service":"Resonance", "project":"Illyaverse", "stable":"login, presence, chat, friends, encrypted score submission, map/replay downloads, multiplayer and spectating", "lazer":"OAuth, map lookup/download, structured-mod solo scores, durable replay exports, native notification chat, friends and SignalR hub subsets", "unsupported":["unsupported lazer mod settings and customized Flashlight parameters", "deterministic replay gameplay verification", "announcement and group chat channels", "non-chat notification types", "cross-client multiplayer rooms", "native multiplayer room score aggregation", "stable target-practice submission", "tournament interfaces"], "compatibility":"experimental; live protocol tests do not replace actual native client validation", "score_policy":"submitted scores await moderator review before entering rankings; RX has separate ruleset-specific PP, ranks and statistics", "score_scales":"supported vanilla stable/lazer contexts use versioned common scales; RX and unavailable contexts are excluded from common-score comparison"}),
+        json!({"service":"Resonance", "project":"Illyaverse", "stable":"login, presence, chat, friends, encrypted score submission, map/replay downloads, multiplayer and spectating", "lazer":"OAuth, map lookup/download, structured-mod solo scores, durable replay exports, native notification chat, friends, HeadToHead room scores and SignalR hub subsets", "unsupported":["unsupported lazer mod settings and customized Flashlight parameters", "deterministic replay gameplay verification", "announcement and group chat channels", "non-chat notification types", "cross-client multiplayer rooms", "playlist room creation", "stable target-practice submission", "tournament interfaces"], "compatibility":"experimental; live protocol tests do not replace actual native client validation", "score_policy":"submitted scores await moderator review before entering rankings; frozen room participants may view their round's processed pending results; RX has separate ruleset-specific PP, ranks and statistics", "score_scales":"supported vanilla stable/lazer contexts use versioned common scales; RX and unavailable contexts are excluded from common-score comparison"}),
     )
 }
 async fn health(

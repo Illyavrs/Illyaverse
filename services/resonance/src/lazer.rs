@@ -512,7 +512,7 @@ async fn create_score(
             "unsupported_ruleset_conversion",
         ));
     }
-    let token:i64=sqlx::query_scalar("INSERT INTO lazer_score_tokens(user_id,beatmap_id,ruleset_id,version_hash,expires_at) VALUES($1,$2,$3,$4,$5) RETURNING id").bind(player.id).bind(map.get::<i64,_>("id")).bind(i16::from(input.ruleset_id)).bind(input.version_hash).bind(Utc::now()+Duration::hours(6)).fetch_one(&state.pool).await?;
+    let token:i64=sqlx::query_scalar("INSERT INTO lazer_score_tokens(user_id,beatmap_id,ruleset_id,version_hash,expires_at,scope) VALUES($1,$2,$3,$4,$5,'solo') RETURNING id").bind(player.id).bind(map.get::<i64,_>("id")).bind(i16::from(input.ruleset_id)).bind(input.version_hash).bind(Utc::now()+Duration::hours(6)).fetch_one(&state.pool).await?;
     Ok(Json(json!({"id":token})))
 }
 
@@ -542,7 +542,7 @@ async fn submit_score(
         ));
     }
     let mut tx = state.pool.begin().await?;
-    let token=sqlx::query("SELECT t.* FROM lazer_score_tokens t JOIN beatmaps b ON b.id=t.beatmap_id WHERE t.id=$1 AND t.user_id=$2 AND (b.id=$3 OR b.official_id=$3) AND (t.expires_at>now() OR t.score_id IS NOT NULL) FOR UPDATE OF t").bind(token_id).bind(player.id).bind(map_id).fetch_optional(&mut *tx).await?.ok_or(ApiError(StatusCode::NOT_FOUND,"invalid_score_token"))?;
+    let token=sqlx::query("SELECT t.* FROM lazer_score_tokens t JOIN beatmaps b ON b.id=t.beatmap_id WHERE t.id=$1 AND t.user_id=$2 AND t.scope='solo' AND (b.id=$3 OR b.official_id=$3) AND (t.expires_at>now() OR t.score_id IS NOT NULL) FOR UPDATE OF t").bind(token_id).bind(player.id).bind(map_id).fetch_optional(&mut *tx).await?.ok_or(ApiError(StatusCode::NOT_FOUND,"invalid_score_token"))?;
     let map_id: i64 = token.get("beatmap_id");
     if token.get::<i16, _>("ruleset_id") != i16::from(input.ruleset_id) {
         return Err(ApiError(StatusCode::BAD_REQUEST, "score_ruleset_mismatch"));
@@ -609,6 +609,16 @@ pub(crate) async fn score_json(
             .fetch_optional(&state.pool)
             .await?
             .ok_or(ApiError(StatusCode::NOT_FOUND, "score_not_found"))?;
+    score_json_from_row(state, row).await
+}
+
+/// Render a score only after the caller applies its endpoint's visibility gate.
+/// Room results supply their frozen-round gate; the global query stays above.
+pub(crate) async fn score_json_from_row(
+    state: &AppState,
+    row: sqlx::postgres::PgRow,
+) -> Result<Value, ApiError> {
+    let id: i64 = row.get("id");
     let owner = common::account(state, row.get("user_id")).await?;
     let verified = row.get::<String, _>("verification") == "verified";
     let stable = row.get::<String, _>("client") == "stable";

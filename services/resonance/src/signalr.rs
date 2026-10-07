@@ -78,10 +78,18 @@ struct Playing {
     token: Option<i64>,
     connection_key: String,
 }
+#[derive(Clone)]
+struct EndedPlay {
+    user_id: i64,
+    connection_key: String,
+    registered: Instant,
+}
 pub struct Runtime {
     connections: Mutex<HashMap<String, Arc<Connection>>>,
     playing: Mutex<HashMap<i64, Playing>>,
     presence: Mutex<HashMap<i64, Value>>,
+    ended_plays: Mutex<HashMap<i64, EndedPlay>>,
+    score_event_dispatch: Mutex<()>,
 }
 impl Runtime {
     pub fn new() -> Self {
@@ -89,12 +97,19 @@ impl Runtime {
             connections: Mutex::new(HashMap::new()),
             playing: Mutex::new(HashMap::new()),
             presence: Mutex::new(HashMap::new()),
+            ended_plays: Mutex::new(HashMap::new()),
+            score_event_dispatch: Mutex::new(()),
         }
     }
     /// An interrupted process cannot honestly resume a live match or spectator stream.
     /// Preserve the room history while releasing memberships and closing those rooms.
     pub async fn recover(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {
         let mut tx = pool.begin().await?;
+        // Process restart aborts unfinished rounds, while completed histories
+        // retain their submission windows and immutable participant identities.
+        sqlx::query("UPDATE lazer_room_rounds SET status='aborted',finished_at=COALESCE(finished_at,now()) WHERE status IN('loading','playing')").execute(&mut *tx).await?;
+        sqlx::query("UPDATE lazer_room_round_participants p SET aborted_at=COALESCE(p.aborted_at,now()) FROM lazer_room_rounds r WHERE r.id=p.round_id AND r.status='aborted'").execute(&mut *tx).await?;
+        sqlx::query("UPDATE lazer_score_tokens t SET revoked_at=COALESCE(t.revoked_at,now()),revoke_reason=COALESCE(t.revoke_reason,'server_restart'),processing_status='revoked' FROM lazer_room_rounds r WHERE t.scope='room' AND r.id=t.round_id AND r.status='aborted' AND t.processing_status<>'processed'").execute(&mut *tx).await?;
         sqlx::query("DELETE FROM lazer_channel_members m USING channels c WHERE m.channel_id=c.id AND c.required_permission='lazer.room'").execute(&mut *tx).await?;
         sqlx::query("DELETE FROM lazer_room_members")
             .execute(&mut *tx)
@@ -252,7 +267,7 @@ async fn rooms(
         .bind(user.id).bind(format!("%{search}%")).bind(query.limit.unwrap_or(50).clamp(1,100)).fetch_all(&state.pool).await?;
     let mut result = Vec::new();
     for row in rows {
-        result.push(rest_room(&state, &row).await?);
+        result.push(rest_room(&state, &user, &row).await?);
     }
     Ok(Json(json!(result)))
 }
@@ -262,20 +277,29 @@ async fn room_detail(
     headers: HeaderMap,
 ) -> Result<Json<Value>, ApiError> {
     let user = common::bearer(&state, &headers).await?;
-    let row = sqlx::query("SELECT * FROM lazer_rooms WHERE id=$1 AND state<>3")
+    let row = sqlx::query("SELECT * FROM lazer_rooms WHERE id=$1")
         .bind(id)
         .fetch_optional(&state.pool)
         .await?
         .ok_or(ApiError(StatusCode::NOT_FOUND, "room_not_found"))?;
+    if row.get::<i16, _>("state") == 3
+        && !crate::room_results::room_history_authorized(&state, &user, id).await?
+    {
+        return Err(ApiError(StatusCode::NOT_FOUND, "room_not_found"));
+    }
     if blocked(&state, user.id, row.get("host_id"))
         .await
         .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "database_error"))?
     {
         return Err(ApiError(StatusCode::NOT_FOUND, "room_not_found"));
     }
-    Ok(Json(rest_room(&state, &row).await?))
+    Ok(Json(rest_room(&state, &user, &row).await?))
 }
-async fn rest_room(state: &AppState, row: &sqlx::postgres::PgRow) -> Result<Value, ApiError> {
+async fn rest_room(
+    state: &AppState,
+    viewer: &Account,
+    row: &sqlx::postgres::PgRow,
+) -> Result<Value, ApiError> {
     let room: i64 = row.get("id");
     let settings: Value = row.get("settings");
     let playlist: Value = row.get("playlist");
@@ -311,15 +335,30 @@ async fn rest_room(state: &AppState, row: &sqlx::postgres::PgRow) -> Result<Valu
         stars.push(rating);
         rulesets.insert(item["rulesetID"].as_i64().unwrap_or(0));
         let beatmap = json!({"id":id,"beatmapset_id":map.get::<Option<i64>,_>("official_set_id").unwrap_or(map.get("id")),"checksum":map.get::<String,_>("md5"),"version":map.get::<String,_>("version"),"mode":(["osu","taiko","fruits","mania"][mode]),"mode_int":mode,"difficulty_rating":rating,"bpm":map.get::<f64,_>("bpm"),"total_length":map.get::<i32,_>("length_seconds"),"hit_length":map.get::<i32,_>("length_seconds"),"max_combo":map.get::<i32,_>("max_combo"),"status":map.get::<String,_>("status"),"beatmapset":{"id":map.get::<Option<i64>,_>("official_set_id").unwrap_or(map.get("id")),"title":map.get::<String,_>("title"),"artist":map.get::<String,_>("artist"),"creator":map.get::<String,_>("creator"),"covers":{},"status":map.get::<String,_>("status")}});
-        items.push(json!({"id":item["id"],"owner_id":item["ownerID"],"ruleset_id":item["rulesetID"],"expired":item["expired"],"playlist_order":item["playlistOrder"],"played_at":item["playedAt"],"allowed_mods":item["allowedMods"],"required_mods":item["requiredMods"],"freestyle":item["freestyle"],"beatmap":beatmap}));
+        let attempts = if let Some(id) = item["id"].as_i64() {
+            if crate::room_results::item_history_authorized(state, viewer, room, id).await? {
+                crate::room_results::item_attempts(state, viewer, room, id).await?
+            } else {
+                json!({"attempts":0,"completed":false,"passed":false})
+            }
+        } else {
+            json!({"attempts":0,"completed":false,"passed":false})
+        };
+        items.push(json!({"id":item["id"],"owner_id":item["ownerID"],"ruleset_id":item["rulesetID"],"expired":item["expired"],"playlist_order":item["playlistOrder"],"played_at":item["playedAt"],"allowed_mods":item["allowedMods"],"required_mods":item["requiredMods"],"freestyle":item["freestyle"],"beatmap":beatmap,"attempts":attempts["attempts"],"completed":attempts["completed"],"passed":attempts["passed"]}));
     }
     let current = items
         .iter()
         .find(|i| i["id"] == settings["playlistItemId"])
         .cloned();
     let active = items.iter().filter(|i| i["expired"] == false).count();
+    let current_user_score =
+        if crate::room_results::room_history_authorized(state, viewer, room).await? {
+            crate::room_results::room_summary(state, viewer, room).await?
+        } else {
+            Value::Null
+        };
     Ok(
-        json!({"id":room,"name":settings["name"],"description":"","has_password":settings["password"].as_str().is_some_and(|v|!v.is_empty()),"password":null,"host":crate::lazer::user_json(&host),"category":"normal","type":"head_to_head","queue_mode":(["host_only","all_players","all_players_round_robin"][settings["queueMode"].as_u64().unwrap_or(0).min(2)as usize]),"auto_start_duration":0,"auto_skip":settings["autoSkip"],"max_participants":settings["maxParticipants"],"participant_count":members.len(),"recent_participants":recent,"starts_at":row.get::<chrono::DateTime<chrono::Utc>,_>("created_at"),"ends_at":null,"playlist":items,"playlist_item_stats":{"count_active":active,"count_total":items.len(),"ruleset_ids":rulesets},"difficulty_range":{"min":stars.iter().cloned().reduce(f64::min),"max":stars.iter().cloned().reduce(f64::max)},"current_playlist_item":current,"channel_id":row.get::<Option<i64>,_>("channel_id").unwrap_or(0),"status":if row.get::<i16,_>("state")==2{"playing"}else{"idle"},"pinned":false,"current_user_score":null}),
+        json!({"id":room,"name":settings["name"],"description":"","has_password":settings["password"].as_str().is_some_and(|v|!v.is_empty()),"password":null,"host":crate::lazer::user_json(&host),"category":"normal","type":"head_to_head","queue_mode":(["host_only","all_players","all_players_round_robin"][settings["queueMode"].as_u64().unwrap_or(0).min(2)as usize]),"auto_start_duration":0,"auto_skip":settings["autoSkip"],"max_participants":settings["maxParticipants"],"participant_count":members.len(),"recent_participants":recent,"starts_at":row.get::<chrono::DateTime<chrono::Utc>,_>("created_at"),"ends_at":null,"playlist":items,"playlist_item_stats":{"count_active":active,"count_total":items.len(),"ruleset_ids":rulesets},"difficulty_range":{"min":stars.iter().cloned().reduce(f64::min),"max":stars.iter().cloned().reduce(f64::max)},"current_playlist_item":current,"channel_id":row.get::<Option<i64>,_>("channel_id").unwrap_or(0),"status":if row.get::<i16,_>("state")==2{"playing"}else{"idle"},"pinned":false,"current_user_score":current_user_score}),
     )
 }
 async fn negotiate(
@@ -471,7 +510,7 @@ async fn websocket(
             incoming=input.next()=>match incoming {
                 Some(Ok(Message::Text(text)))=>if process(&state,&connection,text.as_bytes(),false).await.is_err(){break;},
                 Some(Ok(Message::Binary(bytes)))=>if process(&state,&connection,&bytes,false).await.is_err(){break;},
-                Some(Ok(Message::Ping(bytes)))=>if output.send(Message::Pong(bytes)).await.is_err(){break;},
+                Some(Ok(Message::Ping(bytes)))=>if !tokio::time::timeout(Duration::from_secs(10),output.send(Message::Pong(bytes))).await.is_ok_and(|sent|sent.is_ok()){break;},
                 Some(Ok(Message::Pong(_)))=>{},_=>break,
             },
             outbound=receiver.recv()=>{
@@ -479,7 +518,7 @@ async fn websocket(
                 let Ok(bytes)=encoded(&connection,outbound).await else {break;};
                 let binary=connection.state.lock().await.codec.as_ref().is_some_and(|c|c.protocol()==Protocol::MessagePack) && !handshake;
                 let message=if binary {Message::Binary(bytes.into())} else {match String::from_utf8(bytes){Ok(text)=>Message::Text(text.into()),Err(_)=>break}};
-                if output.send(message).await.is_err()||closing{break;}
+                if !tokio::time::timeout(Duration::from_secs(10),output.send(message)).await.is_ok_and(|sent|sent.is_ok())||closing{break;}
             },
             _=timer.tick()=>{
                 if !connection.active.load(Ordering::Acquire)||!authorized(&state,&connection).await{break;}
@@ -489,7 +528,7 @@ async fn websocket(
             }
         }
     }
-    let _ = output.send(Message::Close(None)).await;
+    let _ = tokio::time::timeout(Duration::from_secs(2), output.send(Message::Close(None))).await;
 }
 async fn send_http(
     State(state): State<AppState>,
@@ -650,6 +689,12 @@ async fn disconnect(state: &AppState, connection: &Arc<Connection>) {
         .lock()
         .await
         .remove(&connection.key);
+    state
+        .signalr
+        .ended_plays
+        .lock()
+        .await
+        .retain(|_, ended| ended.connection_key != connection.key);
     let another = state.signalr.connections.lock().await.values().any(|c| {
         c.hub == connection.hub
             && c.user.id == connection.user.id
@@ -660,7 +705,13 @@ async fn disconnect(state: &AppState, connection: &Arc<Connection>) {
     }
     match connection.hub {
         Hub::Multiplayer => {
-            let _ = leave_room(state, connection.user.id, None).await;
+            let _ = leave_room(
+                state,
+                connection.user.id,
+                None,
+                RoomWriteAuth::TrustedDisconnect,
+            )
+            .await;
         }
         Hub::Spectator => {
             let targets = connection.spectator_watches.lock().await.clone();
@@ -798,7 +849,7 @@ fn room_settings(value: &Value) -> Result<Value, &'static str> {
     )
 }
 async fn playlist_item(
-    state: &AppState,
+    tx: &mut Transaction<'_, Postgres>,
     value: &Value,
     id: i64,
     owner: i64,
@@ -809,14 +860,11 @@ async fn playlist_item(
         return Err("invalid_ruleset");
     }
     let checksum = text(field(value, "beatmapChecksum", 3), 32)?;
-    let resolved = crate::beatmaps::resolve(state, beatmap_id)
+    let row = sqlx::query("SELECT md5,mode,stars FROM beatmaps WHERE id=$1 OR official_id=$1 ORDER BY (official_id=$1) DESC LIMIT 1")
+        .bind(beatmap_id)
+        .fetch_optional(&mut **tx)
         .await
-        .map_err(|_| "beatmap_not_found")?;
-    let row = sqlx::query("SELECT md5,mode,stars FROM beatmaps WHERE id=$1")
-        .bind(resolved)
-        .fetch_one(&state.pool)
-        .await
-        .map_err(db)?;
+        .map_err(db)?.ok_or("beatmap_not_found")?;
     let mapmode: i16 = row.get("mode");
     if mapmode != 0 && i64::from(mapmode) != ruleset {
         return Err("invalid_ruleset_conversion");
@@ -825,8 +873,22 @@ async fn playlist_item(
     if checksum != actual {
         return Err("beatmap_checksum_mismatch");
     }
+    let required = mods(field(value, "requiredMods", 5))?;
+    crate::room_rounds::canonical_mods(ruleset as u8, &required).map_err(|e| e.1)?;
+    let allowed = mods(field(value, "allowedMods", 6))?;
+    let mut seen = HashSet::new();
+    for modifier in allowed.as_array().unwrap() {
+        if !seen.insert(modifier["acronym"].as_str().unwrap()) {
+            return Err("invalid_mods");
+        }
+        crate::room_rounds::canonical_mods(ruleset as u8, &json!([modifier])).map_err(|e| e.1)?;
+    }
+    let rating = row.get::<f64, _>("stars");
+    if !rating.is_finite() {
+        return Err("invalid_star_rating");
+    }
     Ok(
-        json!({"id":id,"ownerID":owner,"beatmapID":beatmap_id,"beatmapChecksum":actual,"rulesetID":ruleset,"requiredMods":mods(field(value,"requiredMods",5))?,"allowedMods":mods(field(value,"allowedMods",6))?,"expired":false,"playlistOrder":id.min(65535),"playedAt":null,"starRating":row.get::<f64,_>("stars"),"freestyle":field(value,"freestyle",11).as_bool().unwrap_or(false)}),
+        json!({"id":id,"ownerID":owner,"beatmapID":beatmap_id,"beatmapChecksum":actual,"rulesetID":ruleset,"requiredMods":required,"allowedMods":allowed,"expired":false,"playlistOrder":id.min(65535),"playedAt":null,"starRating":rating,"freestyle":field(value,"freestyle",11).as_bool().unwrap_or(false)}),
     )
 }
 
@@ -898,12 +960,48 @@ async fn room_members(
         .await
         .map_err(db)
 }
-async fn locked_room(
-    state: &AppState,
+#[derive(Clone, Copy)]
+enum RoomWriteAuth<'a> {
+    Bearer { actor: i64, headers: &'a HeaderMap },
+    TrustedDisconnect,
+}
+
+/// A room mutation may reference any current participant through an FK or the
+/// frozen roster. Acquire users in the same ascending order as moderation and
+/// social writes before revalidating the initiating bearer session.
+async fn guard_room_actor(
+    tx: &mut Transaction<'_, Postgres>,
+    room: i64,
+    actor: i64,
+    headers: &HeaderMap,
+) -> Result<(), &'static str> {
+    sqlx::query("SELECT id FROM users WHERE id=$2 OR id IN(SELECT user_id FROM lazer_room_members WHERE room_id=$1) ORDER BY id FOR UPDATE")
+        .bind(room).bind(actor).fetch_all(&mut **tx).await.map_err(db)?;
+    let account = common::lazer_account_in_tx(tx, headers, actor)
+        .await
+        .map_err(|error| {
+            if matches!(error.0, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+                "session_revoked"
+            } else {
+                error.1
+            }
+        })?;
+    if !account.can("chat.send") {
+        return Err("session_revoked");
+    }
+    Ok(())
+}
+
+async fn locked_room<'state>(
+    state: &'state AppState,
     user_id: i64,
-) -> Result<(Transaction<'_, Postgres>, sqlx::postgres::PgRow), &'static str> {
+    authorization: RoomWriteAuth<'_>,
+) -> Result<(Transaction<'state, Postgres>, sqlx::postgres::PgRow), &'static str> {
     let mut tx = state.pool.begin().await.map_err(db)?;
     let row=sqlx::query("SELECT r.* FROM lazer_rooms r JOIN lazer_room_members m ON m.room_id=r.id WHERE m.user_id=$1 FOR UPDATE OF r").bind(user_id).fetch_optional(&mut *tx).await.map_err(db)?.ok_or("not_in_room")?;
+    if let RoomWriteAuth::Bearer { actor, headers } = authorization {
+        guard_room_actor(&mut tx, row.get("id"), actor, headers).await?;
+    }
     Ok((tx, row))
 }
 fn host(row: &sqlx::postgres::PgRow, user_id: i64) -> Result<(), &'static str> {
@@ -929,6 +1027,10 @@ async fn multiplayer(
     args: &[Value],
 ) -> HubResult {
     let uid = c.user.id;
+    let authorization = RoomWriteAuth::Bearer {
+        actor: uid,
+        headers: &c.headers,
+    };
     match target {
         "CreateRoom" => {
             common::rate_limit(state, format!("room-create:{uid}"), 10)
@@ -940,12 +1042,18 @@ async fn multiplayer(
                 .as_array()
                 .filter(|v| !v.is_empty() && v.len() <= 100)
                 .ok_or("playlist_required")?;
+            let mut tx = state.pool.begin().await.map_err(db)?;
+            let account = common::lazer_account_in_tx(&mut tx, &c.headers, uid)
+                .await
+                .map_err(|error| error.1)?;
+            if !account.can("chat.send") {
+                return Err("session_revoked");
+            }
             let mut playlist = Vec::new();
             for (i, item) in source.iter().enumerate() {
-                playlist.push(playlist_item(state, item, (i + 1) as i64, uid).await?);
+                playlist.push(playlist_item(&mut tx, item, (i + 1) as i64, uid).await?);
             }
             settings["playlistItemId"] = json!(1);
-            let mut tx = state.pool.begin().await.map_err(db)?;
             if sqlx::query_scalar::<_, i64>(
                 "SELECT room_id FROM lazer_room_members WHERE user_id=$1",
             )
@@ -958,14 +1066,20 @@ async fn multiplayer(
                 return Err("already_in_room");
             }
             let room: i64 = sqlx::query_scalar(
-                "INSERT INTO lazer_rooms(host_id,settings,playlist) VALUES($1,$2,$3) RETURNING id",
+                "INSERT INTO lazer_rooms(host_id,settings,playlist,next_playlist_item_id) VALUES($1,$2,$3,$4) RETURNING id",
             )
             .bind(uid)
             .bind(&settings)
             .bind(json!(playlist))
+            .bind(playlist.len() as i64 + 1)
             .fetch_one(&mut *tx)
             .await
             .map_err(db)?;
+            for item in &playlist {
+                crate::room_rounds::record_playlist(&mut tx, room, item)
+                    .await
+                    .map_err(|e| e.1)?;
+            }
             let channel:i64=sqlx::query_scalar("INSERT INTO channels(name,description,required_permission) VALUES($1,$2,'lazer.room') RETURNING id").bind(format!("multiplayer-{room}")).bind("Private lazer multiplayer room").fetch_one(&mut *tx).await.map_err(db)?;
             sqlx::query("UPDATE lazer_rooms SET channel_id=$2 WHERE id=$1")
                 .bind(room)
@@ -998,6 +1112,7 @@ async fn multiplayer(
                 .await
                 .map_err(db)?
                 .ok_or("room_not_found")?;
+            guard_room_actor(&mut tx, room, uid, &c.headers).await?;
             if row.get::<i16, _>("state") != 0 {
                 return Err("room_not_open");
             }
@@ -1061,21 +1176,21 @@ async fn multiplayer(
             Ok(Some(result))
         }
         "LeaveRoom" => {
-            leave_room(state, uid, None).await?;
+            leave_room(state, uid, None, authorization).await?;
             Ok(None)
         }
         "KickUser" => {
             let target = integer(argument(args, 0)?)?;
-            let (tx, row) = locked_room(state, uid).await?;
+            let (tx, row) = locked_room(state, uid, authorization).await?;
             host(&row, uid)?;
             let room = row.get("id");
             drop(tx);
-            leave_room(state, target, Some((room, uid))).await?;
+            leave_room(state, target, Some((room, uid)), authorization).await?;
             Ok(None)
         }
         "TransferHost" => {
             let next = integer(argument(args, 0)?)?;
-            let (mut tx, row) = locked_room(state, uid).await?;
+            let (mut tx, row) = locked_room(state, uid, authorization).await?;
             host(&row, uid)?;
             let room = row.get("id");
             let users = room_members(&mut tx, room).await?;
@@ -1098,7 +1213,7 @@ async fn multiplayer(
         }
         "ChangeSettings" => {
             let mut settings = room_settings(argument(args, 0)?)?;
-            let (mut tx, row) = locked_room(state, uid).await?;
+            let (mut tx, row) = locked_room(state, uid, authorization).await?;
             host(&row, uid)?;
             if row.get::<i16, _>("state") != 0 {
                 return Err("room_busy");
@@ -1168,7 +1283,7 @@ async fn multiplayer(
             }
             Ok(None)
         }
-        "ChangeState" => change_state(state, uid, integer(argument(args, 0)?)?).await,
+        "ChangeState" => change_state(state, uid, &c.headers, integer(argument(args, 0)?)?).await,
         "ChangeBeatmapAvailability" => {
             let input = argument(args, 0)?;
             let availability = integer(field(input, "state", 0))?;
@@ -1180,7 +1295,7 @@ async fn multiplayer(
                 return Err("invalid_download_progress");
             }
             let value = json!({"state":availability,"downloadProgress":progress});
-            let (mut tx, row) = locked_room(state, uid).await?;
+            let (mut tx, row) = locked_room(state, uid, authorization).await?;
             let room = row.get("id");
             let users = room_members(&mut tx, room).await?;
             sqlx::query("UPDATE lazer_room_members SET beatmap_availability=$2 WHERE user_id=$1")
@@ -1204,7 +1319,7 @@ async fn multiplayer(
         }
         "ChangeUserMods" => {
             let value = mods(argument(args, 0)?)?;
-            let (mut tx, row) = locked_room(state, uid).await?;
+            let (mut tx, row) = locked_room(state, uid, authorization).await?;
             if row.get::<i16, _>("state") != 0 {
                 return Err("room_busy");
             }
@@ -1230,7 +1345,7 @@ async fn multiplayer(
             if ruleset.is_some_and(|r| !(0..=3).contains(&r)) {
                 return Err("invalid_ruleset");
             }
-            let (mut tx, row) = locked_room(state, uid).await?;
+            let (mut tx, row) = locked_room(state, uid, authorization).await?;
             if row.get::<i16, _>("state") != 0 {
                 return Err("room_busy");
             }
@@ -1250,10 +1365,12 @@ async fn multiplayer(
                 .await;
             Ok(None)
         }
-        "StartMatch" => start_match(state, uid).await,
-        "AbortMatch" | "AbortGameplay" => abort_match(state, uid, target == "AbortMatch").await,
+        "StartMatch" => start_match(state, uid, &c.headers).await,
+        "AbortMatch" | "AbortGameplay" => {
+            abort_match(state, uid, &c.headers, target == "AbortMatch").await
+        }
         "AddPlaylistItem" | "EditPlaylistItem" | "RemovePlaylistItem" => {
-            edit_playlist(state, uid, target, argument(args, 0)?).await
+            edit_playlist(state, uid, &c.headers, target, argument(args, 0)?).await
         }
         "InvitePlayer" => {
             let invited = integer(argument(args, 0)?)?;
@@ -1269,7 +1386,7 @@ async fn multiplayer(
             common::rate_limit(state, format!("room-invite:{uid}"), 20)
                 .await
                 .map_err(|_| "rate_limited")?;
-            let (tx, row) = locked_room(state, uid).await?;
+            let (tx, row) = locked_room(state, uid, authorization).await?;
             let settings: Value = row.get("settings");
             let room: i64 = row.get("id");
             drop(tx);
@@ -1284,8 +1401,8 @@ async fn multiplayer(
                 .await;
             Ok(None)
         }
-        "VoteToSkipIntro" => vote_skip(state, uid).await,
-        "SendMatchRequest" => match_request(state, uid, argument(args, 0)?).await,
+        "VoteToSkipIntro" => vote_skip(state, uid, &c.headers).await,
+        "SendMatchRequest" => match_request(state, uid, &c.headers, argument(args, 0)?).await,
         _ => Err("unsupported_hub_method"),
     }
 }
@@ -1294,8 +1411,9 @@ async fn leave_room(
     state: &AppState,
     uid: i64,
     kicked: Option<(i64, i64)>,
+    authorization: RoomWriteAuth<'_>,
 ) -> Result<(), &'static str> {
-    let (mut tx, row) = match locked_room(state, uid).await {
+    let (mut tx, row) = match locked_room(state, uid, authorization).await {
         Ok(value) => value,
         Err("not_in_room") if kicked.is_none() => return Ok(()),
         Err(e) => return Err(e),
@@ -1317,6 +1435,13 @@ async fn leave_room(
         .await
         .map_err(db)?;
     let member = member_json(&departing);
+    if row.get::<i16, _>("state") != 0
+        && let Some(round) = row.get::<Option<i64>, _>("current_round_id")
+    {
+        crate::room_rounds::abort_round(&mut tx, round, "member_left")
+            .await
+            .map_err(|e| e.1)?;
+    }
     sqlx::query("DELETE FROM lazer_room_members WHERE user_id=$1")
         .bind(uid)
         .execute(&mut *tx)
@@ -1437,11 +1562,19 @@ fn valid_transition(room: i16, current: i16, next: i64) -> bool {
         (0, 0 | 1 | 7 | 8, 0 | 1 | 8) | (1, 2, 3) | (1, 3, 4) | (2, 5, 6)
     )
 }
-async fn change_state(state: &AppState, uid: i64, next: i64) -> HubResult {
+async fn change_state(state: &AppState, uid: i64, headers: &HeaderMap, next: i64) -> HubResult {
     if !(0..=8).contains(&next) {
         return Err("invalid_user_state");
     }
-    let (mut tx, row) = locked_room(state, uid).await?;
+    let (mut tx, row) = locked_room(
+        state,
+        uid,
+        RoomWriteAuth::Bearer {
+            actor: uid,
+            headers,
+        },
+    )
+    .await?;
     let room: i64 = row.get("id");
     let roomstate: i16 = row.get("state");
     let member = sqlx::query("SELECT * FROM lazer_room_members WHERE user_id=$1")
@@ -1484,6 +1617,12 @@ async fn change_state(state: &AppState, uid: i64, next: i64) -> HubResult {
     let mut playlist_change = None;
     let mut settings_change = None;
     if start {
+        let round = row
+            .get::<Option<i64>, _>("current_round_id")
+            .ok_or("active_round_required")?;
+        crate::room_rounds::mark_playing(&mut tx, round)
+            .await
+            .map_err(|e| e.1)?;
         sqlx::query("UPDATE lazer_rooms SET state=2 WHERE id=$1")
             .bind(room)
             .execute(&mut *tx)
@@ -1496,6 +1635,12 @@ async fn change_state(state: &AppState, uid: i64, next: i64) -> HubResult {
             .map_err(db)?;
     }
     if complete {
+        let round = row
+            .get::<Option<i64>, _>("current_round_id")
+            .ok_or("active_round_required")?;
+        crate::room_rounds::mark_finished(&mut tx, round)
+            .await
+            .map_err(|e| e.1)?;
         let mut playlist: Value = row.get("playlist");
         let mut settings: Value = row.get("settings");
         let current = settings["playlistItemId"].as_i64().unwrap_or(0);
@@ -1503,6 +1648,9 @@ async fn change_state(state: &AppState, uid: i64, next: i64) -> HubResult {
             if let Some(item) = items.iter_mut().find(|i| i["id"] == current) {
                 item["expired"] = json!(true);
                 playlist_change = Some(item.clone());
+                crate::room_rounds::record_playlist(&mut tx, room, item)
+                    .await
+                    .map_err(|e| e.1)?;
             }
             if let Some(next) = items.iter().find(|i| i["expired"] == false) {
                 settings["playlistItemId"] = next["id"].clone();
@@ -1596,29 +1744,39 @@ async fn change_state(state: &AppState, uid: i64, next: i64) -> HubResult {
     }
     Ok(None)
 }
-async fn start_match(state: &AppState, uid: i64) -> HubResult {
-    let (mut tx, row) = locked_room(state, uid).await?;
+async fn start_match(state: &AppState, uid: i64, headers: &HeaderMap) -> HubResult {
+    let (mut tx, row) = locked_room(
+        state,
+        uid,
+        RoomWriteAuth::Bearer {
+            actor: uid,
+            headers,
+        },
+    )
+    .await?;
     host(&row, uid)?;
     if row.get::<i16, _>("state") != 0 {
         return Err("room_busy");
     }
     let room: i64 = row.get("id");
     let settings: Value = row.get("settings");
-    let playlist: Value = row.get("playlist");
-    if !playlist
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|i| i["id"] == settings["playlistItemId"] && i["expired"] == false)
-    {
-        return Err("playlist_item_not_found");
-    }
+    let mut playlist: Value = row.get("playlist");
+    let selected = playlist
+        .as_array_mut()
+        .and_then(|items| {
+            items
+                .iter_mut()
+                .find(|i| i["id"] == settings["playlistItemId"] && i["expired"] == false)
+        })
+        .ok_or("playlist_item_not_found")?;
+    selected["playedAt"] = json!(chrono::Utc::now());
+    let selected = selected.clone();
     let ready:Vec<i64>=sqlx::query_scalar("SELECT user_id FROM lazer_room_members WHERE room_id=$1 AND state=1 AND beatmap_availability->>'state'='4'").bind(room).fetch_all(&mut *tx).await.map_err(db)?;
     if ready.is_empty() {
         return Err("no_ready_players");
     }
     let unready: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM lazer_room_members WHERE room_id=$1 AND state NOT IN(1,8)",
+        "SELECT count(*) FROM lazer_room_members WHERE room_id=$1 AND (state NOT IN(1,8) OR (state=1 AND beatmap_availability->>'state' IS DISTINCT FROM '4'))",
     )
     .bind(room)
     .fetch_one(&mut *tx)
@@ -1627,15 +1785,25 @@ async fn start_match(state: &AppState, uid: i64) -> HubResult {
     if unready > 0 {
         return Err("players_not_ready");
     }
-    sqlx::query("UPDATE lazer_rooms SET state=1 WHERE id=$1")
+    if let Some(previous) = row.get::<Option<i64>, _>("current_round_id") {
+        crate::room_rounds::abort_round(&mut tx, previous, "round_replaced")
+            .await
+            .map_err(|e| e.1)?;
+    }
+    crate::room_rounds::freeze_round(&mut tx, room, &selected, &ready)
+        .await
+        .map_err(|e| e.1)?;
+    sqlx::query("UPDATE lazer_rooms SET state=1,playlist=$2 WHERE id=$1")
         .bind(room)
+        .bind(&playlist)
         .execute(&mut *tx)
         .await
         .map_err(db)?;
     sqlx::query(
-        "UPDATE lazer_room_members SET state=2,voted_to_skip=false WHERE room_id=$1 AND state=1",
+        "UPDATE lazer_room_members SET state=2,voted_to_skip=false WHERE room_id=$1 AND user_id=ANY($2)",
     )
     .bind(room)
+    .bind(&ready)
     .execute(&mut *tx)
     .await
     .map_err(db)?;
@@ -1663,8 +1831,16 @@ async fn start_match(state: &AppState, uid: i64) -> HubResult {
         .await;
     Ok(None)
 }
-async fn abort_match(state: &AppState, uid: i64, whole: bool) -> HubResult {
-    let (mut tx, row) = locked_room(state, uid).await?;
+async fn abort_match(state: &AppState, uid: i64, headers: &HeaderMap, whole: bool) -> HubResult {
+    let (mut tx, row) = locked_room(
+        state,
+        uid,
+        RoomWriteAuth::Bearer {
+            actor: uid,
+            headers,
+        },
+    )
+    .await?;
     if whole {
         host(&row, uid)?;
     }
@@ -1674,6 +1850,12 @@ async fn abort_match(state: &AppState, uid: i64, whole: bool) -> HubResult {
     }
     let users = room_members(&mut tx, room).await?;
     if whole {
+        let round = row
+            .get::<Option<i64>, _>("current_round_id")
+            .ok_or("active_round_required")?;
+        crate::room_rounds::abort_round(&mut tx, round, "match_aborted")
+            .await
+            .map_err(|e| e.1)?;
         sqlx::query("UPDATE lazer_rooms SET state=0 WHERE id=$1")
             .bind(room)
             .execute(&mut *tx)
@@ -1681,6 +1863,12 @@ async fn abort_match(state: &AppState, uid: i64, whole: bool) -> HubResult {
             .map_err(db)?;
         sqlx::query("UPDATE lazer_room_members SET state=0,voted_to_skip=false WHERE room_id=$1 AND state<>8").bind(room).execute(&mut *tx).await.map_err(db)?;
     } else {
+        let round = row
+            .get::<Option<i64>, _>("current_round_id")
+            .ok_or("active_round_required")?;
+        crate::room_rounds::abort_participant(&mut tx, round, uid, "gameplay_aborted")
+            .await
+            .map_err(|e| e.1)?;
         sqlx::query("UPDATE lazer_room_members SET state=8 WHERE user_id=$1")
             .bind(uid)
             .execute(&mut *tx)
@@ -1694,6 +1882,22 @@ async fn abort_match(state: &AppState, uid: i64, whole: bool) -> HubResult {
         .await
         .map_err(db)?;
         if remaining == 0 {
+            let finished: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM lazer_room_members WHERE room_id=$1 AND state=6)",
+            )
+            .bind(room)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(db)?;
+            if finished {
+                crate::room_rounds::mark_finished(&mut tx, round)
+                    .await
+                    .map_err(|e| e.1)?;
+            } else {
+                crate::room_rounds::abort_round(&mut tx, round, "all_players_aborted")
+                    .await
+                    .map_err(|e| e.1)?;
+            }
             sqlx::query("UPDATE lazer_rooms SET state=0 WHERE id=$1")
                 .bind(room)
                 .execute(&mut *tx)
@@ -1753,8 +1957,22 @@ async fn abort_match(state: &AppState, uid: i64, whole: bool) -> HubResult {
     }
     Ok(None)
 }
-async fn edit_playlist(state: &AppState, uid: i64, target: &str, value: &Value) -> HubResult {
-    let (mut tx, row) = locked_room(state, uid).await?;
+async fn edit_playlist(
+    state: &AppState,
+    uid: i64,
+    headers: &HeaderMap,
+    target: &str,
+    value: &Value,
+) -> HubResult {
+    let (mut tx, row) = locked_room(
+        state,
+        uid,
+        RoomWriteAuth::Bearer {
+            actor: uid,
+            headers,
+        },
+    )
+    .await?;
     let room: i64 = row.get("id");
     let mut settings: Value = row.get("settings");
     if row.get::<i16, _>("state") != 0 {
@@ -1773,13 +1991,18 @@ async fn edit_playlist(state: &AppState, uid: i64, target: &str, value: &Value) 
         if playlist.len() >= 100 {
             return Err("playlist_full");
         }
-        let id = playlist
-            .iter()
-            .filter_map(|v| v["id"].as_i64())
-            .max()
-            .unwrap_or(0)
-            + 1;
-        let item = playlist_item(state, value, id, uid).await?;
+        let id: i64 = row.get("next_playlist_item_id");
+        let next = id.checked_add(1).ok_or("playlist_id_exhausted")?;
+        let item = playlist_item(&mut tx, value, id, uid).await?;
+        crate::room_rounds::record_playlist(&mut tx, room, &item)
+            .await
+            .map_err(|e| e.1)?;
+        sqlx::query("UPDATE lazer_rooms SET next_playlist_item_id=$2 WHERE id=$1")
+            .bind(room)
+            .bind(next)
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?;
         playlist.push(item.clone());
         if !playlist
             .iter()
@@ -1813,7 +2036,10 @@ async fn edit_playlist(state: &AppState, uid: i64, target: &str, value: &Value) 
             ("PlaylistItemRemoved", json!(id))
         } else {
             let owner = playlist[position]["ownerID"].as_i64().unwrap_or(uid);
-            let item = playlist_item(state, value, id, owner).await?;
+            let item = playlist_item(&mut tx, value, id, owner).await?;
+            crate::room_rounds::record_playlist(&mut tx, room, &item)
+                .await
+                .map_err(|e| e.1)?;
             playlist[position] = item.clone();
             ("PlaylistItemChanged", item)
         }
@@ -1837,8 +2063,16 @@ async fn edit_playlist(state: &AppState, uid: i64, target: &str, value: &Value) 
         .await;
     Ok(None)
 }
-async fn vote_skip(state: &AppState, uid: i64) -> HubResult {
-    let (mut tx, row) = locked_room(state, uid).await?;
+async fn vote_skip(state: &AppState, uid: i64, headers: &HeaderMap) -> HubResult {
+    let (mut tx, row) = locked_room(
+        state,
+        uid,
+        RoomWriteAuth::Bearer {
+            actor: uid,
+            headers,
+        },
+    )
+    .await?;
     if row.get::<i16, _>("state") != 2 {
         return Err("gameplay_not_started");
     }
@@ -1878,7 +2112,12 @@ async fn vote_skip(state: &AppState, uid: i64) -> HubResult {
     }
     Ok(None)
 }
-async fn match_request(state: &AppState, uid: i64, input: &Value) -> HubResult {
+async fn match_request(
+    state: &AppState,
+    uid: i64,
+    headers: &HeaderMap,
+    input: &Value,
+) -> HubResult {
     let array = input.as_array().ok_or("unsupported_match_request")?;
     let tag = array
         .first()
@@ -1888,7 +2127,15 @@ async fn match_request(state: &AppState, uid: i64, input: &Value) -> HubResult {
     if tag != 5 && tag != 7 {
         return Err("unsupported_match_request");
     }
-    let (mut tx, row) = locked_room(state, uid).await?;
+    let (mut tx, row) = locked_room(
+        state,
+        uid,
+        RoomWriteAuth::Bearer {
+            actor: uid,
+            headers,
+        },
+    )
+    .await?;
     let room: i64 = row.get("id");
     let users = room_members(&mut tx, room).await?;
     let mut settings: Value = row.get("settings");
@@ -2069,7 +2316,7 @@ async fn token_owned(
     let Some(token) = token else {
         return Ok(());
     };
-    let row=sqlx::query("SELECT t.user_id,t.ruleset_id,b.id,b.official_id FROM lazer_score_tokens t JOIN beatmaps b ON b.id=t.beatmap_id WHERE t.id=$1 AND t.expires_at>now()").bind(token).fetch_optional(&state.pool).await.map_err(db)?.ok_or("invalid_score_token")?;
+    let row=sqlx::query("SELECT t.user_id,t.ruleset_id,b.id,b.official_id FROM lazer_score_tokens t JOIN beatmaps b ON b.id=t.beatmap_id WHERE t.id=$1 AND t.expires_at>now() AND t.revoked_at IS NULL").bind(token).fetch_optional(&state.pool).await.map_err(db)?.ok_or("invalid_score_token")?;
     if row.get::<i64, _>("user_id") != uid
         || spectator["rulesetID"] != i64::from(row.get::<i16, _>("ruleset_id"))
     {
@@ -2201,9 +2448,10 @@ async fn spectator(
                     return Err("invalid_final_state");
                 }
             }
+            let mut validated_token = None;
             if let Some(token) = playing.token {
                 // Fanout is preserved even if the recorded metadata cannot be bound.
-                if let Err(error) = crate::replay_capture::end(
+                match crate::replay_capture::end(
                     state,
                     uid,
                     token,
@@ -2212,11 +2460,22 @@ async fn spectator(
                 )
                 .await
                 {
-                    tracing::warn!(
+                    Ok(_) => validated_token = Some(token),
+                    Err(error) => tracing::warn!(
                         user_id = uid,
                         code = error.1,
                         "spectator replay not published"
-                    );
+                    ),
+                }
+                // Replay encoding can fail after end identity was committed.
+                // Register that validated end independently of replay publication.
+                if validated_token.is_none() {
+                    let ended: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM lazer_replay_captures WHERE token_id=$1 AND user_id=$2 AND connection_key=$3 AND final_state=$4 AND ended_at IS NOT NULL)")
+                        .bind(token).bind(uid).bind(&c.key).bind(playing.state["state"].as_i64().unwrap() as i16)
+                        .fetch_one(&state.pool).await.map_err(db)?;
+                    if ended {
+                        validated_token = Some(token);
+                    }
                 }
             }
             let mut records = state.signalr.playing.lock().await;
@@ -2228,6 +2487,33 @@ async fn spectator(
             }
             drop(records);
             broadcast_spectator(state, uid, "UserFinishedPlaying", playing.state).await;
+            if let Some(token) = validated_token {
+                {
+                    let mut ended = state.signalr.ended_plays.lock().await;
+                    ended.retain(|_, play| {
+                        play.registered.elapsed() < Duration::from_secs(6 * 60 * 60)
+                    });
+                    if ended.len() >= 4096
+                        && !ended.contains_key(&token)
+                        && let Some(oldest) = ended
+                            .iter()
+                            .min_by_key(|(_, play)| play.registered)
+                            .map(|(token, _)| *token)
+                    {
+                        ended.remove(&oldest);
+                    }
+                    ended.insert(
+                        token,
+                        EndedPlay {
+                            user_id: uid,
+                            connection_key: c.key.clone(),
+                            registered: Instant::now(),
+                        },
+                    );
+                }
+                let _dispatch = state.signalr.score_event_dispatch.lock().await;
+                notify_ended_score(state, token).await.map_err(|e| e.1)?;
+            }
             Ok(None)
         }
         "StartWatchingUser" => {
@@ -2398,15 +2684,11 @@ async fn metadata(
         }
         "BeginWatchingMultiplayerRoom" => {
             let room = integer(argument(args, 0)?)?;
-            let membership: bool = sqlx::query_scalar(
-                "SELECT EXISTS(SELECT 1 FROM lazer_room_members WHERE room_id=$1 AND user_id=$2)",
-            )
-            .bind(room)
-            .bind(uid)
-            .fetch_one(&state.pool)
-            .await
-            .map_err(db)?;
-            if !membership {
+            let viewer = common::bearer(state, &c.headers).await.map_err(|e| e.1)?;
+            if !crate::room_results::room_history_authorized(state, &viewer, room)
+                .await
+                .map_err(|e| e.1)?
+            {
                 return Err("room_membership_required");
             }
             let mut watches = c.room_watches.lock().await;
@@ -2414,8 +2696,12 @@ async fn metadata(
                 return Err("too_many_room_watches");
             }
             watches.insert(room);
-            // Scores are still solo records: do not invent per-room processed score distributions.
-            Ok(Some(json!([])))
+            drop(watches);
+            Ok(Some(
+                crate::room_results::playlist_stats(state, &viewer, room)
+                    .await
+                    .map_err(|e| e.1)?,
+            ))
         }
         "EndWatchingMultiplayerRoom" => {
             c.room_watches
@@ -2426,6 +2712,102 @@ async fn metadata(
         }
         _ => Err("unsupported_hub_method"),
     }
+}
+
+/// Called after an end registration or committed room outbox event. The caller
+/// holds the dispatch mutex, never a database transaction. Only the exact ended
+/// submitting connection receives this two-scalar callback.
+async fn notify_ended_score(state: &AppState, token: i64) -> Result<(), ApiError> {
+    let ended = state.signalr.ended_plays.lock().await.get(&token).cloned();
+    let Some(ended) = ended else {
+        return Ok(());
+    };
+    let connection = state
+        .signalr
+        .connections
+        .lock()
+        .await
+        .get(&ended.connection_key)
+        .cloned();
+    let Some(connection) = connection.filter(|c| {
+        c.hub == Hub::Spectator && c.user.id == ended.user_id && c.active.load(Ordering::Acquire)
+    }) else {
+        state.signalr.ended_plays.lock().await.remove(&token);
+        return Ok(());
+    };
+    if !authorized(state, &connection).await {
+        state.signalr.ended_plays.lock().await.remove(&token);
+        return Ok(());
+    }
+    let Some(score) = crate::room_scores::processed_score_id(state, ended.user_id, token).await?
+    else {
+        return Ok(());
+    };
+    let Ok(user) = i32::try_from(ended.user_id) else {
+        state.signalr.ended_plays.lock().await.remove(&token);
+        return Ok(());
+    };
+    send(
+        &connection,
+        Outbound::Invocation("UserScoreProcessed", vec![json!(user), json!(score)]),
+    );
+    state.signalr.ended_plays.lock().await.remove(&token);
+    Ok(())
+}
+
+/// Best-effort realtime delivery follows committed accounting. An unavailable
+/// transport never rolls back a score; a later room watch reads committed stats.
+pub(crate) async fn publish_room_score_events(state: &AppState) -> Result<usize, ApiError> {
+    let _dispatch = state.signalr.score_event_dispatch.lock().await;
+    let events = sqlx::query("SELECT e.*,t.round_id,s.verification,u.is_restricted FROM lazer_room_score_events e JOIN lazer_score_tokens t ON t.id=e.token_id AND t.scope='room' AND t.processing_status='processed' AND t.revoked_at IS NULL AND t.score_id=e.score_id AND t.user_id=e.user_id AND t.room_id=e.room_id AND t.playlist_item_id=e.item_id JOIN scores s ON s.id=e.score_id AND s.user_id=t.user_id AND s.beatmap_id=t.beatmap_id AND s.mode=t.ruleset_id AND s.client='lazer' AND s.ingestion_key='lazer:'||t.id::text JOIN users u ON u.id=e.user_id WHERE e.delivered_at IS NULL ORDER BY e.id LIMIT 64")
+        .fetch_all(&state.pool).await?;
+    let mut delivered = 0;
+    for event in events {
+        let room: i64 = event.get("room_id");
+        let item: i64 = event.get("item_id");
+        let round: i64 = event.get("round_id");
+        let score: i64 = event.get("score_id");
+        let user: i64 = event.get("user_id");
+        let restricted: bool = event.get("is_restricted");
+        let rejected = event.get::<String, _>("verification") == "rejected";
+        let targets: Vec<_> = state
+            .signalr
+            .connections
+            .lock()
+            .await
+            .values()
+            .filter(|c| c.hub == Hub::Metadata && c.active.load(Ordering::Acquire))
+            .cloned()
+            .collect();
+        for connection in targets {
+            if restricted || rejected || !connection.room_watches.lock().await.contains(&room) {
+                continue;
+            }
+            let viewer = match common::bearer(state, &connection.headers).await {
+                Ok(viewer) if viewer.can("chat.send") => viewer,
+                _ => continue,
+            };
+            if !crate::room_results::round_history_authorized(state, &viewer, room, item, round)
+                .await?
+            {
+                continue;
+            }
+            let Ok(user_id) = i32::try_from(user) else {
+                continue;
+            };
+            let rank = crate::room_results::event_rank(state, &viewer, room, item, score).await?;
+            let value = json!({"roomID":room,"playlistItemID":item,"scoreID":score,"userID":user_id,"totalScore":event.get::<i64,_>("total_score"),"newRank":rank});
+            send(
+                &connection,
+                Outbound::Invocation("MultiplayerRoomScoreSet", vec![value]),
+            );
+        }
+        notify_ended_score(state, event.get("token_id")).await?;
+        sqlx::query("UPDATE lazer_room_score_events SET delivered_at=now() WHERE id=$1 AND delivered_at IS NULL")
+            .bind(event.get::<i64,_>("id")).execute(&state.pool).await?;
+        delivered += 1;
+    }
+    Ok(delivered)
 }
 
 // MessagePack key order follows the public [Key] attributes on client models.
@@ -2527,6 +2909,7 @@ fn wire_settings(value: Value) -> Value {
 fn wire_playlist(mut value: Value) -> Value {
     value["requiredMods"] = wire_mods(value["requiredMods"].take());
     value["allowedMods"] = wire_mods(value["allowedMods"].take());
+    value["playedAt"] = wire_datetime(value["playedAt"].take());
     keyed(
         value,
         &[
@@ -2615,16 +2998,7 @@ fn wire_frame(mut value: Value) -> Value {
             "bonusPortion",
         ],
     );
-    if let Some(timestamp) = header["receivedTime"]
-        .as_str()
-        .and_then(|v| chrono::DateTime::parse_from_rfc3339(v).ok())
-    {
-        // MessagePack-CSharp DateTimeOffset = [timestamp extension, UTC offset minutes].
-        let seconds = timestamp.timestamp() as u64;
-        let nanoseconds = u64::from(timestamp.timestamp_subsec_nanos());
-        let packed = (nanoseconds << 34) | seconds;
-        header["receivedTime"] = json!([{"$msgpack_ext":[-1,packed.to_be_bytes()]},0]);
-    }
+    header["receivedTime"] = wire_datetime(header["receivedTime"].take());
     value["header"] = keyed(
         header,
         &[
@@ -2651,6 +3025,27 @@ fn wire_frame(mut value: Value) -> Value {
     );
     keyed(value, &["header", "frames"])
 }
+fn wire_datetime(value: Value) -> Value {
+    let Some(timestamp) = value
+        .as_str()
+        .and_then(|v| chrono::DateTime::parse_from_rfc3339(v).ok())
+    else {
+        return value;
+    };
+    // Native DateTimeOffset carries an instant timestamp extension and minute offset.
+    let seconds = timestamp.timestamp();
+    let nanoseconds = timestamp.timestamp_subsec_nanos();
+    let bytes = if (0..(1i64 << 34)).contains(&seconds) {
+        ((u64::from(nanoseconds) << 34) | seconds as u64)
+            .to_be_bytes()
+            .to_vec()
+    } else {
+        let mut bytes = nanoseconds.to_be_bytes().to_vec();
+        bytes.extend_from_slice(&seconds.to_be_bytes());
+        bytes
+    };
+    json!([{"$msgpack_ext":[-1,bytes]},timestamp.offset().local_minus_utc()/60])
+}
 fn wire_arguments(target: &str, mut args: Vec<Value>, binary: bool) -> Vec<Value> {
     if !binary {
         // JSON TimeSpan uses the standard textual representation.
@@ -2662,6 +3057,21 @@ fn wire_arguments(target: &str, mut args: Vec<Value>, binary: bool) -> Vec<Value
         return args;
     }
     match target {
+        "MultiplayerRoomScoreSet" => {
+            if let Some(value) = args.first_mut() {
+                *value = keyed(
+                    value.take(),
+                    &[
+                        "roomID",
+                        "playlistItemID",
+                        "scoreID",
+                        "userID",
+                        "totalScore",
+                        "newRank",
+                    ],
+                );
+            }
+        }
         "UserJoined" | "UserLeft" | "UserKicked" => {
             if let Some(v) = args.first_mut() {
                 *v = wire_member(v.take());
@@ -2729,6 +3139,28 @@ fn wire_result(mut value: Value, binary: bool) -> Value {
             wire_room(value)
         } else if value.get("beatmapSetIDs").is_some() {
             keyed(value, &["beatmapSetIDs", "lastProcessedQueueID"])
+        } else if value.as_array().is_some_and(|items| {
+            items
+                .iter()
+                .all(|item| item.get("playlistItemID").is_some())
+        }) {
+            json!(
+                value
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .cloned()
+                    .map(|item| keyed(
+                        item,
+                        &[
+                            "playlistItemID",
+                            "totalScoreDistribution",
+                            "cumulativeScore",
+                            "lastProcessedScoreID"
+                        ]
+                    ))
+                    .collect::<Vec<_>>()
+            )
         } else {
             value
         }
@@ -2743,6 +3175,76 @@ fn wire_result(mut value: Value, binary: bool) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn room_score_native_event_and_stats_contracts() {
+        let huge = i64::MAX - 1;
+        let event = json!({"roomID":7,"playlistItemID":11,"scoreID":huge,"userID":3,"totalScore":huge,"newRank":null});
+        let stats = json!([{"playlistItemID":11,"totalScoreDistribution":[],"cumulativeScore":huge,"lastProcessedScoreID":huge}]);
+        for protocol in [Protocol::Json, Protocol::MessagePack] {
+            let binary = protocol == Protocol::MessagePack;
+            let codec = Codec::new(protocol);
+            let args = wire_arguments("MultiplayerRoomScoreSet", vec![event.clone()], binary);
+            let bytes = codec.invocation("MultiplayerRoomScoreSet", args).unwrap();
+            let decoded = if binary {
+                resonance_protocol::signalr::decode_messagepack_record(&bytes).unwrap()
+            } else {
+                serde_json::from_slice::<Value>(&bytes[..bytes.len() - 1]).unwrap()
+            };
+            if binary {
+                assert_eq!(decoded[4], json!([[7, 11, huge, 3, huge, null]]));
+            } else {
+                assert_eq!(decoded["arguments"], json!([event]));
+            }
+            let bytes = codec
+                .completion("stats", Ok(Some(wire_result(stats.clone(), binary))))
+                .unwrap();
+            let decoded = if binary {
+                resonance_protocol::signalr::decode_messagepack_record(&bytes).unwrap()
+            } else {
+                serde_json::from_slice::<Value>(&bytes[..bytes.len() - 1]).unwrap()
+            };
+            if binary {
+                assert_eq!(decoded[4], json!([[11, [], huge, huge]]));
+            } else {
+                assert_eq!(decoded["result"], stats);
+            }
+            let bytes = codec
+                .invocation(
+                    "UserScoreProcessed",
+                    wire_arguments("UserScoreProcessed", vec![json!(3), json!(huge)], binary),
+                )
+                .unwrap();
+            let decoded = if binary {
+                resonance_protocol::signalr::decode_messagepack_record(&bytes).unwrap()
+            } else {
+                serde_json::from_slice::<Value>(&bytes[..bytes.len() - 1]).unwrap()
+            };
+            if binary {
+                assert_eq!(decoded[4], json!([3, huge]));
+            } else {
+                assert_eq!(decoded["arguments"], json!([3, huge]));
+            }
+        }
+        assert_eq!(wire_result(json!([]), true), json!([]));
+        let ranked = json!({"roomID":7,"playlistItemID":11,"scoreID":huge,"userID":3,"totalScore":huge,"newRank":2});
+        assert_eq!(
+            wire_arguments("MultiplayerRoomScoreSet", vec![ranked], true),
+            vec![json!([7, 11, huge, 3, huge, 2])]
+        );
+    }
+    #[test]
+    fn playlist_played_at_uses_native_nullable_datetimeoffset() {
+        assert_eq!(wire_datetime(Value::Null), Value::Null);
+        let instant = wire_datetime(json!("2026-10-07T12:00:00+08:00"));
+        assert_eq!(instant[1], 480);
+        assert_eq!(instant[0]["$msgpack_ext"][0], -1);
+        assert_eq!(instant[0]["$msgpack_ext"][1].as_array().unwrap().len(), 8);
+        let prior_epoch = wire_datetime(json!("1969-12-31T23:59:59Z"));
+        assert_eq!(
+            prior_epoch[0]["$msgpack_ext"][1].as_array().unwrap().len(),
+            12
+        );
+    }
     #[test]
     fn authority_state_machine_rejects_client_shortcuts() {
         assert!(!valid_transition(0, 0, 5));
@@ -2907,6 +3409,21 @@ mod tests {
     fn failure(value: &Value, error: &str) {
         assert_eq!(value["error"], error, "{value}");
     }
+    async fn sse_until(response: &mut reqwest::Response, expected: &str) -> String {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            let mut bytes = Vec::new();
+            loop {
+                bytes.extend(response.chunk().await.unwrap().expect("live SSE stream"));
+                assert!(bytes.len() <= 65_536, "bounded SSE fixture response");
+                let text = String::from_utf8_lossy(&bytes);
+                if text.contains(expected) {
+                    return text.into_owned();
+                }
+            }
+        })
+        .await
+        .expect("expected SSE record across arbitrary HTTP chunks")
+    }
     /// Uses an isolated database schema and a real ephemeral TCP listener.
     #[tokio::test]
     #[ignore = "requires ILLYA_TEST_DATABASE_URL pointing at disposable local PostgreSQL"]
@@ -2990,11 +3507,11 @@ mod tests {
             assert_eq!(player.call("EndPlaySessionV2",vec![Value::Null,json!(3)]).await[3],2);assert_eq!(watcher.event("UserFinishedPlaying").await["arguments"][1]["state"],3);
             sqlx::query("INSERT INTO user_relationships(user_id,target_id,relation_type) VALUES($1,$2,'block')").bind(ids[1]).bind(ids[0]).execute(&pool).await.unwrap();failure(&watcher.call("StartWatchingUser",vec![json!(ids[0])]).await,"user_blocked");
             let negotiation:Value=client.post(format!("{base}/metadata/negotiate")).bearer_auth(&tokens[2]).send().await.unwrap().json().await.unwrap();let id=negotiation["connectionToken"].as_str().unwrap();
-            let mut sse=client.get(format!("{base}/metadata?id={id}")).bearer_auth(&tokens[2]).header("Accept","text/event-stream").send().await.unwrap();assert_eq!(sse.status(),StatusCode::OK);let initial=tokio::time::timeout(Duration::from_secs(3),sse.chunk()).await.unwrap().unwrap().unwrap();assert!(String::from_utf8_lossy(&initial).contains("connected"));
+            let mut sse=client.get(format!("{base}/metadata?id={id}")).bearer_auth(&tokens[2]).header("Accept","text/event-stream").send().await.unwrap();assert_eq!(sse.status(),StatusCode::OK);sse_until(&mut sse,"connected").await;
             assert_eq!(client.post(format!("{base}/metadata?id={id}")).bearer_auth(&tokens[2]).body("{\"protocol\":\"json\",\"version\":1}\u{1e}").send().await.unwrap().status(),StatusCode::OK);
-            let handshake=tokio::time::timeout(Duration::from_secs(3),sse.chunk()).await.unwrap().unwrap().unwrap();assert!(String::from_utf8_lossy(&handshake).contains("{}\u{1e}"));
+            sse_until(&mut sse,"{}\u{1e}").await;
             assert_eq!(client.post(format!("{base}/metadata?id={id}")).bearer_auth(&tokens[2]).body("{\"type\":1,\"invocationId\":\"sse\",\"target\":\"GetChangesSince\",\"arguments\":[0]}\u{1e}").send().await.unwrap().status(),StatusCode::OK);
-            let mut events=String::new();for _ in 0..3{let chunk=tokio::time::timeout(Duration::from_secs(3),sse.chunk()).await.unwrap().unwrap().unwrap();events.push_str(&String::from_utf8_lossy(&chunk));if events.contains("\"invocationId\":\"sse\""){break;}}assert!(events.contains("\"beatmapSetIDs\":[101]"));
+            let events=sse_until(&mut sse,"\"invocationId\":\"sse\"").await;assert!(events.contains("\"beatmapSetIDs\":[101]"));
             assert_eq!(client.delete(format!("{base}/metadata?id={id}")).bearer_auth(&tokens[2]).send().await.unwrap().status(),StatusCode::ACCEPTED);
             success(&host.call("TransferHost",vec![json!(ids[1])]).await);failure(&host.call("KickUser",vec![json!(ids[1])]).await,"host_required");success(&host.call("LeaveRoom",vec![]).await);success(&guest.call("LeaveRoom",vec![]).await);
             assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM lazer_channel_members WHERE channel_id=$1").bind(channel).fetch_one(&pool).await.unwrap(),0);

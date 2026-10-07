@@ -2,19 +2,25 @@
 
 Install tests/requirements.txt, start both services against the same disposable DB,
 and provide TEST_ADMIN_USERNAME/PASSWORD and TEST_PLAYER_USERNAME/PASSWORD.
-This creates one local beatmap, submits scores, and moderates the test scores.
+This creates local beatmaps and synthetic players, submits scores, and moderates
+the test scores. Native room fixtures use an original standard-library SSE client.
 It never modifies osu! clients, hosts files, certificates, or a remote service.
 """
 import base64
+import contextlib
 import datetime
 import hashlib
 import http.cookiejar
 import json
 import io
 import lzma
+import math
 import os
+import queue
 import re
 import struct
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -33,12 +39,13 @@ class Client:
         self.base = base.rstrip("/")
         self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 
-    def request(self, method, path, body=None, headers=None, expected=200):
+    def request(self, method, path, body=None, headers=None, expected=200, native=False):
         headers = dict(headers or {})
         if isinstance(body, dict):
             body = json.dumps(body).encode()
             headers["Content-Type"] = "application/json"
-        headers.setdefault("Origin", "http://localhost:3000")
+        if not native:
+            headers.setdefault("Origin", "http://localhost:3000")
         req = urllib.request.Request(self.base + path, data=body, headers=headers, method=method)
         Client.request_count += 1
         try:
@@ -49,8 +56,8 @@ class Client:
         assert response.status == expected, (method, path.split("?")[0], response.status, data[:1000])
         return data, response.headers
 
-    def json(self, method, path, body=None, headers=None, expected=200):
-        return json.loads(self.request(method, path, body, headers, expected)[0])
+    def json(self, method, path, body=None, headers=None, expected=200, native=False):
+        return json.loads(self.request(method, path, body, headers, expected, native)[0])
 
 
 def multipart(fields, files=()):
@@ -147,6 +154,339 @@ def room_payload(host_id, map_id, map_hash, password):
     body += bytes([4] + [1] * 15) + bytes(16) + struct.pack("<i", host_id)
     body += struct.pack("<iBBBBi", host_id, 0, 0, 0, 0, 12345)
     return body
+
+
+class SignalRSSE:
+    """Independent JSON SignalR fixture using ordinary loopback HTTP + SSE."""
+
+    def __init__(self, gateway, auth, hub):
+        assert hub in ("multiplayer", "metadata", "spectator")
+        self.gateway, self.auth = gateway, dict(auth)
+        self.messages, self.saved = queue.Queue(maxsize=256), []
+        self.counter, self.closed = 0, False
+        route = "/signalr/" + hub
+        negotiated = gateway.json("POST", route + "/negotiate?negotiateVersion=1",
+                                  headers=auth, native=True)
+        assert any(item["transport"] == "ServerSentEvents" for item in negotiated["availableTransports"])
+        self.path = route + "?" + urllib.parse.urlencode({"id": negotiated["connectionToken"]})
+        request = urllib.request.Request(gateway.base + self.path,
+                                         headers=dict(auth, Accept="text/event-stream"))
+        Client.request_count += 1
+        self.response = urllib.request.urlopen(request, timeout=15)
+        assert self.response.status == 200
+        assert self.response.headers["Content-Type"].startswith("text/event-stream")
+        self.reader = threading.Thread(target=self._read, daemon=True)
+        self.reader.start()
+        try:
+            self._send({"protocol": "json", "version": 1})
+            self._wait(lambda message: message == {})
+        except BaseException:
+            self.close()
+            raise
+
+    def _read(self):
+        try:
+            fields = []
+            while not self.closed:
+                line = self.response.readline(1_048_577)
+                if not line:
+                    raise AssertionError("Fixture SSE connection ended")
+                assert len(line) <= 1_048_576, "Oversized fixture SSE event"
+                line = line.rstrip(b"\r\n")
+                if line.startswith(b"data:"):
+                    fields.append(line[5:].lstrip(b" "))
+                    assert sum(map(len, fields)) <= 1_048_576
+                elif not line and fields:
+                    payload, fields = b"\n".join(fields), []
+                    assert payload.endswith(b"\x1e"), "Missing SignalR record separator"
+                    for record in payload[:-1].split(b"\x1e"):
+                        message = json.loads(record)
+                        if message.get("type") != 6:
+                            self.messages.put(message, timeout=2)
+                        if message.get("type") == 7:
+                            return
+        except BaseException as error:
+            if not self.closed:
+                self.messages.put(error, timeout=2)
+
+    def _send(self, message):
+        body = (json.dumps(message, separators=(",", ":")) + "\x1e").encode()
+        self.gateway.request("POST", self.path, body,
+                             dict(self.auth, **{"Content-Type": "application/json"}), native=True)
+
+    def _wait(self, predicate, timeout=10):
+        for index, message in enumerate(self.saved):
+            if predicate(message):
+                return self.saved.pop(index)
+        deadline = time.monotonic() + timeout
+        while True:
+            remaining = deadline - time.monotonic()
+            assert remaining > 0, "Timed out waiting for fixture SignalR message"
+            try:
+                message = self.messages.get(timeout=remaining)
+            except queue.Empty:
+                raise AssertionError("Timed out waiting for fixture SignalR message") from None
+            if isinstance(message, BaseException):
+                raise message
+            assert message.get("type") != 7, "Fixture SignalR connection closed"
+            if predicate(message):
+                return message
+            self.saved.append(message)
+            assert len(self.saved) <= 256, "Too many unmatched fixture hub messages"
+
+    def call(self, target, arguments=(), error=None):
+        self.counter += 1
+        identity = str(self.counter)
+        self._send({"type": 1, "invocationId": identity,
+                    "target": target, "arguments": list(arguments)})
+        result = self._wait(lambda message: message.get("type") == 3 and message.get("invocationId") == identity)
+        if error is not None:
+            assert result.get("error") == error, (target, result)
+        else:
+            assert "error" not in result, (target, result)
+        return result.get("result")
+
+    def event(self, target):
+        return self._wait(lambda message: message.get("type") == 1 and message.get("target") == target)["arguments"]
+
+    def no_event(self, target, timeout=0.15):
+        predicate = lambda message: message.get("type") == 1 and message.get("target") == target
+        assert not any(predicate(message) for message in self.saved), target
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                message = self.messages.get(timeout=max(0.001, deadline - time.monotonic()))
+            except queue.Empty:
+                return
+            if isinstance(message, BaseException):
+                raise message
+            assert not predicate(message), (target, message)
+            self.saved.append(message)
+
+    def close(self):
+        if self.closed:
+            return
+        self.closed = True
+        try:
+            self.gateway.request("DELETE", self.path, headers=self.auth, expected=202, native=True)
+        finally:
+            self.reader.join(timeout=2)
+            if not self.reader.is_alive():
+                self.response.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, kind, value, traceback):
+        if kind is None:
+            self.close()
+        else:
+            try:
+                self.close()
+            except Exception:
+                pass  # Preserve the failing assertion; launcher teardown remains authoritative.
+
+
+def native_room_smoke(admin, gateway, bearer, player_id, map_id, map_hash, objects):
+    """Actual HeadToHead room APIs and Sanctuary calculation, with new fixture peers."""
+    initial_requests = Client.request_count
+    count = len(objects)
+
+    def new_player(label):
+        name = "room_" + label + "_" + uuid.uuid4().hex[:10]
+        password = uuid.uuid4().hex + uuid.uuid4().hex
+        website = Client(admin.base)
+        registered = website.json("POST", "/api/v1/auth/register",
+                                  {"username": name, "password": password, "email": name + "@example.test"})["user"]
+        assert not any(permission in registered["permissions"] for permission in ("*", "scores.moderate"))
+        auth = gateway.json("POST", "/oauth/token",
+                            {"grant_type": "password", "username": name, "password": password}, native=True)
+        return registered["id"], {"Authorization": "Bearer " + auth["access_token"]}
+
+    peer_id, peer_auth = new_player("peer")
+    _, outsider_auth = new_player("outsider")
+    settings = {"name": "Independent native room " + uuid.uuid4().hex[:8], "password": "",
+                "playlistItemId": 0, "matchType": 1, "queueMode": 0,
+                "autoStartDuration": 0, "autoSkip": False, "maxParticipants": 16}
+    item = {"beatmapID": map_id, "beatmapChecksum": map_hash, "rulesetID": 0,
+            "requiredMods": [], "allowedMods": [], "freestyle": False}
+    rx_item = dict(item, allowedMods=[{"acronym": "RX"}])
+    token_input = {"beatmap_id": map_id, "beatmap_hash": map_hash,
+                   "version_hash": "independent-room-smoke", "ruleset_id": 0}
+
+    def native_score(total, mods=(), weak=False):
+        return {"ruleset_id": 0, "passed": True, "total_score": total,
+                "total_score_without_mods": 1000000 if mods else total,
+                "accuracy": 5 / 6 if weak else 1, "max_combo": count,
+                "rank": "B" if weak else "X", "mods": list(mods),
+                "statistics": {"great": count - 20, "ok": 20} if weak else {"great": count},
+                "maximum_statistics": {"great": count}, "pauses": []}
+
+    with contextlib.ExitStack() as resources:
+        host = resources.enter_context(SignalRSSE(gateway, bearer, "multiplayer"))
+        peer = resources.enter_context(SignalRSSE(gateway, peer_auth, "multiplayer"))
+        outside = resources.enter_context(SignalRSSE(gateway, outsider_auth, "multiplayer"))
+        metadata = resources.enter_context(SignalRSSE(gateway, peer_auth, "metadata"))
+        outside_metadata = resources.enter_context(SignalRSSE(gateway, outsider_auth, "metadata"))
+        spectator = resources.enter_context(SignalRSSE(gateway, bearer, "spectator"))
+        other_spectator = resources.enter_context(SignalRSSE(gateway, bearer, "spectator"))
+        created = host.call("CreateRoom", [{"settings": settings, "playlist": [item, rx_item]}])
+        room = created["roomID"]
+        assert created["settings"]["matchType"] == 1
+        first_item, second_item = [entry["id"] for entry in created["playlist"]]
+        assert first_item < second_item
+        peer.call("JoinRoom", [room])
+        base = f"/api/v2/rooms/{room}"
+        first = base + f"/playlist/{first_item}/scores"
+        second = base + f"/playlist/{second_item}/scores"
+        outside_metadata.call("BeginWatchingMultiplayerRoom", [room], error="room_membership_required")
+        initial_stats = metadata.call("BeginWatchingMultiplayerRoom", [room])
+        assert len(initial_stats) == 2
+        assert all(entry["totalScoreDistribution"] == [0] * 13 and entry["cumulativeScore"] == 0 for entry in initial_stats)
+        gateway.request("GET", first, headers=outsider_auth, expected=404)
+        gateway.request("POST", first, token_input, bearer, expected=400)
+
+        def begin_round(route):
+            for connection in (host, peer):
+                connection.call("ChangeBeatmapAvailability", [[4, None]])
+                connection.call("ChangeState", [1])
+            host.call("StartMatch")
+            assert host.event("LoadRequested") == peer.event("LoadRequested") == []
+            host_token = gateway.json("POST", route, token_input, bearer)["id"]
+            peer_token = gateway.json("POST", route, token_input, peer_auth)["id"]
+            assert host_token != peer_token
+            assert gateway.json("POST", route, token_input, bearer)["id"] == host_token
+            for connection in (host, peer):
+                connection.call("ChangeState", [3])
+                connection.call("ChangeState", [4])
+            assert host.event("GameplayStarted") == peer.event("GameplayStarted") == []
+            return host_token, peer_token
+
+        def finish_round():
+            host.call("ChangeState", [6])
+            peer.call("ChangeState", [6])
+            assert host.event("ResultsReady") == peer.event("ResultsReady") == []
+
+        def score_event(item_id, score, user, total, rank):
+            arguments = metadata.event("MultiplayerRoomScoreSet")
+            assert len(arguments) == 1
+            event = arguments[0]
+            assert set(event) == {"roomID", "playlistItemID", "scoreID", "userID", "totalScore", "newRank"}
+            assert event == {"roomID": room, "playlistItemID": item_id, "scoreID": score,
+                             "userID": user, "totalScore": total, "newRank": rank}
+
+        def accepted(route, token, payload, auth):
+            result = gateway.json("PUT", route + f"/{token}", payload, auth)
+            assert result["processed"] and not result["ranked"] and result["verification"] == "pending"
+            assert result["total_score"] == payload["total_score"] and result["pp"] > 0
+            stored = admin.json("GET", f"/api/v1/scores/{result['id']}")
+            assert stored["client"] == "lazer" and stored["id"] == result["id"]
+            assert stored["native_submission"]["total_score"] == payload["total_score"]
+            assert stored["verification"] == "pending", (result["id"], stored["verification"])
+            # Admin JSONB decoding can round the same float8 one step from the native binary read.
+            assert math.isfinite(stored["pp"]) and math.isfinite(result["pp"])
+            assert abs(stored["pp"] - result["pp"]) <= max(math.ulp(stored["pp"]), math.ulp(result["pp"])), {
+                "id": result["id"], "mods": payload["mods"],
+                "stored_pp": stored["pp"], "result_pp": result["pp"],
+                "stored_pp_hex": float(stored["pp"]).hex(),
+                "result_pp_hex": float(result["pp"]).hex(),
+            }
+            return result
+
+        host_token, peer_token = begin_round(first)
+        summary = gateway.json("GET", base, headers=bearer)["current_user_score"]
+        assert summary["playlist_item_attempts"] == [{"id": first_item, "attempts": 1, "passed": False}]
+        nm_input, peer_input = native_score(1000000), native_score(900000, weak=True)
+        gateway.request("POST", second, token_input, bearer, expected=400)
+        gateway.request("PUT", first + f"/{host_token}", nm_input, peer_auth, expected=404)
+        gateway.request("PUT", second + f"/{host_token}", nm_input, bearer, expected=404)
+        gateway.request("PUT", first + f"/{host_token}", dict(nm_input, mods=[{"acronym": "RX"}]), bearer, expected=400)
+        solo_fields = {key: token_input[key] for key in ("beatmap_hash", "version_hash", "ruleset_id")}
+        solo_token = gateway.json("POST", f"/api/v2/beatmaps/{map_id}/solo/scores", solo_fields, bearer)["id"]
+        gateway.request("PUT", first + f"/{solo_token}", nm_input, bearer, expected=404)
+        gateway.request("PUT", f"/api/v2/beatmaps/{map_id}/solo/scores/{host_token}", nm_input, bearer, expected=404)
+        spectator.call("BeginPlaySessionV2", [host_token, [map_id, 0, [], 1, {"5": count}]])
+        header = [1000000, 1.0, count, count, {"5": count}, [600.0, 600.0, count, 0.5, 0.0], None, [], None, None]
+        spectator.call("SendFrameDataV2", [host_token, [header, [[float(at), float(x), float(y), 1] for x, y, at in objects]]])
+        finish_round()  # Lifecycle completion is observable before either score is processed.
+        assert gateway.json("GET", first, headers=peer_auth)["total"] == 0
+        host_nm = accepted(first, host_token, nm_input, bearer)
+        score_event(first_item, host_nm["id"], player_id, 1000000, 1)
+        spectator.no_event("UserScoreProcessed")
+        spectator.call("EndPlaySessionV2", [host_token, 3])
+        assert spectator.event("UserScoreProcessed") == [player_id, host_nm["id"]]
+        other_spectator.no_event("UserScoreProcessed")
+        assert gateway.json("GET", first + f"/{host_nm['id']}", headers=bearer)["has_replay"]
+        assert gateway.json("PUT", first + f"/{host_token}", nm_input, bearer)["id"] == host_nm["id"]
+        gateway.request("PUT", first + f"/{host_token}", dict(nm_input, total_score=999999), bearer, expected=409)
+        metadata.no_event("MultiplayerRoomScoreSet")
+        peer_nm = accepted(first, peer_token, peer_input, peer_auth)
+        score_event(first_item, peer_nm["id"], peer_id, 900000, 2)
+        pending = gateway.json("GET", first + f"/{host_nm['id']}", headers=peer_auth)
+        assert pending["verification"] == "pending" and pending["processed"] and not pending["ranked"]
+        gateway.request("GET", f"/api/v2/scores/{host_nm['id']}", headers=peer_auth, expected=404)
+        gateway.request("GET", f"/api/v2/scores/{host_nm['id']}/download", headers=peer_auth, expected=404)
+        gateway.request("GET", first + f"/{host_nm['id']}", headers=outsider_auth, expected=404)
+        gateway.request("GET", second + f"/{host_nm['id']}", headers=peer_auth, expected=404)
+        indexed = gateway.json("GET", first + "?limit=1", headers=peer_auth)
+        assert indexed["total"] == 2 and [entry["id"] for entry in indexed["scores"]] == [host_nm["id"]]
+        assert indexed["user_score"]["id"] == peer_nm["id"] and indexed["cursor"] is not None
+        next_params = dict(indexed["params"])
+        next_params.update({f"cursor[{key}]": value for key, value in indexed["cursor"].items()})
+        next_page = gateway.json("GET", first + "?" + urllib.parse.urlencode(next_params), headers=peer_auth)
+        assert [entry["id"] for entry in next_page["scores"]] == [peer_nm["id"]] and next_page["cursor"] is None
+        user_score = gateway.json("GET", first + f"/users/{peer_id}", headers=peer_auth)
+        assert user_score["id"] == peer_nm["id"] and user_score["position"] == 2
+        assert [entry["id"] for entry in user_score["scores_around"]["higher"]["scores"]] == [host_nm["id"]]
+        host.call("ChangeUserMods", [[{"acronym": "RX"}]])
+        rx_token, peer_second_token = begin_round(second)
+        rx_input, peer_second_input = native_score(0, [{"acronym": "RX"}]), native_score(1000000)
+        gateway.request("PUT", second + f"/{rx_token}", dict(rx_input, mods=[]), bearer, expected=400)
+        finish_round()
+        room_rx = accepted(second, rx_token, rx_input, bearer)
+        assert room_rx["score_variant"] == "relax" and room_rx["score_scale_status"] == "unavailable"
+        assert room_rx["classic_total_score"] is None and room_rx["mods"] == [{"acronym": "RX"}]
+        score_event(second_item, room_rx["id"], player_id, 0, 1)
+        assert gateway.json("PUT", second + f"/{rx_token}", rx_input, bearer)["id"] == room_rx["id"]
+        gateway.request("PUT", second + f"/{rx_token}", dict(rx_input, total_score=1), bearer, expected=409)
+        peer_second = accepted(second, peer_second_token, peer_second_input, peer_auth)
+        assert peer_second["score_variant"] == "vanilla" and peer_second["mods"] == []
+        score_event(second_item, peer_second["id"], peer_id, 1000000, 1)
+        rx_pending = gateway.json("GET", second + f"/users/{player_id}", headers=peer_auth)
+        assert rx_pending["id"] == room_rx["id"] and rx_pending["position"] == 2 and rx_pending["total_score"] == 0
+        gateway.request("GET", f"/api/v2/scores/{room_rx['id']}", headers=peer_auth, expected=404)
+        board = gateway.json("GET", base + "/leaderboard", headers=peer_auth)
+        assert [entry["user_id"] for entry in board["leaderboard"]] == [peer_id, player_id]
+        assert [entry["total_score"] for entry in board["leaderboard"]] == [1900000, 1000000]
+        assert all(entry["completed"] == 2 and entry["attempts"] == 2 and entry["pp"] is None for entry in board["leaderboard"])
+        assert board["user_score"]["user_id"] == peer_id and board["user_score"]["position"] == 1
+        summary = gateway.json("GET", base, headers=bearer)["current_user_score"]
+        assert summary["total_score"] == 1000000 and summary["completed"] == 2 and summary["position"] == 2
+        assert summary["playlist_item_attempts"] == [{"id": first_item, "attempts": 1, "passed": True},
+                                                     {"id": second_item, "attempts": 1, "passed": True}]
+        committed_stats = {entry["playlistItemID"]: entry for entry in metadata.call("BeginWatchingMultiplayerRoom", [room])}
+        first_bins, second_bins = [0] * 13, [0] * 13
+        first_bins[9], first_bins[10], second_bins[0], second_bins[10] = 1, 1, 1, 1
+        for identity, bins, cumulative, last in [(first_item, first_bins, 1900000, peer_nm["id"]),
+                                                 (second_item, second_bins, 1000000, peer_second["id"])]:
+            assert committed_stats[identity] == {"playlistItemID": identity, "totalScoreDistribution": bins,
+                                                "cumulativeScore": cumulative, "lastProcessedScoreID": last}
+        peer.call("LeaveRoom")
+        assert gateway.json("GET", first + f"/{host_nm['id']}", headers=peer_auth)["id"] == host_nm["id"]
+        outside.call("JoinRoom", [room])
+        assert gateway.json("GET", first, headers=outsider_auth)["scores"] == []
+        assert gateway.json("GET", base + "/leaderboard", headers=outsider_auth)["leaderboard"] == []
+        assert gateway.json("GET", base, headers=outsider_auth)["current_user_score"] is None
+        gateway.request("GET", first + f"/{host_nm['id']}", headers=outsider_auth, expected=404)
+        late_stats = outside_metadata.call("BeginWatchingMultiplayerRoom", [room])
+        assert all(entry["totalScoreDistribution"] == [0] * 13 and entry["cumulativeScore"] == 0 and entry["lastProcessedScoreID"] == 0 for entry in late_stats)
+        outside.call("LeaveRoom")
+        host.call("LeaveRoom")
+        assert gateway.json("PUT", second + f"/{rx_token}", rx_input, bearer)["id"] == room_rx["id"]
+
+    return {"room_id": room, "normal_score_id": host_nm["id"], "peer_score_id": peer_nm["id"],
+            "relax_score_id": room_rx["id"], "peer_second_score_id": peer_second["id"],
+            "transport": "original_stdlib_json_sse", "http_requests": Client.request_count - initial_requests}
 
 
 def run():
@@ -521,6 +861,7 @@ def run():
     gateway.request("GET", "/api/v2/me/mania?variant=relax", headers=bearer, expected=400)
     assert admin.json("GET", f"/api/v1/scores?user_id={player_id}&mode=3")["items"] == []
 
+    room_scores = native_room_smoke(admin, gateway, bearer, player_id, map_id, map_hash, rx_objects)
     rotated = gateway.json("POST", "/oauth/token", {"grant_type": "refresh_token", "refresh_token": oauth["refresh_token"]})
     gateway.request("GET", "/api/v2/me", headers=bearer, expected=401)
     assert gateway.json("GET", "/api/v2/me", headers={"Authorization": "Bearer " + rotated["access_token"]})["id"] == player_id
@@ -528,7 +869,11 @@ def run():
     after_logout = gateway.request("POST", "/", packet(4), player_bancho)[0]
     assert any(i == 86 for i, _ in packets(after_logout)), "Logged out stable session remained valid"
     checks = ["shared auth", "stable binary login/ping/chat/logout", "lazer OAuth/refresh", "lazer checksum/set lookup/archive/score collections", "Classic profile totals and standardized mixed-client ranking", "stable ScoreV1/ScoreV2 board partition", "RBAC", "friend/block/DM settings", "stable password room/host authority/slot identity", "stable ready/start/load/score/complete/transfer/leave", "stable spectator frame relay", "lazer score token/idempotency", "stable Rijndael256 submission/checksum", "server PP", "replay round trip", "pending rankings", "moderation", "encrypted stable RX and native solo RX", "RX metadata and unavailable common scale", "RX retry deduplication and native mod binding", "RX pending isolation and fixture moderation", "RX replay original ruleset/mod binding", "RX PP-sorted boards and best-per-map totals", "NM/RX API and gateway rank/stat isolation", "osu/taiko/catch RX partition isolation", "mania RX rejection and untrusted variant derivation"]
-    print(json.dumps({"status": "passed", "beatmap_id": primary_map_id, "rx_beatmap_id": map_id, "stable_score_id": stable_id, "lazer_score_id": lazer["id"], "rx_stable_score_id": rx_stable_id, "rx_lazer_score_id": rx_lazer["id"], "rx_converted_score_ids": rx_converted_ids, "http_requests": Client.request_count, "check_count": len(checks), "checks": checks}))
+    checks.extend(["lazer HeadToHead frozen loading token lifecycle", "real room ingress and Sanctuary PP",
+                   "room exact retry and changed-payload conflict", "room/solo and room/item/user scope isolation",
+                   "private frozen peers and late-joiner empty history", "room index/cursors/user/leaderboard/native summaries",
+                   "RX optional participant room mods and native total", "metadata stats/events and exact ended spectator processing"])
+    print(json.dumps({"status": "passed", "beatmap_id": primary_map_id, "rx_beatmap_id": map_id, "stable_score_id": stable_id, "lazer_score_id": lazer["id"], "rx_stable_score_id": rx_stable_id, "rx_lazer_score_id": rx_lazer["id"], "rx_converted_score_ids": rx_converted_ids, "room_scores": room_scores, "http_requests": Client.request_count, "check_count": len(checks), "checks": checks}))
 
 
 if __name__ == "__main__":

@@ -52,6 +52,8 @@ docker compose up -d --build --wait
 
 Relax（RX）支援 osu!、taiko、catch，成績、pp、排名與個人統計各自與 Normal 分開；mania 不支援 RX。網站可切換模式與 Normal／RX，stable／lazer 協定也有對應分區。RX 保留原始分數與 replay，目前不提供可比較的標準化／Classic 總分。資格、歷史重算與原生驗證範圍見 [RX 模式](docs/relax.md)。
 
+lazer 房間成績已有原創實作，包含凍結 round／參與者、綁定 token、提交復原、房間結果／排行榜及處理通知。目前僅能建立 HeadToHead 房間；playlist 聚合規則的 fixture 不代表支援建立 playlist 房間。四項獨立 PostgreSQL／HTTP／WebSocket 測試及 19 項原生 DLL 資料模型檢查已通過；實際原生遊戲、重連與結果顯示仍待人工驗證。詳見 [房間成績合約與驗證清單](docs/lazer-room-scores-plan.md)。
+
 ## 本機開發與貢獻
 
 Node.js 22 以上與 Rust 1.96 以上：

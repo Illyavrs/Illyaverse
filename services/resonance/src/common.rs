@@ -249,14 +249,38 @@ pub fn client_key(state: &AppState, peer: SocketAddr, headers: &HeaderMap) -> St
 }
 
 pub async fn bearer(state: &AppState, headers: &HeaderMap) -> Result<Account, ApiError> {
+    let hash = bearer_hash(headers)?;
+    let id = sqlx::query_scalar::<_,i64>("UPDATE lazer_sessions SET last_seen_at=now() WHERE access_hash=$1 AND access_expires_at>now() RETURNING user_id").bind(hash).fetch_optional(&state.pool).await?.ok_or(ApiError(StatusCode::UNAUTHORIZED,"invalid_access_token"))?;
+    account(state, id).await
+}
+
+pub(crate) fn bearer_hash(headers: &HeaderMap) -> Result<String, ApiError> {
     let token = headers
         .get("authorization")
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.strip_prefix("Bearer "))
         .filter(|value| !value.is_empty() && value.len() <= 4096)
         .ok_or(ApiError(StatusCode::UNAUTHORIZED, "missing_access_token"))?;
-    let id = sqlx::query_scalar::<_,i64>("UPDATE lazer_sessions SET last_seen_at=now() WHERE access_hash=$1 AND access_expires_at>now() RETURNING user_id").bind(token_hash(token)).fetch_optional(&state.pool).await?.ok_or(ApiError(StatusCode::UNAUTHORIZED,"invalid_access_token"))?;
-    account(state, id).await
+    Ok(token_hash(token))
+}
+
+/// Revalidate short room writes after their room lock. Users precede session
+/// rows, matching password recovery and refresh rotation; never hold over HTTP.
+pub(crate) async fn lazer_account_in_tx(
+    tx: &mut Transaction<'_, Postgres>,
+    headers: &HeaderMap,
+    expected_uid: i64,
+) -> Result<Account, ApiError> {
+    let hash = bearer_hash(headers)?;
+    sqlx::query("SELECT id FROM users WHERE id=$1 AND NOT is_restricted FOR UPDATE")
+        .bind(expected_uid)
+        .fetch_optional(&mut **tx)
+        .await?
+        .ok_or(ApiError(StatusCode::UNAUTHORIZED, "invalid_account"))?;
+    sqlx::query("SELECT id FROM lazer_sessions WHERE user_id=$1 AND access_hash=$2 AND access_expires_at>clock_timestamp() FOR UPDATE")
+        .bind(expected_uid).bind(hash).fetch_optional(&mut **tx).await?
+        .ok_or(ApiError(StatusCode::UNAUTHORIZED,"invalid_access_token"))?;
+    account_in_tx(tx, expected_uid).await
 }
 
 pub async fn stored_file(

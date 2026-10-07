@@ -1,13 +1,30 @@
-# Lazer multiplayer room scores: implementation plan
+# Lazer multiplayer room scores: implementation and verification
 
-This is a pending implementation plan. Resonance currently has room authority,
-playlist state, loading/gameplay transitions, spectator transport, and the
-native model codec, but it does not yet implement room score submission,
-leaderboard HTTP responses, score aggregation, or `UserScoreProcessed`-style
-notifications. Existing `ResultsReady` is only a room lifecycle signal; it is
-not evidence that score processing has finished. No native room-score support
-should be claimed until the checks below pass against the pinned client and a
-real client session.
+The original room-score source is implemented: migration
+`0015_lazer_room_scores.sql` and Resonance's `room_rounds`, `room_scores`,
+`room_results` and SignalR adapters provide durable round/participant identity,
+bound score tokens, submission recovery, authorized room results, aggregation
+and processing notifications. The source gate passed 153 Rust unit/CLI checks,
+25 isolated PostgreSQL integration checks and two existing native-vector checks,
+with rustfmt and all-target Clippy. Four new room checks exercise real loopback
+HTTP/WebSocket JSON/MessagePack, durable recovery, privacy, aggregation and queued
+authorization. A separate pinned-DLL probe passed 19 assertions consuming four
+actual HTTP DTOs and the exact four/six-element event tuples. Its MessagePack
+inputs are re-encoded from decoded server tuples, rather than captured transport
+bytes. Real pinned native client gameplay and result display remain
+**pending human verification**. See [the verification record](verification.md).
+
+Room creation supports **HeadToHead only**. The passing-score selection rule for
+playlist aggregation can be exercised by fixtures; that does not implement
+playlist-room creation, daily challenges or other match types. Room totals use
+persisted native gameplay totals, including participants' frozen mod choices.
+They do not invent comparable PP or common-score conversion for unavailable
+contexts such as RX.
+
+`ResultsReady` remains a room lifecycle signal, independent of score processing
+and global moderator verification. The requirements below are the contract and
+verification checklist for the implementation; synthetic checks do not certify
+a native client session.
 
 ## Contract and identity
 
@@ -53,14 +70,16 @@ from `ResultsReady` or infer the active item from a mutable room setting.
 
 ## HTTP surface and recovery
 
-Implement the following original server routes under `/api/v2` (with the
-gateway's existing versioning/authentication rules):
+The source implements the following original server routes under `/api/v2`
+(with the gateway's existing versioning/authentication rules):
 
 * `POST /rooms/{room_id}/playlist/{playlist_item_id}/scores` creates one bound
   score token. Request fields are `version_hash`, `beatmap_id`, `beatmap_hash`,
   and `ruleset_id`; the response is `{ "id": ... }`.
 * `PUT /rooms/{room_id}/playlist/{playlist_item_id}/scores/{score_id}` accepts
   the serialized score payload and returns the canonical `MultiplayerScore`.
+  Here the request path uses the issued token ID; the returned score ID is the
+  persisted score used by subsequent detail requests.
 * `GET /rooms/{room_id}/playlist/{playlist_item_id}/scores` returns the
   paginated `IndexedMultiplayerScores` shape (`scores`, `params`, optional
   `total`, and `user_score`). Support the pinned cursor parameters and stable
@@ -68,7 +87,9 @@ gateway's existing versioning/authentication rules):
   contract.
 * `GET /rooms/{room_id}/playlist/{playlist_item_id}/scores/{score_id}` and
   `GET /rooms/{room_id}/playlist/{playlist_item_id}/scores/users/{user_id}`
-  return one canonical score after membership/privacy checks.
+  return one canonical score after membership/privacy checks. The native Show
+  requests implicitly request `scores_around`; these routes include it by
+  default, with an explicit false flag available to suppress it.
 * `GET /rooms/{room_id}/leaderboard` returns the room-level leaderboard used by
   the pinned `GetRoomLeaderboardRequest`.
 
@@ -84,13 +105,20 @@ attempts cannot expose another result; a consumed token still permits an exact
 authenticated retry.
 
 Define room processing separately from global moderator verification. The
-proposed room policy lets frozen round participants view each other's processed
+implemented room policy lets frozen round participants view each other's processed
 results through the exact authorized room/item binding, even while global
 verification remains pending. Mark them unranked and retain their verification
 state. Keep unrelated viewers excluded, and retain owner/moderator access under
 the existing policy. Leaving, kicking and restart must not erase the binding or
 silently make room history public. Rejected/restricted scores must obey the
 documented result visibility rules rather than enter verified global rankings.
+
+Each visible score requires the exact shared frozen round, score ownership, or
+`scores.moderate`. Current room membership alone permits an empty snapshot, not
+earlier private results. Rejected scores are excluded from highs, aggregates and
+distributions; an unrestricted score owner or moderator may inspect their detail.
+Restricted score owners are excluded. Native `current_user_score` carries
+`playlist_item_attempts` entries with `id`, `attempts` and `passed`.
 
 ## Processing, aggregation, and notifications
 
@@ -146,9 +174,9 @@ as failed durable processing. Preserve `ResultsReady` as the gameplay-state
 signal: zero-hit/no-score plays and submission failures must still finish without
 waiting for a score or moderator approval from every participant.
 
-## Verification before implementation is considered complete
+## Required verification before native support is considered complete
 
-Add isolated PostgreSQL tests for token creation during `WaitingForLoad`, every
+The isolated PostgreSQL gate must cover token creation during `WaitingForLoad`, every
 identity mismatch, expiry/revocation, duplicate identical submission,
 duplicate conflicting submission, crash recovery after commit, retry after
 disconnect, pending-result privacy, and the `ResultsReady`/processing race.
@@ -156,10 +184,12 @@ Test two users and two playlist items so room, round, user, and score IDs cannot
 cross. Verify best-score replacement, attempt counts, all 13 bins, cumulative
 passing totals, monotonic processing IDs, rank changes, failed HeadToHead best
 scores, failed playlist exclusions, and rejected-score visibility. Add HTTP tests
-for all five routes, cursor ordering and
+for every room-score route, cursor ordering and
 privacy. Add JSON and MessagePack tests for both exact six-element event and
 four-element stats tuples, including nullable `new_rank`, empty distributions,
 and large score values. Finally, run a real pinned lazer client through token
 creation, load, play, submit, reconnect, room result display, metadata snapshot,
 and live score event delivery; record that evidence separately from synthetic
-codec tests.
+codec tests. The source currently loads each viewer's authorized room attempts
+in memory before selecting highs and pagination; large retained histories need
+future query-level pagination work.

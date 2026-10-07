@@ -40,6 +40,8 @@ Sanctuary 啟動時先連線 PostgreSQL、執行 migration，再處理可選的�
 
 Sanctuary 保存 `/data/media`、`/data/maps`、`/data/replays`。Resonance 把同一個 volume 掛載到同一個 `/data` 路徑，這樣資料庫中的檔案位置可由兩個服務讀取。兩個 Rust runtime 都使用 UID／GID `10001`，新 volume 的所有權一致；不把 volume 掛成公開靜態目錄，只有 API 指定的媒體與下載路由可讀取。
 
+lazer 房間成績的原創程式碼已加入：PostgreSQL 保存不可變的 playlist 版本、每局 round 與凍結參與者、綁定的 score token、提交摘要及處理事件。Resonance 在呼叫 Sanctuary 前先保存提交內容，服務 HTTP 呼叫不跨越房間交易；完成後以同一交易連結分數與事件，再發送即時通知。房間查詢依每筆成績的凍結 round 授權，之後加入的玩家不會取得舊的私密成績；房間處理完成也不等於全域審核通過。目前僅支援建立 HeadToHead 房間。四項獨立 PostgreSQL／HTTP／WebSocket 測試及 19 項原生 DLL 資料模型檢查通過；實際原生遊戲與結果顯示仍待玩家驗證。詳見 [房間成績合約與驗證清單](lazer-room-scores-plan.md)。
+
 ## 路由與相容性
 
 Caddy 將 `/api/v1/*` 與 `/media/*` 交給 Sanctuary，`/web/*`、`/osu/*`、`/d/*`、`/oauth/*`、`/api/v2/*` 與 `/signalr/*` 交給 Resonance，其餘網站請求交給 Serendipity。`c`／`ce`／`c4` 與 `spectator` 等協定 Host 直接交給 Resonance，避免遊戲請求落進 HTML 網站。Serendipity 的內部 rewrite 在 Docker build 時固定為 `http://sanctuary:8080`；SSR 的帳號語言讀取也使用 runtime `API_INTERNAL_URL`，由 Docker bridge DNS 解析服務名稱。
