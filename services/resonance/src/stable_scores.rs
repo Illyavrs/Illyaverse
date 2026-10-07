@@ -51,6 +51,9 @@ fn upload_field_category(name: &str) -> &'static str {
 
 struct UploadPartMetadata {
     category: &'static str,
+    parser_category: &'static str,
+    resolved_name_length: usize,
+    score_name_case_variant: bool,
     name_present: bool,
     name_length: usize,
     filename_present: bool,
@@ -248,6 +251,9 @@ fn reject_score_upload(
 ) -> ApiError {
     tracing::warn!(
         field_category = metadata.category,
+        parser_field_category = metadata.parser_category,
+        resolved_name_length = metadata.resolved_name_length,
+        score_name_case_variant = metadata.score_name_case_variant,
         name_present = metadata.name_present,
         name_length = metadata.name_length,
         filename_present = metadata.filename_present,
@@ -279,6 +285,9 @@ async fn read_score_upload(mut multipart: Multipart) -> Result<ScoreUpload, ApiE
         reject_score_upload(
             &UploadPartMetadata {
                 category: "unavailable",
+                parser_category: "unavailable",
+                resolved_name_length: 0,
+                score_name_case_variant: false,
                 name_present: false,
                 name_length: 0,
                 filename_present: false,
@@ -312,6 +321,10 @@ async fn read_score_upload(mut multipart: Multipart) -> Result<ScoreUpload, ApiE
         });
         let mut metadata = UploadPartMetadata {
             category: upload_field_category(parsed_name),
+            parser_category: upload_field_category(parsed_name),
+            resolved_name_length: 0,
+            score_name_case_variant: parsed_name != "score"
+                && parsed_name.eq_ignore_ascii_case("score"),
             name_present: field.name().is_some(),
             name_length: parsed_name.len(),
             filename_present: parsed_filename_present,
@@ -338,6 +351,8 @@ async fn read_score_upload(mut multipart: Multipart) -> Result<ScoreUpload, ApiE
             MAX_SCORE_PARAMETER_BYTES
         };
         metadata.category = upload_field_category(&name);
+        metadata.resolved_name_length = name.len();
+        metadata.score_name_case_variant = name != "score" && name.eq_ignore_ascii_case("score");
         metadata.limit = limit;
         while let Some(chunk) = field.chunk().await.map_err(|_| {
             reject_score_upload(

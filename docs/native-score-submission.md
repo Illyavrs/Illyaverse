@@ -16,6 +16,8 @@ Multer 3.1 的內建參數辨識區分大小寫，會漏認 `Name`／`FileName`�
 
 2026-10-07 本機人工作業確認 stable 有送出 POST，但收到 413，資料庫仍沒有成績。診斷顯示第 14 個項目沒有被內建 parser 辨識出 name／filename，超過 32 KiB 被拒絕。不同大小寫的附件參數會造成相同失敗，已由合成 fixture 重現並修正；該次真實客戶端的完整標頭分類與修正後送分仍待人工作業確認，不能將隔離通過記為 native client pass。
 
+同日 13:58–13:59 UTC 的真人重試仍收到 413：第 14 個項目有五 bytes 的 parser name，但 resolver 的固定分類仍為 unknown；沒有 filename 參數或 Content-Type，內容約 33–64 KiB。因此先前的大小寫附件修正不能視為這次原生格式已修復。追加的安全診斷分別記錄 parser／resolver 固定分類、resolver name 長度，以及是否為 score 的 ASCII 大小寫變體；仍不記錄原始欄位名稱或 payload。目前尚待更新後的真人請求來辨識差異，未放寬未知文字欄位上限。
+
 測試服務更新後，登入 stable 並完成一張 Ranked／Loved 圖譜，或等待待送成績重試。網站自己的成績紀錄應出現成績與 replay；成績先保存為 pending review，管理員審核前不會加入公開排行榜。若仍失敗，提供發生時間即可，先使用上述安全診斷定位，不要貼密碼或 request body。圖譜辨識是另一項檢查，見[官方圖譜辨識](native-beatmap-discovery.md)。
 
 獨立 Python Rijndael fixture 在 Docker 最終映像測試中送出超過 32 KiB 的合法 LZMA replay，涵蓋標準參數、不同大小寫參數、無 MIME 的 attachment、相同成績重試去重、replay round trip、錯誤密碼與 checksum 拒絕。來源 gate、映像 ID 和部署 checkpoint 見[驗證紀錄](verification.md)。

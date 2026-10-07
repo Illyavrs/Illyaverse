@@ -602,6 +602,51 @@ async fn diagnostic_body(
 }
 
 #[tokio::test]
+async fn score_upload_parser_and_resolver_diagnostics_remain_redacted() {
+    if diagnostic_runs_in_child(
+        "stable_scores::upload_tests::score_upload_parser_and_resolver_diagnostics_remain_redacted",
+    ) {
+        return;
+    }
+    let _guard = UPLOAD_TEST_LOCK.lock().await;
+    let captured = diagnostic_capture();
+    for (disposition, parser, length, variant) in [
+        (r#"form-data; name="Score""#, "unknown", 5, true),
+        (
+            r#"form-data; name="PRIVATE_FIELD_MARKER""#,
+            "unknown",
+            20,
+            false,
+        ),
+        // Multer can find a name-shaped substring inside an unrelated quoted
+        // parameter. The bounded resolver identifies the actual parameter.
+        (
+            r#"form-data; ignored="x; name=score ; extra"; name="PRIVATE_FIELD_MARKER""#,
+            "score",
+            20,
+            false,
+        ),
+    ] {
+        let (result, event) = diagnostic_body(
+            custom_disposition_body(disposition, None, &vec![b'x'; SCALAR_BYTES + 1]),
+            &captured,
+        )
+        .await;
+        rejected(
+            result,
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "score_upload_too_large",
+        );
+        assert!(event.contains("field_category=\"unknown\""));
+        assert!(event.contains(&format!("parser_field_category=\"{parser}\"")));
+        assert!(event.contains(&format!("resolved_name_length={length}")));
+        assert!(event.contains(&format!("score_name_case_variant={variant}")));
+        assert!(!event.contains("PRIVATE_FIELD_MARKER"));
+        assert!(!event.contains("ignored="));
+    }
+}
+
+#[tokio::test]
 async fn score_upload_uppercase_disposition_rejections_remain_redacted() {
     if diagnostic_runs_in_child(
         "stable_scores::upload_tests::score_upload_uppercase_disposition_rejections_remain_redacted",

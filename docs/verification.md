@@ -2,6 +2,12 @@
 
 Last recorded evidence: 2026-10-07. Local Docker deployments and isolated-schema tests use synthetic fixtures; they are not a production player community. The INITIAL checkpoint below predates the follow-up chat, replay, mod and connection work. Later source gates and image checks are recorded in the follow-up sections; keep the INITIAL results separate from those checkpoints.
 
+## Stable retry diagnostic checkpoint
+
+2026-10-07: the next real stable retries still returned 413 after the previous multipart correction. At 13:58–13:59 UTC, the fourteenth part had a five-byte parser name, no filename/MIME, and an unknown resolved category; its 33–64 KiB payload exceeded the unchanged scalar cap. The client-test database still contained zero scores. Synthetic mixed-case attachment success did not establish compatibility with this actual upload shape.
+
+The client-test Resonance diagnostic image `sha256:3feff18ccda2150ef05dbb34ac7344dc398056c2103952a6c14e0a091104c640` is healthy and separately records only literal parser/resolver categories, decoded-name length and a score-case-variant boolean. Fifteen multipart checks pass, including redaction and a fixture in which Multer finds a name-shaped substring inside an unrelated quoted parameter. That fixture demonstrates why the two classifications are useful; it is not evidence that the real client used that header. No new native request has arrived after this diagnostic deployment. Real submission remains failed/pending; no payload, original name or credentials were captured.
+
 ## Native upload and lazer discovery checkpoint
 
 2026-10-07: the user reported stable submission failure. Scoped real-service evidence confirmed POST requests returning 413 and no stored scores; the fourteenth multipart item was not classified as a named replay and exceeded the 32 KiB scalar cap. The exact real-client disposition was not captured, so its capitalization remains unproven. An independent synthetic fixture reproduced Multer's case-sensitive parameter issue. The original bounded resolver now handles case-insensitive name/filename attributes, quoted escapes, duplicate parameter rejection and unchanged scalar/replay/body limits. Static rejection codes distinguish cipher, envelope, session, checksum and replay failures without logging private payloads. See [native score submission](native-score-submission.md).
