@@ -215,20 +215,19 @@ async fn stats(
     action: UserAction,
 ) -> Result<UserStats, ApiError> {
     let mode = i16::from(action.mode);
-    let row = sqlx::query("SELECT COALESCE(sum(score),0)::bigint AS total,COALESCE(avg(accuracy),0)::float8 AS accuracy,count(*)::bigint AS plays FROM scores WHERE user_id=$1 AND mode=$2 AND verification='verified' AND passed")
-        .bind(player.id).bind(mode).fetch_one(&state.pool).await?;
-    let ranked: i64 = sqlx::query_scalar("SELECT COALESCE(sum(best),0)::bigint FROM (SELECT max(s.score) AS best FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id WHERE s.user_id=$1 AND s.mode=$2 AND s.verification='verified' AND s.passed AND b.status='ranked' AND s.pp_eligible GROUP BY s.beatmap_id) t").bind(player.id).bind(mode).fetch_one(&state.pool).await?;
-    let ranking = sqlx::query("WITH best AS (SELECT s.user_id,s.beatmap_id,max(s.pp) pp FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id WHERE s.mode=$2 AND s.verification='verified' AND s.passed AND b.status='ranked' AND s.pp_eligible GROUP BY s.user_id,s.beatmap_id),weighted AS (SELECT user_id,pp,row_number() OVER(PARTITION BY user_id ORDER BY pp DESC) n FROM best),totals AS (SELECT user_id,sum(pp*power(0.95,n-1)) pp FROM weighted GROUP BY user_id),placed AS (SELECT u.id,COALESCE(t.pp,0)::float8 pp,row_number() OVER(ORDER BY COALESCE(t.pp,0) DESC,u.id) placement FROM users u LEFT JOIN totals t ON t.user_id=u.id WHERE NOT u.is_restricted) SELECT pp,placement FROM placed WHERE id=$1")
-        .bind(player.id).bind(mode).fetch_one(&state.pool).await?;
+    let row = crate::score_aggregates::lifetime(&state.pool, player.id, mode).await?;
+    let ranking = crate::score_aggregates::ranking(&state.pool, player.id, mode).await?;
     let pp: f64 = ranking.get("pp");
     Ok(UserStats {
         user_id: id32(player.id)?,
         action,
-        ranked_score: ranked,
+        ranked_score: ranking.get("ranked_score"),
         accuracy: (row.get::<f64, _>("accuracy") / 100.0) as f32,
         play_count: row.get::<i64, _>("plays").min(i64::from(i32::MAX)) as i32,
         total_score: row.get("total"),
-        rank: ranking.get::<i64, _>("placement").min(i64::from(i32::MAX)) as i32,
+        rank: ranking
+            .get::<i64, _>("global_rank")
+            .min(i64::from(i32::MAX)) as i32,
         pp: pp.round().clamp(0.0, 65535.0) as u16,
     })
 }
@@ -676,9 +675,9 @@ async fn leaderboard(
     } else {
         None
     };
-    let rows = sqlx::query("WITH best AS (SELECT DISTINCT ON(s.user_id) s.id,s.user_id,s.score,s.max_combo,s.mods,s.hit_counts,s.created_at,s.replay_path,u.username FROM scores s JOIN users u ON u.id=s.user_id WHERE s.beatmap_id=$1 AND s.mode=$2 AND s.client='stable' AND s.verification='verified' AND s.passed AND NOT u.is_restricted AND ($3::bigint IS NULL OR s.mods=$3) AND ($3::bigint IS NOT NULL OR s.pp_eligible) AND ($4::text IS NULL OR u.country=$4) AND ($5::bigint[] IS NULL OR s.user_id=ANY($5)) ORDER BY s.user_id,s.score DESC,s.id),placed AS (SELECT *,row_number() OVER(ORDER BY score DESC,id) AS placement FROM best) SELECT * FROM placed WHERE placement<=100 OR user_id=$6 ORDER BY placement")
+    let rows = sqlx::query("WITH best AS (SELECT DISTINCT ON(s.user_id) s.id,s.user_id,s.score,s.max_combo,s.mods,s.hit_counts,s.created_at,s.replay_path,u.username FROM scores s JOIN users u ON u.id=s.user_id WHERE s.beatmap_id=$1 AND s.mode=$2 AND s.client='stable' AND (s.mods & 536870912)=$7 AND s.verification='verified' AND s.passed AND NOT u.is_restricted AND ($3::bigint IS NULL OR s.mods=$3) AND ($3::bigint IS NOT NULL OR s.pp_eligible) AND ($4::text IS NULL OR u.country=$4) AND ($5::bigint[] IS NULL OR s.user_id=ANY($5)) ORDER BY s.user_id,s.score DESC,s.id),placed AS (SELECT *,row_number() OVER(ORDER BY score DESC,id) AS placement FROM best) SELECT * FROM placed WHERE placement<=100 OR user_id=$6 ORDER BY placement")
         .bind(id).bind(mode).bind(if leaderboard_type==2 {Some(requested_mods)} else {None})
-        .bind(if leaderboard_type==3 {Some(&player.country)}else{None}).bind(friend_filter).bind(player.id).fetch_all(&state.pool).await?;
+        .bind(if leaderboard_type==3 {Some(&player.country)}else{None}).bind(friend_filter).bind(player.id).bind(requested_mods & 536870912).fetch_all(&state.pool).await?;
     let status = match map.get::<String, _>("status").as_str() {
         "ranked" => 2,
         "loved" => 5,

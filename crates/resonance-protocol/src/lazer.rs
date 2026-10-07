@@ -125,6 +125,28 @@ pub struct SoloScoreSubmission {
 }
 
 impl SoloScoreSubmission {
+    /// Stable-facing performance counters. Catch fruit and large-droplet misses
+    /// share the legacy miss counter even though native statistics separate them.
+    pub fn legacy_hit_counts(&self) -> Value {
+        let count = |name| self.statistics.get(name).copied().unwrap_or(0);
+        let (n100, n50, katu, misses) = if self.ruleset_id == 2 {
+            (
+                count("large_tick_hit"),
+                count("small_tick_hit"),
+                count("small_tick_miss"),
+                u64::from(count("miss")) + u64::from(count("large_tick_miss")),
+            )
+        } else {
+            (
+                count("ok"),
+                count("meh"),
+                count("good"),
+                u64::from(count("miss")),
+            )
+        };
+        serde_json::json!({"n300":count("great"),"n100":n100,"n50":n50,"misses":misses,"geki":count("perfect"),"katu":katu,"large_tick_hits":count("large_tick_hit"),"small_tick_hits":count("small_tick_hit"),"slider_end_hits":count("slider_tail_hit")})
+    }
+
     pub fn validate(&self) -> Result<()> {
         if self.ruleset_id > 3 {
             return Err(ProtocolError::Invalid("unsupported ruleset"));
@@ -241,6 +263,25 @@ mod tests {
         value.ruleset_id = 0;
         value.pauses = vec![100, 50];
         assert!(value.validate().is_err());
+    }
+    #[test]
+    fn catch_performance_counts_include_large_droplet_misses() {
+        let mut value = score();
+        value.ruleset_id = 2;
+        value.statistics = BTreeMap::from([
+            ("great".into(), 2),
+            ("large_tick_hit".into(), 3),
+            ("small_tick_hit".into(), 4),
+            ("small_tick_miss".into(), 5),
+            ("miss".into(), 6),
+            ("large_tick_miss".into(), 7),
+        ]);
+        let mapped = value.legacy_hit_counts();
+        assert_eq!(mapped["n300"], 2);
+        assert_eq!(mapped["n100"], 3);
+        assert_eq!(mapped["n50"], 4);
+        assert_eq!(mapped["katu"], 5);
+        assert_eq!(mapped["misses"], 13);
     }
     #[test]
     fn signalr_frames_require_record_separator_and_objects() {

@@ -1,4 +1,5 @@
 //! Shared, transport-independent rules for Illyaverse.
+pub mod score_math;
 pub mod score_mods;
 use serde::{Deserialize, Serialize};
 

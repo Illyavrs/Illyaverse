@@ -190,7 +190,15 @@
     "banner": "プロフィールバナー",
     "scoreVerified": "管理者に承認されたスコアです。",
     "scorePending": "審査待ちのため、ランキングに含まれません。",
-    "scorePpExcluded": "この Mod の組み合わせはランキング pp に加算されません。計算結果は参考値です。"
+    "scorePpExcluded": "この Mod の組み合わせはランキング pp に加算されません。計算結果は参考値です。",
+    "scoreRaw": "元のスコア",
+    "scoreScales": "スコア換算",
+    "scoreStandardised": "標準化スコア",
+    "scoreClassic": "Classic 表示スコア",
+    "scoreNativeReported": "lazer から送信されたスコアです。Classic 表示への換算には、サーバーが譜面から算出した判定数を使用します。",
+    "scoreLegacyEstimated": "stable の成績概要からの推定です。判定の順序は復元できないため、正確な lazer プレイのスコアとは異なります。",
+    "scoreLegacyScoreV2": "stable の ScoreV2 スコアを保持し、Classic 表示値に換算します。",
+    "scoreScaleUnavailable": "換算に必要な情報が不足しているため、クライアント間のスコア比較には含まれません。"
   },
   "settings": {
     "title": "あなたらしい、居場所に。",

@@ -50,6 +50,10 @@ export type Score = {
   version: string;
   mode: number;
   score: number;
+  standardised_score?: number | null;
+  standardised_without_mods?: number | null;
+  classic_score?: number | null;
+  score_scale_status?: 'native_reported' | 'legacy_estimated' | 'legacy_scorev2' | 'unavailable';
   accuracy: number;
   max_combo: number;
   mods: number;

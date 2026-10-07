@@ -1,4 +1,4 @@
-use crate::{ApiError, ApiResult, AppState, auth, page};
+use crate::{ApiError, ApiResult, AppState, auth, page, score_scales};
 use axum::{
     Json,
     extract::{Multipart, Path, Query, State},
@@ -90,20 +90,22 @@ pub async fn leaderboard(
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Submission {
-    user_id: Option<i64>,
-    beatmap_id: i64,
-    mode: i16,
-    score: i64,
-    accuracy: f64,
-    max_combo: u32,
-    mods: u32,
+    pub(crate) user_id: Option<i64>,
+    pub(crate) beatmap_id: i64,
+    pub(crate) mode: i16,
+    pub(crate) score: i64,
+    pub(crate) accuracy: f64,
+    pub(crate) max_combo: u32,
+    pub(crate) mods: u32,
     #[serde(default)]
-    api_mods: Option<Value>,
+    pub(crate) api_mods: Option<Value>,
+    #[serde(default)]
+    pub(crate) native_submission: Option<resonance_protocol::lazer::SoloScoreSubmission>,
     #[serde(default = "passed_default")]
-    passed: bool,
-    hit_counts: HitCounts,
-    client: Option<String>,
-    ingestion_key: Option<String>,
+    pub(crate) passed: bool,
+    pub(crate) hit_counts: HitCounts,
+    pub(crate) client: Option<String>,
+    pub(crate) ingestion_key: Option<String>,
 }
 fn passed_default() -> bool {
     true
@@ -140,6 +142,20 @@ async fn ingest(
     input: Submission,
     client: &str,
 ) -> ApiResult<Value> {
+    if input.score < 0
+        || !input.accuracy.is_finite()
+        || !(0.0..=100.0).contains(&input.accuracy)
+        || input.max_combo > 1_000_000
+        || !(0..=3).contains(&input.mode)
+    {
+        return Err(ApiError::bad("Invalid score values."));
+    }
+    if input.native_submission.is_some() && client != "lazer" {
+        return Err(ApiError::bad(
+            "Native context requires internal lazer ingestion.",
+        ));
+    }
+    score_scales::validate_native_binding(&input)?;
     if let Some(ref key) = input.ingestion_key {
         if key.len() > 128 || key.is_empty() {
             return Err(ApiError::bad("Invalid ingestion key."));
@@ -147,13 +163,6 @@ async fn ingest(
         if let Some(existing)=sqlx::query_scalar::<_,Value>("SELECT to_jsonb(s)-'replay_path'||jsonb_build_object('accuracy_source',CASE WHEN s.client='lazer' THEN 'client_reported' ELSE 'judgements' END) FROM scores s WHERE ingestion_key=$1").bind(key).fetch_optional(&state.db).await?{
             if existing["user_id"].as_i64()!=Some(user_id)||existing["beatmap_id"].as_i64()!=Some(input.beatmap_id){return Err(ApiError(axum::http::StatusCode::CONFLICT,"ingestion_conflict","The ingestion key belongs to another score.".into()));}return Ok(existing);
         }
-    }
-    if input.score < 0
-        || !input.accuracy.is_finite()
-        || !(0.0..=100.0).contains(&input.accuracy)
-        || input.max_combo > 1_000_000
-    {
-        return Err(ApiError::bad("Invalid score values."));
     }
     let pp_eligible = if let Some(ref native) = input.api_mods {
         if client != "lazer" {
@@ -207,27 +216,30 @@ async fn ingest(
             "Only osu!standard beatmaps can be converted to another ruleset.",
         ));
     }
-    let judgement_accuracy = accuracy(input.mode, &input.hit_counts)?;
     // Lazer includes slider judgements in its native accuracy. Until a complete
     // server score-processor is implemented, preserve this reported value and
     // disclose its source; these scores remain pending moderation.
     let accuracy = if client == "lazer" {
         input.accuracy
     } else {
-        judgement_accuracy
+        accuracy(input.mode, &input.hit_counts)?
     };
     let path: String = map.get("osu_path");
     if std::path::Path::new(&path).is_absolute() || path.contains("..") {
         return Err(ApiError::internal("unsafe stored map path"));
     }
     let bytes = tokio::fs::read(state.maps_root.join(path)).await?;
-    let calc = input.clone();
+    let mut calc = input.clone();
+    // The caller selected the authenticated transport; an input JSON field
+    // cannot turn public API submissions into stable normalization candidates.
+    calc.client = Some(client.to_owned());
     let lazer = client == "lazer";
-    let pp = tokio::task::spawn_blocking(move || calculate_pp(&bytes, &calc, lazer))
+    let calculated = tokio::task::spawn_blocking(move || calculate_score(&bytes, &calc, lazer))
         .await
         .map_err(ApiError::internal)??;
-    let mut value:Value=sqlx::query_scalar("INSERT INTO scores(user_id,beatmap_id,mode,score,accuracy,max_combo,mods,pp,passed,hit_counts,client,ingestion_key,api_mods,pp_eligible) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT(ingestion_key) DO UPDATE SET ingestion_key=scores.ingestion_key WHERE scores.user_id=excluded.user_id AND scores.beatmap_id=excluded.beatmap_id RETURNING to_jsonb(scores)-'replay_path'")
-        .bind(user_id).bind(input.beatmap_id).bind(input.mode).bind(input.score).bind(accuracy).bind(input.max_combo as i32).bind(i64::from(input.mods)).bind(pp).bind(input.passed).bind(json!(input.hit_counts)).bind(client).bind(input.ingestion_key).bind(input.api_mods).bind(pp_eligible).fetch_optional(&state.db).await?.ok_or_else(||ApiError(axum::http::StatusCode::CONFLICT,"ingestion_conflict","The ingestion key belongs to another score.".into()))?;
+    let scales = calculated.scales;
+    let mut value:Value=sqlx::query_scalar("INSERT INTO scores(user_id,beatmap_id,mode,score,accuracy,max_combo,mods,pp,passed,hit_counts,client,ingestion_key,api_mods,pp_eligible,standardised_score,standardised_without_mods,classic_score,native_submission,native_basic_maximum,score_scale_status,score_scale_version,score_scale_reason,legacy_attributes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) ON CONFLICT(ingestion_key) DO UPDATE SET ingestion_key=scores.ingestion_key WHERE scores.user_id=excluded.user_id AND scores.beatmap_id=excluded.beatmap_id RETURNING to_jsonb(scores)-'replay_path'")
+        .bind(user_id).bind(input.beatmap_id).bind(input.mode).bind(input.score).bind(accuracy).bind(input.max_combo as i32).bind(i64::from(input.mods)).bind(calculated.pp).bind(input.passed).bind(json!(input.hit_counts)).bind(client).bind(input.ingestion_key).bind(input.api_mods).bind(pp_eligible).bind(scales.standardised_score).bind(scales.standardised_without_mods).bind(scales.classic_score).bind(scales.native_submission).bind(scales.native_basic_maximum).bind(scales.status).bind(scales.version).bind(scales.reason).bind(scales.legacy_attributes).fetch_optional(&state.db).await?.ok_or_else(||ApiError(axum::http::StatusCode::CONFLICT,"ingestion_conflict","The ingestion key belongs to another score.".into()))?;
     value["accuracy_source"] = json!(if client == "lazer" {
         "client_reported"
     } else {
@@ -235,7 +247,76 @@ async fn ingest(
     });
     Ok(value)
 }
-fn calculate_pp(bytes: &[u8], score: &Submission, lazer: bool) -> ApiResult<f64> {
+pub(crate) struct CalculatedScore {
+    pub pp: f64,
+    pub scales: score_scales::NativeScales,
+}
+
+/// Reconstruct calculation inputs without changing original score/PP/verification.
+/// A persisted native context (or the recovery query's token fallback) supplies
+/// the correct catch miss projection for calculations without rewriting raw rows.
+pub(crate) fn from_stored_row(row: &sqlx::postgres::PgRow) -> ApiResult<Submission> {
+    let client: String = row.try_get("client")?;
+    let recovered = row
+        .try_get::<Option<Value>, _>("recovered_native_submission")
+        .ok()
+        .flatten();
+    let stored: Option<Value> = row.try_get("native_submission")?;
+    let native_submission = stored
+        .or(recovered)
+        .map(serde_json::from_value::<resonance_protocol::lazer::SoloScoreSubmission>)
+        .transpose()
+        .map_err(|_| ApiError::bad("Stored native context is invalid."))?;
+    let mut hit_counts: HitCounts = serde_json::from_value(row.try_get("hit_counts")?)
+        .map_err(|_| ApiError::bad("Stored hit counts are invalid."))?;
+    let mut api_mods: Option<Value> = row.try_get("api_mods")?;
+    if client == "lazer"
+        && let Some(context) = &native_submission
+    {
+        hit_counts = serde_json::from_value(context.legacy_hit_counts())
+            .map_err(|_| ApiError::bad("Stored native hit counts exceed processing limits."))?;
+        api_mods = Some(json!(context.mods));
+    }
+    Ok(Submission {
+        user_id: Some(row.try_get("user_id")?),
+        beatmap_id: row.try_get("beatmap_id")?,
+        mode: row.try_get("mode")?,
+        score: row.try_get("score")?,
+        accuracy: row.try_get("accuracy")?,
+        max_combo: u32::try_from(row.try_get::<i32, _>("max_combo")?)
+            .map_err(|_| ApiError::bad("Stored combo is invalid."))?,
+        mods: u32::try_from(row.try_get::<i64, _>("mods")?)
+            .map_err(|_| ApiError::bad("Stored modifiers are invalid."))?,
+        api_mods,
+        native_submission,
+        passed: row.try_get("passed")?,
+        hit_counts,
+        client: Some(client),
+        ingestion_key: row.try_get("ingestion_key")?,
+    })
+}
+
+struct NativeManiaResults;
+impl rosu_pp::any::HitResultGenerator<rosu_pp::mania::Mania> for NativeManiaResults {
+    fn generate_hitresults(
+        input: rosu_pp::mania::InspectManiaPerformance<'_>,
+    ) -> rosu_pp::mania::ManiaHitResults {
+        rosu_pp::mania::ManiaHitResults {
+            n320: input.n320.unwrap_or(0),
+            n300: input.n300.unwrap_or(0),
+            n200: input.n200.unwrap_or(0),
+            n100: input.n100.unwrap_or(0),
+            n50: input.n50.unwrap_or(0),
+            misses: input.misses.unwrap_or(0),
+        }
+    }
+}
+
+pub(crate) fn calculate_score(
+    bytes: &[u8],
+    score: &Submission,
+    lazer: bool,
+) -> ApiResult<CalculatedScore> {
     let map =
         rosu_pp::Beatmap::from_bytes(bytes).map_err(|_| ApiError::bad("Stored map is invalid."))?;
     let mode = match score.mode {
@@ -261,6 +342,7 @@ fn calculate_pp(bytes: &[u8], score: &Submission, lazer: bool) -> ApiResult<f64>
     } else {
         rosu_pp::GameMods::from(score.mods)
     };
+    let scales_map = map.clone();
     let map = map
         .convert(mode, &mods)
         .map_err(|_| ApiError::bad("This beatmap cannot be converted to the requested ruleset."))?;
@@ -273,6 +355,33 @@ fn calculate_pp(bytes: &[u8], score: &Submission, lazer: bool) -> ApiResult<f64>
         return Err(ApiError::bad(
             "Combo exceeds this ruleset's beatmap maximum.",
         ));
+    }
+    let scales = if lazer {
+        score_scales::native_scales(score, &attrs)?
+    } else {
+        if score.native_submission.is_some() {
+            return Err(ApiError::bad(
+                "Native context requires internal lazer ingestion.",
+            ));
+        }
+        if score.client.as_deref() == Some("stable") {
+            score_scales::legacy_scales(score, &scales_map, &attrs)?
+        } else {
+            score_scales::NativeScales::unavailable("unsupported_score_source")
+        }
+    };
+    if lazer && score.mode == 3 {
+        let h = &score.hit_counts;
+        let actual = [h.geki, h.n300, h.katu, h.n100, h.n50, h.misses]
+            .into_iter()
+            .map(u64::from)
+            .sum::<u64>();
+        let maximum = u64::from(score_scales::basic_n(&attrs)?);
+        if actual > maximum || (score.passed && actual != maximum) {
+            return Err(ApiError::bad(
+                "Native mania head/tail judgments do not match this beatmap.",
+            ));
+        }
     }
     let h = &score.hit_counts;
     let state = rosu_pp::any::ScoreState {
@@ -288,16 +397,31 @@ fn calculate_pp(bytes: &[u8], score: &Submission, lazer: bool) -> ApiResult<f64>
         slider_end_hits: h.slider_end_hits,
         legacy_total_score: u32::try_from(score.score).ok(),
     };
-    let pp = rosu_pp::Performance::new(attrs)
+    let performance = rosu_pp::Performance::new(attrs)
         .mods(mods)
         .lazer(lazer)
-        .state(state)
-        .calculate()
-        .pp();
+        .state(state);
+    let pp = match performance {
+        rosu_pp::Performance::Mania(p) if lazer => {
+            p.hitresult_generator::<NativeManiaResults>()
+                .calculate()
+                .map_err(|_| ApiError::bad("Native mania performance attributes are invalid."))?
+                .pp
+        }
+        other => other.calculate().pp(),
+    };
     if !pp.is_finite() {
         return Err(ApiError::bad("Performance calculation was not finite."));
     }
-    Ok(if score.passed { pp } else { 0.0 })
+    Ok(CalculatedScore {
+        pp: if score.passed { pp } else { 0.0 },
+        scales,
+    })
+}
+
+#[cfg(test)]
+fn calculate_pp(bytes: &[u8], score: &Submission, lazer: bool) -> ApiResult<f64> {
+    calculate_score(bytes, score, lazer).map(|calculated| calculated.pp)
 }
 pub async fn submit(
     State(state): State<AppState>,
@@ -308,6 +432,7 @@ pub async fn submit(
     if input.user_id.is_some_and(|id| id != user.id)
         || input.client.as_ref().is_some_and(|v| v != "api")
         || input.ingestion_key.is_some()
+        || input.native_submission.is_some()
     {
         return Err(ApiError::bad(
             "API submissions belong to the signed-in user, use the api client, and cannot supply an ingestion key.",
@@ -392,7 +517,12 @@ pub async fn upload_replay(
     let score=sqlx::query("SELECT s.*,b.md5,u.username FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id JOIN users u ON u.id=s.user_id WHERE s.id=$1 AND s.user_id=$2 FOR UPDATE OF s").bind(id).bind(user.id).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::missing)?;
     let lazer = score.get::<String, _>("client") == "lazer";
     let submission: Option<Value> = if lazer {
-        sqlx::query_scalar("SELECT submission FROM lazer_score_tokens WHERE score_id=$1 AND user_id=$2 ORDER BY id LIMIT 1").bind(id).bind(user.id).fetch_optional(&mut *tx).await?.flatten()
+        let persisted: Option<Value> = score.get("native_submission");
+        if persisted.is_some() {
+            persisted
+        } else {
+            sqlx::query_scalar("SELECT submission FROM lazer_score_tokens WHERE score_id=$1 AND user_id=$2 ORDER BY id LIMIT 1").bind(id).bind(user.id).fetch_optional(&mut *tx).await?.flatten()
+        }
     } else {
         None
     };
@@ -545,6 +675,127 @@ mod replay_upload_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn supplied_mania_performance(mods: Value, state: rosu_pp::mania::ManiaScoreState) -> f64 {
+        let native = ValidatedMods::parse(3, &mods).unwrap();
+        rosu_pp::mania::ManiaPerformance::new(rosu_pp::mania::ManiaDifficultyAttributes {
+            stars: 3.0,
+            max_combo: 6,
+            n_objects: 4,
+            n_hold_notes: 2,
+            is_convert: false,
+        })
+        .mods(native.mods)
+        .lazer(true)
+        .state(state)
+        .hitresult_generator::<NativeManiaResults>()
+        .calculate()
+        .unwrap()
+        .pp
+    }
+
+    #[test]
+    fn native_mania_classic_preserves_six_head_tail_results() {
+        // Original supplied attributes, independently evaluated by the pinned
+        // native DLL. This checks PP arithmetic, not playable-map difficulty.
+        let full = rosu_pp::mania::ManiaScoreState {
+            n320: 3,
+            n300: 2,
+            n200: 1,
+            ..Default::default()
+        };
+        for (mods, expected) in [
+            (json!([]), 46.75619444178465),
+            (json!([{"acronym":"CL"}]), 46.75619444178465),
+            (
+                json!([{"acronym":"CL"},{"acronym":"NF"}]),
+                35.067145831338486,
+            ),
+            (
+                json!([{"acronym":"CL"},{"acronym":"EZ"}]),
+                23.378097220892325,
+            ),
+            (
+                json!([{"acronym":"CL"},{"acronym":"HT"}]),
+                46.75619444178465,
+            ),
+            (
+                json!([{"acronym":"CL"},{"acronym":"NF"},{"acronym":"EZ"}]),
+                17.533572915669243,
+            ),
+        ] {
+            let actual = supplied_mania_performance(mods, full.clone());
+            assert!((actual - expected).abs() < 1e-10, "{actual} != {expected}");
+        }
+        let collapsed = supplied_mania_performance(
+            json!([{"acronym":"CL"}]),
+            rosu_pp::mania::ManiaScoreState {
+                n320: 3,
+                n300: 1,
+                ..Default::default()
+            },
+        );
+        assert!((collapsed - 73.88163760008085).abs() < 1e-10);
+        assert!((collapsed - supplied_mania_performance(json!([]), full)).abs() > 20.0);
+    }
+
+    #[test]
+    #[ignore = "requires ignored independently-built native DLL probe artifact"]
+    fn native_dll_mania_performance_fixture_parity() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../data-native-probe/mania-pp/vectors.json");
+        let fixture: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        assert_eq!(
+            fixture["pinned_source_commit"],
+            "6cbcae7fbb764839a66c1adf564c2e1679242072"
+        );
+        let vectors = fixture["vectors"].as_array().unwrap();
+        assert_eq!(vectors.len(), 8);
+        for row in vectors {
+            let h = &row["statistics"];
+            let count = |key: &str| h[key].as_u64().unwrap() as u32;
+            let state = rosu_pp::mania::ManiaScoreState {
+                n320: count("perfect"),
+                n300: count("great"),
+                n200: count("good"),
+                n100: count("ok"),
+                n50: count("meh"),
+                misses: count("miss"),
+            };
+            let mods: Vec<Value> = row["mods"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|acronym| json!({"acronym":acronym}))
+                .collect();
+            let pp = supplied_mania_performance(json!(mods), state);
+            let expected = row["native_total_pp"].as_f64().unwrap();
+            assert!(
+                (pp - expected).abs() < 1e-10,
+                "{}: {pp} != {expected}",
+                row["label"]
+            );
+        }
+    }
+
+    #[test]
+    fn native_mania_rejects_collapsed_or_inflated_passed_hold_results() {
+        let map=b"osu file format v14\n[General]\nMode:3\n[Difficulty]\nHPDrainRate:5\nCircleSize:4\nOverallDifficulty:5\nApproachRate:5\nSliderMultiplier:1.4\nSliderTickRate:1\n[TimingPoints]\n0,500,4,2,1,100,1,0\n[HitObjects]\n64,192,1000,1,0,0:0:0:0:\n192,192,1500,1,0,0:0:0:0:\n320,192,2000,128,0,2500:0:0:0:0:\n448,192,3000,128,0,3500:0:0:0:0:\n";
+        let mut score:Submission=serde_json::from_value(json!({"beatmap_id":1,"mode":3,"score":900000,"accuracy":100.0,"max_combo":4,"mods":0,"api_mods":[{"acronym":"CL"}],"passed":true,"hit_counts":{"geki":6}})).unwrap();
+        let full = calculate_score(map, &score, true).unwrap();
+        assert_eq!(full.scales.native_basic_maximum, Some(6));
+        score.hit_counts.geki = 4;
+        assert!(calculate_score(map, &score, true).is_err());
+        score.hit_counts.geki = 7;
+        assert!(calculate_score(map, &score, true).is_err());
+        score.hit_counts.geki = 4;
+        score.passed = false;
+        assert_eq!(calculate_score(map, &score, true).unwrap().pp, 0.0);
+        score.passed = true;
+        assert!(calculate_score(map, &score, false).is_err());
+        score.api_mods = None;
+        assert!(calculate_score(map, &score, false).is_ok());
+    }
     #[test]
     fn accuracy_uses_judgements() {
         let h = HitCounts {
@@ -554,6 +805,24 @@ mod tests {
         };
         assert_eq!(accuracy(0, &h).unwrap(), 90.0);
         assert!(accuracy(0, &HitCounts::default()).is_err());
+    }
+    #[test]
+    fn public_api_source_never_claims_a_stable_estimate() {
+        let map=b"osu file format v14\n[General]\nMode:0\n[Difficulty]\nHPDrainRate:5\nCircleSize:4\nOverallDifficulty:5\nApproachRate:5\nSliderMultiplier:1.4\nSliderTickRate:1\n[TimingPoints]\n0,500,4,2,0,100,1,0\n[HitObjects]\n64,192,1000,1,0\n256,192,2000,1,0\n";
+        let mut score:Submission=serde_json::from_value(json!({"beatmap_id":1,"mode":0,"score":600,"accuracy":100.0,"max_combo":2,"mods":0,"passed":true,"hit_counts":{"n300":2},"client":"api"})).unwrap();
+        let result = calculate_score(map, &score, false).unwrap();
+        assert!(result.pp.is_finite());
+        assert_eq!(result.scales.status, "unavailable");
+        assert_eq!(
+            result.scales.reason.as_deref(),
+            Some("unsupported_score_source")
+        );
+        assert!(result.scales.standardised_score.is_none());
+        score.client = Some("stable".into());
+        assert_eq!(
+            calculate_score(map, &score, false).unwrap().scales.status,
+            "legacy_estimated"
+        );
     }
     #[test]
     fn mania_accuracy_weights_geki() {
@@ -577,6 +846,7 @@ mod tests {
                 max_combo: 2,
                 mods: 0,
                 api_mods: None,
+                native_submission: None,
                 passed: true,
                 hit_counts: HitCounts {
                     n300: 2,
@@ -612,6 +882,7 @@ mod tests {
             max_combo: 100,
             mods: 64,
             api_mods: Some(json!([{"acronym":"DT","settings":{"speed_change":1.2}}])),
+            native_submission: None,
             passed: true,
             hit_counts: HitCounts {
                 n300: 100,

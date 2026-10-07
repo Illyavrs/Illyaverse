@@ -190,7 +190,15 @@
     "banner": "Profile banner",
     "scoreVerified": "This score was approved by a moderator.",
     "scorePending": "This score is pending review and is excluded from rankings.",
-    "scorePpExcluded": "These mods are excluded from ranked pp. The calculated pp is shown for reference."
+    "scorePpExcluded": "These mods are excluded from ranked pp. The calculated pp is shown for reference.",
+    "scoreRaw": "Original score",
+    "scoreScales": "Score conversion",
+    "scoreStandardised": "Standardised score",
+    "scoreClassic": "Classic display score",
+    "scoreNativeReported": "Reported by lazer. Classic display conversion uses the judgment count calculated from the beatmap by the server.",
+    "scoreLegacyEstimated": "Estimated from a stable score summary. The order of judgments cannot be recovered, so this is not an exact lazer gameplay score.",
+    "scoreLegacyScoreV2": "Preserves the stable ScoreV2 score and converts its Classic display value.",
+    "scoreScaleUnavailable": "This result has insufficient conversion context and is excluded from cross-client score comparisons."
   },
   "settings": {
     "title": "Make it yours.",

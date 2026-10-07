@@ -169,14 +169,15 @@ async fn user_response(
     player: Account,
     mode: u8,
 ) -> Result<Json<Value>, ApiError> {
-    let row=sqlx::query("SELECT count(*)::bigint plays,COALESCE(sum(score),0)::bigint total,COALESCE(avg(accuracy),0)::float8 accuracy,COALESCE(max(max_combo),0)::integer combo,COALESCE(sum(COALESCE((hit_counts->>'n300')::bigint,0)+COALESCE((hit_counts->>'n100')::bigint,0)+COALESCE((hit_counts->>'misses')::bigint,0)+CASE WHEN mode<>1 THEN COALESCE((hit_counts->>'n50')::bigint,0) ELSE 0 END+CASE WHEN mode=3 THEN COALESCE((hit_counts->>'geki')::bigint,0) ELSE 0 END+CASE WHEN mode IN(2,3) THEN COALESCE((hit_counts->>'katu')::bigint,0) ELSE 0 END),0)::bigint hits FROM scores WHERE user_id=$1 AND mode=$2 AND verification='verified'").bind(player.id).bind(i16::from(mode)).fetch_one(&state.pool).await?;
-    let ranking=sqlx::query("WITH best AS (SELECT s.user_id,s.beatmap_id,max(s.pp) pp,max(s.score) best_score FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id WHERE s.verification='verified' AND s.passed AND b.status='ranked' AND s.pp_eligible AND s.mode=$2 GROUP BY s.user_id,s.beatmap_id),weighted AS (SELECT user_id,pp,best_score,row_number() OVER(PARTITION BY user_id ORDER BY pp DESC) n FROM best),totals AS (SELECT user_id,sum(pp*power(0.95,n-1)) pp,sum(best_score) ranked_score FROM weighted GROUP BY user_id),placed AS (SELECT u.id,COALESCE(t.pp,0)::float8 pp,COALESCE(t.ranked_score,0)::bigint ranked_score,row_number() OVER(ORDER BY COALESCE(t.pp,0) DESC,u.id) global_rank,row_number() OVER(PARTITION BY u.country ORDER BY COALESCE(t.pp,0) DESC,u.id) country_rank FROM users u LEFT JOIN totals t ON t.user_id=u.id WHERE NOT u.is_restricted) SELECT * FROM placed WHERE id=$1").bind(player.id).bind(i16::from(mode)).fetch_one(&state.pool).await?;
-    let grades=sqlx::query("SELECT count(*) FILTER(WHERE s.passed AND s.accuracy=100 AND (s.mods & 1032)=0)::bigint ss,count(*) FILTER(WHERE s.passed AND s.accuracy=100 AND (s.mods & 1032)<>0)::bigint ssh,count(*) FILTER(WHERE COALESCE(t.submission->>'rank',a.details->>'rank')='S')::bigint s,count(*) FILTER(WHERE COALESCE(t.submission->>'rank',a.details->>'rank')='SH')::bigint sh,count(*) FILTER(WHERE COALESCE(t.submission->>'rank',a.details->>'rank')='A')::bigint a FROM scores s LEFT JOIN lazer_score_tokens t ON t.score_id=s.id LEFT JOIN LATERAL(SELECT details FROM audit_events WHERE action='scores.stable_ingest' AND target_id=s.id::text ORDER BY id DESC LIMIT 1)a ON true WHERE s.user_id=$1 AND s.mode=$2 AND s.verification='verified'").bind(player.id).bind(i16::from(mode)).fetch_one(&state.pool).await?;
+    let row = crate::score_aggregates::lifetime(&state.pool, player.id, i16::from(mode)).await?;
+    let ranking = crate::score_aggregates::ranking(&state.pool, player.id, i16::from(mode)).await?;
+    let grades=sqlx::query("SELECT count(*) FILTER(WHERE s.passed AND s.accuracy=100 AND (s.mods & 1032)=0)::bigint ss,count(*) FILTER(WHERE s.passed AND s.accuracy=100 AND (s.mods & 1032)<>0)::bigint ssh,count(*) FILTER(WHERE COALESCE(s.native_submission->>'rank',t.submission->>'rank',a.details->>'rank')='S')::bigint s,count(*) FILTER(WHERE COALESCE(s.native_submission->>'rank',t.submission->>'rank',a.details->>'rank')='SH')::bigint sh,count(*) FILTER(WHERE COALESCE(s.native_submission->>'rank',t.submission->>'rank',a.details->>'rank')='A')::bigint a FROM scores s LEFT JOIN lazer_score_tokens t ON t.score_id=s.id LEFT JOIN LATERAL(SELECT details FROM audit_events WHERE action='scores.stable_ingest' AND target_id=s.id::text ORDER BY id DESC LIMIT 1)a ON true WHERE s.user_id=$1 AND s.mode=$2 AND s.verification='verified'").bind(player.id).bind(i16::from(mode)).fetch_one(&state.pool).await?;
     let mut value = user_json(&player);
     let total = row.get::<i64, _>("total");
     let pp = ranking.get::<f64, _>("pp");
     let is_ranked = pp > 0.0;
     value["statistics"] = json!({"level":level(total),"global_rank":if is_ranked{Some(ranking.get::<i64,_>("global_rank"))}else{None},"country_rank":if is_ranked{Some(ranking.get::<i64,_>("country_rank"))}else{None},"pp":pp,"ranked_score":ranking.get::<i64,_>("ranked_score"),"hit_accuracy":row.get::<f64,_>("accuracy"),"play_count":row.get::<i64,_>("plays"),"total_score":total,"total_hits":row.get::<i64,_>("hits"),"maximum_combo":row.get::<i32,_>("combo"),"is_ranked":is_ranked,"grade_counts":{"ss":grades.get::<i64,_>("ss"),"ssh":grades.get::<i64,_>("ssh"),"s":grades.get::<i64,_>("s"),"sh":grades.get::<i64,_>("sh"),"a":grades.get::<i64,_>("a")}});
+    value["score_scale_coverage"] = json!({"total_plays":row.get::<i64,_>("plays"),"included_plays":row.get::<i64,_>("scaled_plays"),"display":"classic_with_legacy_history"});
     value["playmode"] = json!(["osu", "taiko", "fruits", "mania"][mode as usize]);
     Ok(Json(value))
 }
@@ -319,19 +320,6 @@ pub(crate) fn legacy_mods(ruleset: u8, mods: &[ApiMod]) -> Result<u32, ApiError>
         .map(|mods| mods.legacy_bits)
         .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_score_mods"))
 }
-fn hit_counts(input: &SoloScoreSubmission) -> Value {
-    let count = |name| input.statistics.get(name).copied().unwrap_or(0);
-    let (n100, n50, katu) = if input.ruleset_id == 2 {
-        (
-            count("large_tick_hit"),
-            count("small_tick_hit"),
-            count("small_tick_miss"),
-        )
-    } else {
-        (count("ok"), count("meh"), count("good"))
-    };
-    json!({"n300":count("great"),"n100":n100,"n50":n50,"misses":count("miss"),"geki":count("perfect"),"katu":katu,"large_tick_hits":count("large_tick_hit"),"small_tick_hits":count("small_tick_hit"),"slider_end_hits":count("slider_tail_hit")})
-}
 
 async fn submit_score(
     State(state): State<AppState>,
@@ -366,7 +354,7 @@ async fn submit_score(
     let score_id = if let Some(score_id) = token.get::<Option<i64>, _>("score_id") {
         score_id
     } else {
-        let response=state.http.post(format!("{}/api/v1/internal/scores",state.sanctuary_url.trim_end_matches('/'))).header("x-illya-service-key",state.service_key.as_str()).json(&json!({"user_id":player.id,"beatmap_id":map_id,"mode":input.ruleset_id,"score":input.total_score,"accuracy":input.accuracy*100.0,"max_combo":input.max_combo,"mods":mods,"api_mods":input.mods,"passed":input.passed,"hit_counts":hit_counts(&input),"client":"lazer","ingestion_key":format!("lazer:{token_id}")})).send().await.map_err(|_|ApiError(StatusCode::SERVICE_UNAVAILABLE,"score_ingestion_unavailable"))?;
+        let response=state.http.post(format!("{}/api/v1/internal/scores",state.sanctuary_url.trim_end_matches('/'))).header("x-illya-service-key",state.service_key.as_str()).json(&json!({"user_id":player.id,"beatmap_id":map_id,"mode":input.ruleset_id,"score":input.total_score,"accuracy":input.accuracy*100.0,"max_combo":input.max_combo,"mods":mods,"api_mods":input.mods,"passed":input.passed,"hit_counts":input.legacy_hit_counts(),"native_submission":input,"client":"lazer","ingestion_key":format!("lazer:{token_id}")})).send().await.map_err(|_|ApiError(StatusCode::SERVICE_UNAVAILABLE,"score_ingestion_unavailable"))?;
         if !response.status().is_success() {
             return Err(ApiError(
                 StatusCode::BAD_REQUEST,
@@ -421,13 +409,18 @@ pub(crate) async fn score_json(
     let owner = common::account(state, row.get("user_id")).await?;
     let verified = row.get::<String, _>("verification") == "verified";
     let stable = row.get::<String, _>("client") == "stable";
-    let token = sqlx::query("SELECT submission FROM lazer_score_tokens WHERE score_id=$1")
+    let submission: Value = if let Some(value) = row.get::<Option<Value>, _>("native_submission") {
+        value
+    } else {
+        sqlx::query_scalar::<_, Option<Value>>(
+            "SELECT submission FROM lazer_score_tokens WHERE score_id=$1 ORDER BY id DESC LIMIT 1",
+        )
         .bind(id)
         .fetch_optional(&state.pool)
-        .await?;
-    let submission: Value = token
-        .and_then(|t| t.get::<Option<Value>, _>("submission"))
-        .unwrap_or_else(|| json!({}));
+        .await?
+        .flatten()
+        .unwrap_or_else(|| json!({}))
+    };
     let audit:Value=sqlx::query_scalar("SELECT details FROM audit_events WHERE action='scores.stable_ingest' AND target_id=$1 ORDER BY id DESC LIMIT 1").bind(id.to_string()).fetch_optional(&state.pool).await?.unwrap_or_else(||json!({}));
     let grade = submission.get("rank").or_else(|| audit.get("rank"));
     let bits = row.get::<i64, _>("mods") as u32;
@@ -442,7 +435,7 @@ pub(crate) async fn score_json(
     } else {
         json!({"great":count("n300"),"ok":count("n100"),"meh":count("n50"),"perfect":count("geki"),"good":count("katu"),"miss":count("misses")})
     };
-    let mut output = json!({"id":id,"user_id":owner.id,"user":user_json(&owner),"ruleset_id":row.get::<i16,_>("mode"),"beatmap_id":row.get::<i64,_>("native_map_id"),"total_score":row.get::<i64,_>("score"),"accuracy":row.get::<f64,_>("accuracy")/100.0,"max_combo":row.get::<i32,_>("max_combo"),"passed":row.get::<bool,_>("passed"),"pp":row.get::<f64,_>("pp"),"mods":submission.get("mods").cloned().unwrap_or(json!(legacy_mods)),"statistics":submission.get("statistics").cloned().unwrap_or(stats),"maximum_statistics":submission.get("maximum_statistics").cloned().unwrap_or(json!({})),"ended_at":audit.get("ended_at").cloned().unwrap_or(json!(row.get::<chrono::DateTime<Utc>,_>("created_at"))),"has_replay":row.get::<Option<String>,_>("replay_path").is_some(),"ranked":verified&&row.get::<String,_>("map_status")=="ranked"&&row.get::<bool,_>("pp_eligible"),"processed":true,"position":null,"scores_around":null,"verification":row.get::<String,_>("verification")});
+    let mut output = json!({"id":id,"user_id":owner.id,"user":user_json(&owner),"ruleset_id":row.get::<i16,_>("mode"),"beatmap_id":row.get::<i64,_>("native_map_id"),"total_score":row.get::<Option<i64>,_>("standardised_score").unwrap_or_else(||if stable{0}else{row.get::<i64,_>("score")}),"accuracy":row.get::<f64,_>("accuracy")/100.0,"max_combo":row.get::<i32,_>("max_combo"),"passed":row.get::<bool,_>("passed"),"pp":row.get::<f64,_>("pp"),"mods":submission.get("mods").cloned().unwrap_or(json!(legacy_mods)),"statistics":submission.get("statistics").cloned().unwrap_or(stats),"maximum_statistics":submission.get("maximum_statistics").cloned().unwrap_or(json!({})),"ended_at":audit.get("ended_at").cloned().unwrap_or(json!(row.get::<chrono::DateTime<Utc>,_>("created_at"))),"has_replay":row.get::<Option<String>,_>("replay_path").is_some(),"ranked":verified&&row.get::<String,_>("map_status")=="ranked"&&row.get::<bool,_>("pp_eligible"),"processed":true,"position":null,"scores_around":null,"verification":row.get::<String,_>("verification")});
     output["replay_complete"] = json!(row.get::<Option<bool>, _>("replay_complete"));
     if let Some(grade) = grade {
         output["rank"] = grade.clone();
@@ -451,8 +444,23 @@ pub(crate) async fn score_json(
         output["legacy_score_id"] = json!(id);
         output["legacy_total_score"] = json!(row.get::<i64, _>("score"));
     }
-    if let Some(total) = submission.get("total_score_without_mods") {
-        output["total_score_without_mods"] = total.clone();
+    if let Some(total) = row.get::<Option<i64>, _>("standardised_without_mods") {
+        output["total_score_without_mods"] = json!(total);
+    }
+    output["classic_total_score"] = json!(row.get::<Option<i64>, _>("classic_score"));
+    output["score_scale_status"] = json!(row.get::<String, _>("score_scale_status"));
+    output["score_scale_version"] = json!(row.get::<Option<String>, _>("score_scale_version"));
+    if stable {
+        if let Some(attrs) = row.get::<Option<Value>, _>("legacy_attributes")
+            && let Some(maximum) = attrs.get("maximum_statistics")
+        {
+            output["maximum_statistics"] = maximum.clone();
+        }
+        if !legacy_mods.iter().any(|m| m["acronym"] == "CL") {
+            let mut mods = legacy_mods;
+            mods.push(json!({"acronym":"CL"}));
+            output["mods"] = json!(mods);
+        }
     }
     Ok(output)
 }

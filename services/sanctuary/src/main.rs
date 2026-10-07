@@ -3,7 +3,10 @@ mod auth;
 mod chat;
 #[cfg(test)]
 mod integration_tests;
+mod legacy_scoring;
 mod maps;
+mod score_recovery;
+mod score_scales;
 mod scores;
 mod social;
 
@@ -439,6 +442,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         upload_slots: Arc::new(tokio::sync::Semaphore::new(2)),
     };
     auth::bootstrap(&state).await?;
+    score_recovery::start(state.clone());
     sqlx::query("DELETE FROM sessions WHERE expires_at < now()")
         .execute(&state.db)
         .await?;

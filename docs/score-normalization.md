@@ -1,26 +1,38 @@
-# Score normalization research
+# Score normalization
 
-**Status: research / pending implementation.** This document describes contracts and a proposed original implementation. Illyaverse does not currently convert stable ScoreV1 totals to standardized lazer totals, and has not verified a converter against native gameplay. Formula examples below are mathematical calculations, not client test results.
+**Status: implemented, with unit and isolated PostgreSQL validation; native gameplay remains unverified.** The original Rust converter preserves raw scores, estimates passed stable ScoreV1 results, handles ScoreV2 separately, and stores map-derived Classic display caches. Pinned native DLL fixtures validate the arithmetic and map simulator; they are headless contract tests, not successful game sessions.
 
 Research recorded on 2026-10-07. Reference source is pinned to:
 
 - `ppy/osu`: [`6359741babba4ced42da1fcda738c35370fdf3f4`](https://github.com/ppy/osu/tree/6359741babba4ced42da1fcda738c35370fdf3f4).
 - `ppy/osu-queue-score-statistics`: [`7558b004f33cb79196b63682daa9862cb9c23faa`](https://github.com/ppy/osu-queue-score-statistics/tree/7558b004f33cb79196b63682daa9862cb9c23faa).
 
-These sources establish behavior. Implementations must be original; neither source code nor their server implementation should be copied into Illyaverse. Native-client request fixtures currently use a separately pinned client build; a future scoring implementation must explicitly select and test its own scoring version.
+These sources establish behavior. Implementations must be original; neither source code nor their server implementation should be copied into Illyaverse. The separately built native fixture client is pinned to `2026.1005.1-tachyon`, commit `6cbcae7fbb764839a66c1adf564c2e1679242072`. Cached records retain both the formula and simulator identities.
 
-## Current protection and remaining work
+## Implemented data and leaderboard policy
 
-Root has added source restrictions to the two map leaderboard queries:
-
-| Endpoint | Current score source and scale |
+| Boundary | Current behavior |
 |---|---|
-| `/web/osu-osz2-getscores.php` | `client='stable'`, stable raw score |
-| `/api/v2/beatmaps/{id}/scores` | `client='lazer'`, native standardized score |
+| Stable map leaderboard | Stable raw scores only, with V1/V2 boards partitioned by the requested ScoreV2 flag; original replay totals are preserved. |
+| Native map leaderboard | Native reported standardized totals and convertible stable estimates share one comparison scale. Unsupported rows are excluded. Stable results carry an implicit CL modifier. |
+| Lifetime display total | Verified stable V1 raw history plus verified native/ScoreV2 Classic values. Missing native conversion context and unidentified public API score scales are excluded. |
+| Ranked display total | Select one passed eligible verified result per ranked map using standardized score, then add that result's Classic value. |
+| PP | Independently select the highest server-computed eligible PP per map and apply weighting. A score-scale cache does not grant approval. |
 
-This prevents ordering unrelated raw scales on the same map. It does not normalize either source. The independent HTTP smoke passed against rebuilt images and a fresh PostgreSQL 17 project: a reviewed stable score remained on the stable board; the native board stayed empty until its own lazer score was reviewed, then returned that score. The pending-score, moderation, privacy, ruleset and mod filters remain necessary.
+Native summaries persist independently of score-token retention. Core fields, structured mods and legacy counter projections must agree. The server derives the maximum basic judgment count from the same converted map/mod context used for PP:
 
-PP can continue to select the best eligible result per map across client types using server-computed rosu-pp. That does not make the two raw total-score scales comparable. Current native profile aggregate formulas and stable score serialization still need separate review; this research did not change them. See [native mod policy](native-mods.md) for validated modifiers and ranked PP eligibility.
+| Ruleset | Maximum basic judgments |
+|---|---|
+| osu! | Circles + sliders + spinners |
+| taiko | Scorable notes; strong bonuses, roll ticks and swells are excluded |
+| catch | Fruits; large and tiny droplets are excluded |
+| mania | Notes + holds; each hold has a basic head and tail, including CL |
+
+A native maximum must equal this server-derived count. Actual basic judgments cannot exceed it, and a passed score must be complete. This validates the count used in Classic display conversion; it does not prove every bonus/tick maximum, reported total, accuracy, or ordered play. Native scores remain pending moderation. Native mania PP preserves all six judgment counts instead of collapsing CL hold heads/tails into the stable object count.
+
+Migration `0012_score_scales.sql` adds separate raw-preserving caches. New ingestion computes them before insertion. Historical rows are recovered in batches of at most 16 every 30 seconds with PostgreSQL row locks and skip-locked replica coordination. Recovery updates only conversion context/caches; it never changes raw score, PP, ownership, review or replay bytes. Invalid/missing context receives a bounded unavailable marker instead of retrying forever. After restoring the missing context, an operator can clear only that row's `score_scale_version` while its status remains unavailable to request another recovery attempt.
+
+States are `native_reported`, `legacy_estimated`, `legacy_scorev2`, and `unavailable`. Native caches use `native_classic.v1`; passed V1 estimates use `legacy_estimate.v1.simulator.v1`; V2 uses `legacy_scorev2.v1`. Cached legacy attributes include simulator/formula source pins, maximum statistics and separate source/native multipliers. Unidentified public API submissions retain PP/review functionality but do not receive a transport-specific score scale. See [native mod policy](native-mods.md) for PP eligibility.
 
 ## Three different score meanings
 
@@ -138,9 +150,9 @@ Validate `m>0` before the division for a non-full-combo score; impossible summar
 
 ### ScoreV2 and incomplete plays
 
-The official local beatmap overload treats stable ScoreV2 separately: it preserves the original total and derives the without-mods number using the legacy multiplier. It does not run the ScoreV1 estimation above. Historical official imported score tables have a narrower context than arbitrary submitted Illyaverse scores; a new implementation must define eligibility for ScoreV2 explicitly.
+The official local beatmap overload treats stable ScoreV2 separately: it preserves the original total and derives the without-mods number using the legacy multiplier. It does not run the ScoreV1 estimation above. Historical official imported score tables have a narrower context than arbitrary submitted Illyaverse scores. Illyaverse requires a passed complete summary and tested nonzero source multiplier for its ScoreV2 conversion cache.
 
-The legacy estimate uses `p=1`. It should not be described as exact native progression for failed/incomplete plays. Initial mixed-client ranked normalization should target validated passed ScoreV1 plays with complete map context, and preserve an explicit unsupported state for other cases.
+The legacy estimate uses `p=1`. It should not be described as exact native progression for failed/incomplete plays. The implemented V1 path requires complete passed summaries and map context. Incomplete legacy results retain an unavailable cache. V2 preserves its original standardized total and divides by its separately tested V2 source multiplier for the without-mods value; zero source multipliers cannot be reversed and remain unavailable.
 
 ## A summary cannot uniquely recover exact score
 
@@ -160,13 +172,13 @@ Legacy base score is 2100 in both. A five-hit run adds 360 combo points; the rem
 | Official legacy estimate, without mods | 303348 | 303348 |
 | Official estimate with `.985` Classic | 298798 | 298798 |
 
-These results were calculated from the pinned formulas, not observed through client gameplay. The difference proves that even raw score, all hit counts, maximum combo, map and mods do not uniquely determine native score.
+These results are formula/contract vectors. The two raw-summary estimates were also compared with a headless native migration call; neither ordered play was exercised through a game host. The difference proves that even raw score, all hit counts, maximum combo, map and mods do not uniquely determine native score.
 
-## Data and original implementation plan
+## Context and remaining exact-replay work
 
-Keep raw values immutable. Store a separate normalization result with a quality state such as `native_reported`, `legacy_estimated`, `server_replayed` or `unsupported`. These describe calculation provenance; none replaces moderation or anti-cheat verification.
+Raw values remain immutable. Stored conversion provenance is separate from verification. A future `server_replayed` path would require ordered judgments and trusted processor aggregates; no current cache claims deterministic replay verification.
 
-Suggested versioned inputs and outputs:
+The versioned cache and future replay path require these inputs and outputs:
 
 - Original beatmap MD5, immutable `.osu` bytes/version, original and target rulesets, source build, original mod bits and validated structured native mods/settings.
 - Raw legacy score, all legacy counts, achieved combo, passed/completion state, complete native statistics and maximum statistics when available.
@@ -174,7 +186,7 @@ Suggested versioned inputs and outputs:
 - `standardised_without_mods`, `standardised_total_score`, `classic_total_score`, normalizer version, multiplier version, and normalization status/reason.
 - For an exact replay-based path, ordered result/object data or trusted processor aggregates (`BaseScore`, `MaximumBaseScore`, `AccuracyJudgementCount`, `ComboPortion`, `BonusPortion`) together with playable-map autoplay maxima and engine version.
 
-The existing stable summary and stored map are enough to attempt the official estimate once the missing simulator/converter functionality exists. They are insufficient for exact native gameplay reconstruction. Existing native token submissions already retain maximum statistics; a normalized score record should persist them independently of token retention and validate them against playable-map opportunities.
+The stable summary and stored map support the implemented estimate. They remain insufficient for exact native gameplay reconstruction. Native maximum statistics now persist on the score itself; map-derived basic opportunities are checked before display conversion.
 
 Map simulators require nested sliders, ticks, timing points, object types, breaks and version-specific conversion behavior. Sources: [legacy attributes](https://github.com/ppy/osu/blob/6359741babba4ced42da1fcda738c35370fdf3f4/osu.Game/Rulesets/Scoring/Legacy/LegacyScoreAttributes.cs), [osu simulator](https://github.com/ppy/osu/blob/6359741babba4ced42da1fcda738c35370fdf3f4/osu.Game.Rulesets.Osu/Difficulty/OsuLegacyScoreSimulator.cs), [taiko simulator](https://github.com/ppy/osu/blob/6359741babba4ced42da1fcda738c35370fdf3f4/osu.Game.Rulesets.Taiko/Difficulty/TaikoLegacyScoreSimulator.cs), [catch simulator](https://github.com/ppy/osu/blob/6359741babba4ced42da1fcda738c35370fdf3f4/osu.Game.Rulesets.Catch/Difficulty/CatchLegacyScoreSimulator.cs), [mania simulator](https://github.com/ppy/osu/blob/6359741babba4ced42da1fcda738c35370fdf3f4/osu.Game.Rulesets.Mania/Difficulty/ManiaLegacyScoreSimulator.cs).
 
@@ -197,13 +209,13 @@ This transformation is an approximation of the historical scale, not an inverse 
 
 The official total-score processor adds Classic values for native plays; imported legacy scores do not add those values again. Ranked-score selection compares standardized totals, then adds the selected score's Classic display value. Consequently, fixing mixed map ordering does not by itself fix Illyaverse's profile aggregate semantics. A direct `SUM(stableRaw + lazerStandardised)` or mixed `MAX(score)` remains incorrect.
 
-Until a tested normalizer exists, cross-client PP can remain shared while score-based totals are explicitly scoped/documented. A future lifetime total can preserve already-counted raw stable history and add native Classic values, following historical aggregation semantics. Cross-client best-per-map ranked-score selection still requires a common standardized comparison scale; adding both source-specific bests would double-count maps.
+The implemented lifetime total preserves raw stable V1 history and adds native/ScoreV2 Classic values. Ranked-score selection uses the standardized comparison cache, then adds the selected result's Classic value; adding separate source-specific bests would double-count maps. The same aggregate queries serve stable status packets and native profiles. Native profiles also expose conversion coverage for verified lifetime plays.
 
 Sources: [Classic display transform](https://github.com/ppy/osu/blob/6359741babba4ced42da1fcda738c35370fdf3f4/osu.Game/Scoring/Legacy/ScoreInfoExtensions.cs), [total score processor](https://github.com/ppy/osu-queue-score-statistics/blob/7558b004f33cb79196b63682daa9862cb9c23faa/osu.Server.Queues.ScoreStatisticsProcessor/Processors/TotalScoreProcessor.cs), [ranked score processor](https://github.com/ppy/osu-queue-score-statistics/blob/7558b004f33cb79196b63682daa9862cb9c23faa/osu.Server.Queues.ScoreStatisticsProcessor/Processors/RankedScoreProcessor.cs), [standardized best-score selection](https://github.com/ppy/osu-queue-score-statistics/blob/7558b004f33cb79196b63682daa9862cb9c23faa/osu.Server.Queues.ScoreStatisticsProcessor/Helpers/DatabaseHelper.cs).
 
-## Proposed verification vectors and acceptance conditions
+## Verification vectors and limits
 
-The following are derived vectors for future tests. Synthetic algebra inputs are not assertions that a real play can achieve every combination.
+The following are derived vectors used by the arithmetic tests. Synthetic algebra inputs are not assertions that a real play can achieve every combination.
 
 | Input | Expected score without mods |
 |---|---:|
@@ -213,6 +225,10 @@ The following are derived vectors for future tests. Synthetic algebra inputs are
 | mania synthetic raw=900000, legacy multiplier=1, all Great (`a=300/305`) | 931049 |
 | osu! nine-circle counterexample above | official estimate 303348 for both |
 
-Required future tests include zero denominators, impossible/non-finite input, rounding ties (`2.5→2`, `3.5→4`), spinner/banana/strong-hit bonuses, slider/hold padding, all ruleset conversions, key mods, ScoreV2 policy, modifier version changes and failed/incomplete score policy. Native replay simulation and summary conversion must be tested as different calculation paths.
+Current arithmetic and map fixtures cover zero denominators, impossible/non-finite input, rounding ties (`2.5→2`, `3.5→4`), spinner/banana/strong-hit bonuses, slider/hold counts, ruleset/key conversion samples, ScoreV2 multipliers and failed/incomplete policy. Wider map/conversion coverage and future modifier-version changes still need dedicated fixtures. Native replay processing and summary estimation remain different calculation paths.
 
-Before enabling a mixed-client score leaderboard, compare an original implementation against pinned native contract fixtures, backfill only convertible rows, retain unsupported rows outside the mixed ranking, and verify HTTP ordering with two clients' scores that disagree under raw-scale ordering. Mark the resulting converter as integration-tested only after those checks. Actual stable/lazer gameplay validation remains a separate requirement.
+The native fixture suite covers 93 typed Classic vectors, 12 original decoded/playable-map legacy attribute fixtures, 150 V1/V2 source/native multiplier combinations and eight native Mania PP vectors. Native overflow diagnostics are rejected outside Rust's safe integer domain instead of being reproduced. Portable tests retain representative golden values; optional local DLL fixture comparisons require the separately built pinned client.
+
+PostgreSQL integration checks verify native-context persistence and binding, forged basic maxima rejection, pending-score privacy, token-independent recovery, 16-row batch bounds and unchanged raw/PP/review values. A second integration check selects the standardized winner when raw ordering disagrees, keeps PP's winning play independent, and excludes unavailable conversions from display sums. Fresh-image encrypted HTTP and native DTO smoke results are recorded in [verification](verification.md).
+
+This is a versioned estimate over the exposed rosu-pp converter and original bounded legacy simulator. Twelve map fixtures cannot prove all maps, conversion edge cases or client releases. Actual four-ruleset gameplay, exact replay processing, and behavior after future upstream scoring changes remain separate validation work.

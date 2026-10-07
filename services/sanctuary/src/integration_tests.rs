@@ -442,6 +442,9 @@ async fn persistence_and_permissions() {
     let(s,_,score)=request(&app,Method::POST,"/api/v1/scores",Some(&cookie),Some(json!({"beatmap_id":map_id,"mode":0,"score":1000,"accuracy":1,"max_combo":2,"mods":0,"hit_counts":{"n300":2}}))).await;
     assert_eq!(s, StatusCode::OK, "{score}");
     let score_id = score["id"].as_i64().unwrap();
+    assert_eq!(score["score_scale_status"], "unavailable");
+    assert_eq!(score["score_scale_reason"], "unsupported_score_source");
+    assert!(score["standardised_score"].is_null());
     assert_eq!(score["verification"], "pending");
     assert_eq!(score["accuracy"], 100);
     let (s, _, scores) = request(&app, Method::GET, "/api/v1/scores", None, None).await;
@@ -898,4 +901,202 @@ async fn persistence_and_permissions() {
         .unwrap();
     control.close().await;
     tokio::fs::remove_dir_all(&test_root).await.unwrap();
+}
+
+async fn internal_score(app: &Router, state: &AppState, input: Value) -> (StatusCode, Value) {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/v1/internal/scores")
+                .header("x-illya-service-key", state.internal_key.as_str())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(input.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 65536).await.unwrap()).unwrap();
+    (status, value)
+}
+
+#[tokio::test]
+#[ignore = "requires ILLYA_TEST_DATABASE_URL pointing to a disposable PostgreSQL database"]
+async fn score_scale_ingestion_recovery_and_privacy() {
+    let url = env::var("ILLYA_TEST_DATABASE_URL").expect("disposable PostgreSQL URL");
+    let control = PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&url)
+        .await
+        .unwrap();
+    let suffix = uuid::Uuid::new_v4().simple().to_string();
+    let schema = format!("score_recovery_{suffix}");
+    sqlx::query(&format!("CREATE SCHEMA {schema}"))
+        .execute(&control)
+        .await
+        .unwrap();
+    let options = sqlx::postgres::PgConnectOptions::from_str(&url)
+        .unwrap()
+        .options([("search_path", schema.as_str())]);
+    let db = PgPoolOptions::new()
+        .max_connections(8)
+        .connect_with(options)
+        .await
+        .unwrap();
+    sqlx::migrate!("../../migrations").run(&db).await.unwrap();
+    let root = std::env::temp_dir().join(format!("illyaverse-score-recovery-{suffix}"));
+    assert!(root.is_absolute() && root.parent() == Some(std::env::temp_dir().as_path()));
+    let state = AppState {
+        db: db.clone(),
+        secret: Arc::new("fixture-session-secret-with-more-than-32-bytes".into()),
+        internal_key: Arc::new("fixture-service-secret-with-more-than-32-bytes".into()),
+        origin: Arc::new("http://localhost:3000".into()),
+        secure_cookie: false,
+        media_root: root.join("media"),
+        maps_root: root.join("maps"),
+        replay_root: root.join("replays"),
+        client: reqwest::Client::new(),
+        official: Arc::new(Mutex::new(maps::OfficialState::default())),
+        limits: Arc::new(Mutex::new(HashMap::new())),
+        trusted_proxies: Arc::new(vec![]),
+        upload_slots: Arc::new(tokio::sync::Semaphore::new(2)),
+    };
+    tokio::fs::create_dir_all(&state.maps_root).await.unwrap();
+    tokio::fs::write(state.maps_root.join("fixture.osu"), MAP)
+        .await
+        .unwrap();
+    let app = router(state.clone());
+    let (status,headers,registration)=request(&app,Method::POST,"/api/v1/auth/register",None,
+        Some(json!({"username":"ScoreRecovery","email":"recovery@invalid.test","password":"score-recovery-fixture-password"}))).await;
+    assert_eq!(status, StatusCode::OK);
+    let user = registration["user"]["id"].as_i64().unwrap();
+    let cookie = headers[header::SET_COOKIE]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap();
+    let map:i64=sqlx::query_scalar("INSERT INTO beatmaps(title,artist,creator,version,mode,stars,max_combo,md5,osu_path) VALUES('Fixture','Illyaverse','Test','Two circles',0,1,2,'recovery-fixture','fixture.osu') RETURNING id").fetch_one(&db).await.unwrap();
+    let context = json!({"ruleset_id":0,"passed":true,"total_score":1000000,"total_score_without_mods":1000000,"accuracy":1.0,"max_combo":2,"rank":"X","mods":[],"statistics":{"great":2},"maximum_statistics":{"great":2},"pauses":[]});
+    let native = json!({"user_id":user,"beatmap_id":map,"mode":0,"score":1000000,"accuracy":100,"max_combo":2,"mods":0,"api_mods":[],"hit_counts":{"n300":2},"client":"lazer","native_submission":context,"ingestion_key":"lazer:scale-context"});
+    let (status, stored) = internal_score(&app, &state, native.clone()).await;
+    assert_eq!(status, StatusCode::OK, "{stored}");
+    let id = stored["id"].as_i64().unwrap();
+    assert_eq!(stored["native_submission"], context);
+    assert_eq!(stored["score"], 1000000);
+    assert_eq!(stored["classic_score"], 100130);
+    assert_eq!(stored["standardised_score"], 1000000);
+    assert_eq!(stored["score_scale_status"], "native_reported");
+    assert_eq!(stored["verification"], "pending");
+    assert_eq!(
+        request(
+            &app,
+            Method::GET,
+            &format!("/api/v1/scores/{id}"),
+            None,
+            None
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        request(
+            &app,
+            Method::GET,
+            &format!("/api/v1/scores/{id}"),
+            Some(cookie),
+            None
+        )
+        .await
+        .2["native_submission"],
+        context
+    );
+    let mut forged = native.clone();
+    forged["ingestion_key"] = json!("lazer:scale-forgery");
+    forged["native_submission"]["maximum_statistics"] = json!({"great":1000});
+    assert_eq!(
+        internal_score(&app, &state, forged).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    let mut web = native.clone();
+    web["client"] = json!("api");
+    web.as_object_mut().unwrap().remove("ingestion_key");
+    assert_eq!(
+        request(
+            &app,
+            Method::POST,
+            "/api/v1/scores",
+            Some(cookie),
+            Some(web)
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    // Historical context exists only on a token. Recovery persists it before a
+    // token can be removed, and deliberately preserves raw score/PP/review.
+    let old:i64=sqlx::query_scalar("INSERT INTO scores(user_id,beatmap_id,mode,score,accuracy,max_combo,pp,hit_counts,client,verification) VALUES($1,$2,0,1000000,100,2,666,'{\"n300\":2}','lazer','verified') RETURNING id").bind(user).bind(map).fetch_one(&db).await.unwrap();
+    sqlx::query("INSERT INTO lazer_score_tokens(user_id,beatmap_id,ruleset_id,version_hash,expires_at,score_id,submission) VALUES($1,$2,0,'fixture',now()+interval '1 hour',$3,$4)").bind(user).bind(map).bind(old).bind(&context).execute(&db).await.unwrap();
+    let mut invalid = context.clone();
+    invalid["maximum_statistics"] = json!({"great":1000});
+    let bad:i64=sqlx::query_scalar("INSERT INTO scores(user_id,beatmap_id,mode,score,accuracy,max_combo,pp,hit_counts,client,native_submission) VALUES($1,$2,0,1000000,100,2,222,'{\"n300\":2}','lazer',$3) RETURNING id").bind(user).bind(map).bind(invalid).fetch_one(&db).await.unwrap();
+    for _ in 0..17 {
+        sqlx::query("INSERT INTO scores(user_id,beatmap_id,mode,score,accuracy,max_combo,pp,hit_counts,client) VALUES($1,$2,0,10,100,2,0,'{\"n300\":2}','api')").bind(user).bind(map).execute(&db).await.unwrap();
+    }
+    assert_eq!(score_recovery::recover_batch(&state).await.unwrap(), 16);
+    assert_eq!(score_recovery::recover_batch(&state).await.unwrap(), 3);
+    assert_eq!(score_recovery::recover_batch(&state).await.unwrap(), 0);
+    let restored: Value = sqlx::query_scalar("SELECT to_jsonb(s) FROM scores s WHERE id=$1")
+        .bind(old)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(restored["native_submission"], context);
+    assert_eq!(restored["classic_score"], 100130);
+    assert_eq!(restored["pp"], 666.0);
+    assert_eq!(restored["score"], 1000000);
+    assert_eq!(restored["verification"], "verified");
+    sqlx::query("DELETE FROM lazer_score_tokens WHERE score_id=$1")
+        .bind(old)
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        request(
+            &app,
+            Method::GET,
+            &format!("/api/v1/scores/{old}"),
+            None,
+            None
+        )
+        .await
+        .2["native_submission"],
+        context
+    );
+    let unsupported: Value = sqlx::query_scalar("SELECT to_jsonb(s) FROM scores s WHERE id=$1")
+        .bind(bad)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(unsupported["score_scale_status"], "unavailable");
+    assert!(unsupported["standardised_score"].is_null());
+    assert_eq!(
+        unsupported["score_scale_version"],
+        "recovery_unavailable.v1"
+    );
+    assert_eq!(unsupported["verification"], "pending");
+    assert_eq!(unsupported["pp"], 222.0);
+    drop(app);
+    drop(state);
+    db.close().await;
+    sqlx::query(&format!("DROP SCHEMA {schema} CASCADE"))
+        .execute(&control)
+        .await
+        .unwrap();
+    control.close().await;
+    tokio::fs::remove_dir_all(&root).await.unwrap();
 }

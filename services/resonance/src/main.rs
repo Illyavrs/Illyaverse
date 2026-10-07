@@ -5,6 +5,7 @@ mod lazer;
 mod lazer_chat;
 mod multiplayer;
 mod replay_capture;
+mod score_aggregates;
 mod signalr;
 mod stable;
 mod stable_scores;

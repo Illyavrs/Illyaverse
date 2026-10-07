@@ -190,7 +190,15 @@
     "banner": "個人頁橫幅",
     "scoreVerified": "這筆成績已由管理員核准。",
     "scorePending": "這筆成績仍待審核，不會計入排行榜。",
-    "scorePpExcluded": "這組 Mod 不計入排名 pp，計算結果僅供參考。"
+    "scorePpExcluded": "這組 Mod 不計入排名 pp，計算結果僅供參考。",
+    "scoreRaw": "原始分數",
+    "scoreScales": "分數換算",
+    "scoreStandardised": "標準化分數",
+    "scoreClassic": "Classic 顯示分數",
+    "scoreNativeReported": "lazer 提交的標準化分數；Classic 顯示換算使用伺服器從譜面計算的判定數。",
+    "scoreLegacyEstimated": "由 stable 成績摘要估算。無法重建每次判定的先後順序，因此不等同於精確的 lazer 遊玩分數。",
+    "scoreLegacyScoreV2": "保留 stable ScoreV2 分數，再換算 Classic 顯示分數。",
+    "scoreScaleUnavailable": "這筆成績缺少可用的換算資訊，不會參與跨客戶端的分數比較。"
   },
   "settings": {
     "title": "讓這裡，成為你的樣子。",

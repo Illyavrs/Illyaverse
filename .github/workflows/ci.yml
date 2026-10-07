@@ -43,6 +43,12 @@ jobs:
       - run: cargo test -p sanctuary extended_replay_upload_permissions_and_idempotency --locked -- --ignored
         env:
           ILLYA_TEST_DATABASE_URL: postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci
+      - run: cargo test -p sanctuary score_scale_ingestion_recovery_and_privacy --locked -- --ignored
+        env:
+          ILLYA_TEST_DATABASE_URL: postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci
+      - run: cargo test -p resonance mixed_score_aggregates_use_display_values_after_standardised_selection --locked -- --ignored
+        env:
+          ILLYA_TEST_DATABASE_URL: postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
   serendipity:

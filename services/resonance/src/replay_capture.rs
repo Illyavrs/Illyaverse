@@ -225,7 +225,7 @@ pub async fn finalize(state: &AppState, uid: i64, token: i64) -> Result<Option<i
     {
         return Ok(None);
     }
-    let Some(row)=sqlx::query("SELECT t.submission,t.version_hash,s.id,s.mods,s.replay_path,s.created_at,b.md5,u.username FROM lazer_score_tokens t JOIN scores s ON s.id=t.score_id JOIN beatmaps b ON b.id=t.beatmap_id JOIN users u ON u.id=t.user_id WHERE t.id=$1 AND t.user_id=$2 AND s.user_id=$2 AND s.beatmap_id=t.beatmap_id AND NOT u.is_restricted FOR UPDATE OF s").bind(token).bind(uid).fetch_optional(&mut *tx).await? else { return Ok(None); };
+    let Some(row)=sqlx::query("SELECT COALESCE(s.native_submission,t.submission) submission,t.version_hash,s.id,s.mods,s.replay_path,s.created_at,b.md5,u.username FROM lazer_score_tokens t JOIN scores s ON s.id=t.score_id JOIN beatmaps b ON b.id=t.beatmap_id JOIN users u ON u.id=t.user_id WHERE t.id=$1 AND t.user_id=$2 AND s.user_id=$2 AND s.beatmap_id=t.beatmap_id AND NOT u.is_restricted FOR UPDATE OF s").bind(token).bind(uid).fetch_optional(&mut *tx).await? else { return Ok(None); };
     let score_id: i64 = row.get("id");
     if capture
         .get::<Option<chrono::DateTime<chrono::Utc>>, _>("completed_at")

@@ -215,9 +215,10 @@ def run():
     gateway.request("PUT", path, dict(score, total_score=999999), bearer, expected=409)
 
     played_at = datetime.datetime.now(datetime.timezone.utc).strftime("%y%m%d%H%M%S")
-    checksum_text = f"chickenmcnuggets2o1500smustard00uu{map_hash}2True{player_name}1000000X0QTrue0{version}{played_at}{client_hash}"
+    stable_raw = 600  # Two Great circles, no legacy combo bonus.
+    checksum_text = f"chickenmcnuggets2o1500smustard00uu{map_hash}2True{player_name}{stable_raw}X0QTrue0{version}{played_at}{client_hash}"
     checksum = digest(checksum_text)
-    envelope = f"{map_hash}:{player_name}:{checksum}:2:0:0:0:0:0:1000000:2:True:X:0:True:0:{played_at}:b{version}"
+    envelope = f"{map_hash}:{player_name}:{checksum}:2:0:0:0:0:0:{stable_raw}:2:True:X:0:True:0:{played_at}:b{version}"
     iv = bytes(range(32))
     cipher = RijndaelCbc(("osu!-scoreburgr---------" + version).encode(), iv, Pkcs7Padding(32), block_size=32)
     encrypt = lambda value: base64.b64encode(cipher.encrypt(value.encode())).decode()
@@ -244,7 +245,12 @@ def run():
     admin.json("PATCH", f"/api/v1/admin/scores/{stable_id}", {"verification": "verified"})
     assert score_line.search(gateway.request("GET", "/web/osu-osz2-getscores.php?" + leaderboard_query)[0].decode())
     native_scores = gateway.json("GET", f"/api/v2/beatmaps/{map_id}/scores?mode=osu&type=global", headers=bearer)
-    assert native_scores["score_count"] == 0 and native_scores["scores"] == [] and native_scores["user_score"] is None
+    assert native_scores["score_count"] == 1 and native_scores["scores"][0]["id"] == stable_id
+    converted = native_scores["scores"][0]
+    assert converted["legacy_total_score"] == stable_raw and converted["total_score"] == 985000
+    assert converted["score_scale_status"] == "legacy_estimated" and any(m["acronym"] == "CL" for m in converted["mods"])
+    assert gateway.json("GET", f"/api/v2/beatmaps/{map_id}/scores?mode=osu&mods[]=CL", headers=bearer)["scores"][0]["id"] == stable_id
+    assert gateway.json("GET", f"/api/v2/beatmaps/{map_id}/scores?mode=osu&mods[]=NM", headers=bearer)["scores"] == []
     admin.json("PATCH", f"/api/v1/admin/scores/{lazer['id']}", {"verification": "verified"})
     native_scores = gateway.json("GET", f"/api/v2/beatmaps/{map_id}/scores?mode=osu&type=global", headers=bearer)
     assert native_scores["score_count"] == 1 and native_scores["scores"][0]["id"] == lazer["id"]
@@ -252,8 +258,30 @@ def run():
     assert native_scores["scores"][0]["rank"] == "X" and native_scores["scores"][0]["statistics"]["great"] == 2
     assert score_line.search(gateway.request("GET", "/web/osu-osz2-getscores.php?" + leaderboard_query)[0].decode())
     stats = gateway.json("GET", "/api/v2/me/osu", headers=bearer)["statistics"]
-    assert stats["pp"] > 0 and stats["ranked_score"] >= 1000000 and stats["play_count"] >= 1
-    assert stats["global_rank"] > 0 and stats["maximum_combo"] == 2 and stats["level"]["current"] >= 3
+    assert stats["pp"] > 0 and stats["ranked_score"] == 100130 and stats["total_score"] == stable_raw + 100130 and stats["play_count"] == 2
+    assert stats["global_rank"] > 0 and stats["maximum_combo"] == 2 and stats["level"]["current"] >= 2
+
+    # Stable ScoreV2 has a standardized source scale. Its raw board must stay
+    # separate from V1, and its lifetime contribution uses Classic display.
+    v2_mods = 1 << 29
+    v2_raw = 1000000
+    v2_checksum = digest(f"chickenmcnuggets2o1500smustard00uu{map_hash}2True{player_name}{v2_raw}X{v2_mods}QTrue0{version}{played_at}{client_hash}")
+    v2_envelope = f"{map_hash}:{player_name}:{v2_checksum}:2:0:0:0:0:0:{v2_raw}:2:True:X:{v2_mods}:True:0:{played_at}:b{version}"
+    v2_fields = [(name, encrypt(v2_envelope) if name == "score" else value) for name, value in fields]
+    v2_body, v2_headers = multipart(v2_fields, [("score", "replay.osr", frames)])
+    v2_response = gateway.request("POST", "/web/osu-submit-modular-selector.php", v2_body, v2_headers)[0].decode()
+    v2_id = int(re.search(r"onlineScoreId:(\d+)", v2_response).group(1))
+    admin.json("PATCH", f"/api/v1/admin/scores/{v2_id}", {"verification": "verified"})
+    v2_line = re.compile(rf"^{v2_id}\|{re.escape(player_name)}\|", re.MULTILINE)
+    v1_board = gateway.request("GET", "/web/osu-osz2-getscores.php?" + leaderboard_query)[0].decode()
+    assert score_line.search(v1_board) and not v2_line.search(v1_board)
+    v2_board = gateway.request("GET", "/web/osu-osz2-getscores.php?" + leaderboard_query + f"&mods={v2_mods}")[0].decode()
+    assert v2_line.search(v2_board) and not score_line.search(v2_board)
+    v2_score = gateway.json("GET", f"/api/v2/scores/{v2_id}", headers=bearer)
+    assert v2_score["legacy_total_score"] == v2_raw and v2_score["total_score"] == v2_raw
+    assert v2_score["classic_total_score"] == 100130 and v2_score["score_scale_status"] == "legacy_scorev2"
+    stats = gateway.json("GET", "/api/v2/me/osu", headers=bearer)["statistics"]
+    assert stats["total_score"] == stable_raw + 2 * 100130 and stats["ranked_score"] == 100130
 
     rotated = gateway.json("POST", "/oauth/token", {"grant_type": "refresh_token", "refresh_token": oauth["refresh_token"]})
     gateway.request("GET", "/api/v2/me", headers=bearer, expected=401)
@@ -261,7 +289,7 @@ def run():
     gateway.request("POST", "/", packet(2), player_bancho)
     after_logout = gateway.request("POST", "/", packet(4), player_bancho)[0]
     assert any(i == 86 for i, _ in packets(after_logout)), "Logged out stable session remained valid"
-    print(json.dumps({"status": "passed", "beatmap_id": map_id, "stable_score_id": stable_id, "lazer_score_id": lazer["id"], "checks": ["shared auth", "stable binary login/ping/chat/logout", "lazer OAuth/refresh", "lazer checksum/set lookup/archive/score collections", "real native profile statistics", "RBAC", "friend/block/DM settings", "stable password room/host authority/slot identity", "stable ready/start/load/score/complete/transfer/leave", "stable spectator frame relay", "lazer score token/idempotency", "stable Rijndael256 submission/checksum", "server PP", "replay round trip", "pending rankings", "moderation"]}))
+    print(json.dumps({"status": "passed", "beatmap_id": map_id, "stable_score_id": stable_id, "lazer_score_id": lazer["id"], "checks": ["shared auth", "stable binary login/ping/chat/logout", "lazer OAuth/refresh", "lazer checksum/set lookup/archive/score collections", "Classic profile totals and standardized mixed-client ranking", "stable ScoreV1/ScoreV2 board partition", "RBAC", "friend/block/DM settings", "stable password room/host authority/slot identity", "stable ready/start/load/score/complete/transfer/leave", "stable spectator frame relay", "lazer score token/idempotency", "stable Rijndael256 submission/checksum", "server PP", "replay round trip", "pending rankings", "moderation"]}))
 
 
 if __name__ == "__main__":

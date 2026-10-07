@@ -99,7 +99,7 @@ export function ScorePage({ id }: { id: number }) {
       </header>
       <dl className="score-detail-values glass">
         {[
-          [c('score'), f.number(score.score)],
+          [p('scoreRaw'), f.number(score.score)],
           [c('accuracy'), `${score.accuracy.toFixed(2)}%`],
           [c('combo'), `${score.max_combo}x`],
           [c('mods'), mods.join(' ') || 'NM'],
@@ -114,6 +114,34 @@ export function ScorePage({ id }: { id: number }) {
           </div>
         ))}
       </dl>
+      {score.score_scale_status && (
+        <section className="glass content-panel score-judgements mb-6">
+          <h2>{p('scoreScales')}</h2>
+          {score.score_scale_status !== 'unavailable' && (
+            <dl>
+              {[
+                [p('scoreStandardised'), score.standardised_score],
+                [p('scoreClassic'), score.classic_score],
+              ].map(([label, value]) => (
+                <div key={String(label)}>
+                  <dt>{label}</dt>
+                  <dd>{typeof value === 'number' ? f.number(value) : '—'}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+          <p className="hint">
+            {p(
+              {
+                native_reported: 'scoreNativeReported',
+                legacy_estimated: 'scoreLegacyEstimated',
+                legacy_scorev2: 'scoreLegacyScoreV2',
+                unavailable: 'scoreScaleUnavailable',
+              }[score.score_scale_status],
+            )}
+          </p>
+        </section>
+      )}
       {modSettings.length > 0 && (
         <section className="glass content-panel score-judgements mb-6">
           <h2>{c('modSettings')}</h2>
