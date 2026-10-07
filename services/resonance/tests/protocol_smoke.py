@@ -26,6 +26,7 @@ import urllib.parse
 import urllib.request
 import uuid
 import zipfile
+import zlib
 
 from py3rijndael import Pkcs7Padding, RijndaelCbc
 
@@ -518,6 +519,29 @@ def run():
     assert admin.json("GET", "/api/v1/status")["registered_players"] == player_count
     admin.json("POST", "/api/v1/auth/login", {"username": admin_name, "password": admin_password})
 
+    # An original 2x2 PNG exercises publication on the Docker media volume.
+    # It is synthetic test material, never a default website image.
+    def png_chunk(kind, data):
+        return struct.pack("!I", len(data)) + kind + data + struct.pack("!I", zlib.crc32(kind + data))
+    pixels = (b"\x00" + b"\x20\x30\x40\xff" * 2) * 2
+    image = (b"\x89PNG\r\n\x1a\n" + png_chunk(b"IHDR", struct.pack("!IIBBBBB", 2, 2, 8, 6, 0, 0, 0))
+             + png_chunk(b"IDAT", zlib.compress(pixels)) + png_chunk(b"IEND", b""))
+    media_urls = {}
+    for kind in ["avatar", "banner", "background"]:
+        media_body, media_headers = multipart([("kind", kind)], [("file", "synthetic.png", image)])
+        published = admin.json("POST", "/api/v1/me/media", media_body, media_headers)
+        assert published["kind"] == kind and published["url"].startswith(f"/media/{kind}/")
+        media_urls[kind] = published["url"]
+        content, content_headers = admin.request("GET", published["url"])
+        assert content_headers["Content-Type"] == "image/webp" and content[:4] == b"RIFF" and content[8:12] == b"WEBP"
+    profile = admin.json("GET", "/api/v1/me")
+    assert profile["avatar_url"] == media_urls["avatar"] and profile["banner_url"] == media_urls["banner"]
+    assert profile["preferences"]["background_url"] == media_urls["background"]
+    for private_path in ["/media/.illya-media-staging/synthetic.part",
+                         "/media/%2eillya-media-staging/synthetic.part",
+                         "/media/avatar/%2e%2e/.illya-media-staging/synthetic.part"]:
+        admin.request("GET", private_path, expected=404)
+
     fixture = ("osu file format v14\n[General]\nMode:0\n[Metadata]\nTitle:Protocol fixture " + uuid.uuid4().hex + "\nArtist:Illyaverse\nCreator:Test\nVersion:Easy\n[Difficulty]\nHPDrainRate:5\nCircleSize:4\nOverallDifficulty:5\nApproachRate:5\nSliderMultiplier:1.4\nSliderTickRate:1\n[TimingPoints]\n0,500,4,2,1,100,1,0\n[HitObjects]\n64,64,1000,1,0,0:0:0:0:\n256,192,2000,1,0,0:0:0:0:\n").encode()
     archive = io.BytesIO()
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as package:
@@ -904,7 +928,8 @@ def run():
     after_logout = gateway.request("POST", "/", packet(4), player_bancho)[0]
     assert any(i == 86 for i, _ in packets(after_logout)), "Logged out stable session remained valid"
     checks = ["shared auth", "stable binary login/ping/chat/logout", "lazer OAuth/refresh", "lazer checksum/set lookup/archive/score collections", "Classic profile totals and standardized mixed-client ranking", "stable ScoreV1/ScoreV2 board partition", "RBAC", "friend/block/DM settings", "stable password room/host authority/slot identity", "stable ready/start/load/score/complete/transfer/leave", "stable spectator frame relay", "lazer score token/idempotency", "stable Rijndael256 submission/checksum", "server PP", "replay round trip", "pending rankings", "moderation", "encrypted stable RX and native solo RX", "RX metadata and unavailable common scale", "RX retry deduplication and native mod binding", "RX pending isolation and fixture moderation", "RX replay original ruleset/mod binding", "RX PP-sorted boards and best-per-map totals", "NM/RX API and gateway rank/stat isolation", "osu/taiko/catch RX partition isolation", "mania RX rejection and untrusted variant derivation"]
-    checks.extend(["stable large replay and case-insensitive attachment headers",
+    checks.extend(["Docker media publication and private staging routes",
+                   "stable large replay and case-insensitive attachment headers",
                    "native discovery service-key isolation and unavailable-vs-unknown boundary",
                    "lazer HeadToHead frozen loading token lifecycle", "real room ingress and Sanctuary PP",
                    "room exact retry and changed-payload conflict", "room/solo and room/item/user scope isolation",

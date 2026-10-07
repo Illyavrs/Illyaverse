@@ -1,4 +1,4 @@
-use crate::{ApiError, ApiResult, AppState, audit, auth, page};
+use crate::{ApiError, ApiResult, AppState, auth, page};
 use axum::{
     Json,
     extract::{Multipart, Path, Query, State},
@@ -47,6 +47,38 @@ impl Default for OfficialState {
 
 const MAX_RESOLUTION_KEYS: usize = 512;
 const MAX_OSU_BYTES: usize = 8 * 1024 * 1024;
+
+fn commit_error_confirms_rollback(severity: sqlx::postgres::PgSeverity, code: &str) -> bool {
+    severity == sqlx::postgres::PgSeverity::Error
+        && matches!(
+            code,
+            "23000"
+                | "23001"
+                | "23502"
+                | "23503"
+                | "23505"
+                | "23514"
+                | "23P01"
+                | "25P02"
+                | "40000"
+                | "40001"
+                | "40002"
+                | "40P01"
+                | "P0001"
+        )
+}
+
+pub(crate) fn commit_definitely_rolled_back(error: &sqlx::Error) -> bool {
+    let sqlx::Error::Database(database) = error else {
+        return false;
+    };
+    let Some(postgres) = database.try_downcast_ref::<sqlx::postgres::PgDatabaseError>() else {
+        return false;
+    };
+    // ErrorResponse also carries Fatal/Panic and outcome-unknown conditions.
+    // Keep files unless this ordinary ERROR explicitly establishes rollback.
+    commit_error_confirms_rollback(postgres.severity(), postgres.code())
+}
 
 #[derive(Clone)]
 struct CachedFailure {
@@ -389,31 +421,52 @@ pub async fn upload(
     .await
     .map_err(ApiError::internal)??;
     let package = Uuid::new_v4().to_string();
-    tokio::fs::create_dir_all(state.maps_root.join(&package)).await?;
+    let directory = state.maps_root.join(&package);
+    tokio::fs::create_dir(&directory).await?;
     let archive_path = archive_bytes
         .as_ref()
         .map(|_| format!("{package}/package.osz"));
-    if let Some(bytes) = archive_bytes {
-        tokio::fs::write(state.maps_root.join(archive_path.as_ref().unwrap()), bytes).await?;
+    let mut owned_files = Vec::new();
+    let mut commit_attempted = false;
+    let outcome: ApiResult<Vec<i64>> = async {
+        // Finish the unique, unreferenced package before taking authority locks.
+        if let Some(bytes) = archive_bytes {
+            let path = state.maps_root.join(archive_path.as_ref().unwrap());
+            owned_files.push(path.clone());
+            tokio::fs::write(path, bytes).await?;
+        }
+        for map in &parsed {
+            let path = directory.join(format!("{}.osu", map.md5));
+            owned_files.push(path.clone());
+            tokio::fs::write(path, &map.bytes).await?;
+        }
+        let mut tx = state.db.begin().await?;
+        let actor = auth::mutation_actor(&mut tx, &user, &[], auth::MutationScope::Permissions).await?;
+        actor.require("beatmaps.upload")?;
+        let mut ids = Vec::new();
+        for map in parsed {
+            let path = format!("{package}/{}.osu", map.md5);
+            let id:i64=sqlx::query_scalar("INSERT INTO beatmaps(uploaded_by,title,artist,creator,version,mode,stars,bpm,length_seconds,max_combo,md5,osu_path,archive_path) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id").bind(actor.id).bind(map.title).bind(map.artist).bind(map.creator).bind(map.version).bind(map.mode).bind(map.stars).bind(map.bpm).bind(map.length).bind(map.max_combo).bind(map.md5).bind(path).bind(&archive_path).fetch_one(&mut *tx).await?;
+            ids.push(id);
+        }
+        sqlx::query("INSERT INTO audit_events(actor_id,action,target_type,target_id,details) VALUES($1,'beatmaps.upload','beatmap_package',$2,$3)")
+            .bind(actor.id).bind(&package).bind(json!({"beatmap_ids":ids})).execute(&mut *tx).await?;
+        auth::ensure_mutation_actor(&mut tx, &actor).await?;
+        // Keep the complete package if COMMIT was sent but its outcome is unknown.
+        commit_attempted = true;
+        if let Err(error) = tx.commit().await {
+            commit_attempted = !commit_definitely_rolled_back(&error);
+            return Err(error.into());
+        }
+        Ok(ids)
+    }.await;
+    if !commit_attempted {
+        for path in owned_files {
+            let _ = tokio::fs::remove_file(path).await;
+        }
+        let _ = tokio::fs::remove_dir(directory).await;
     }
-    let mut tx = state.db.begin().await?;
-    let mut ids = Vec::new();
-    for map in parsed {
-        let path = format!("{package}/{}.osu", map.md5);
-        tokio::fs::write(state.maps_root.join(&path), &map.bytes).await?;
-        let id:i64=sqlx::query_scalar("INSERT INTO beatmaps(uploaded_by,title,artist,creator,version,mode,stars,bpm,length_seconds,max_combo,md5,osu_path,archive_path) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id").bind(user.id).bind(map.title).bind(map.artist).bind(map.creator).bind(map.version).bind(map.mode).bind(map.stars).bind(map.bpm).bind(map.length).bind(map.max_combo).bind(map.md5).bind(path).bind(&archive_path).fetch_one(&mut *tx).await?;
-        ids.push(id);
-    }
-    tx.commit().await?;
-    audit(
-        &state,
-        user.id,
-        "beatmaps.upload",
-        "beatmap_package",
-        package,
-        json!({"beatmap_ids":ids}),
-    )
-    .await?;
+    let ids = outcome?;
     let mut items = Vec::new();
     for id in ids {
         items.push(get(&state, id).await?);
@@ -871,6 +924,8 @@ async fn insert_official_map(
     state: &AppState,
     user_id: i64,
     official: OfficialMap,
+    website: Option<&auth::User>,
+    selector: &MapSelector,
 ) -> ApiResult<Value> {
     // A new path is published only by its own successful insert, so concurrent
     // discovery cannot replace bytes used by an existing map, score or replay.
@@ -878,6 +933,7 @@ async fn insert_official_map(
     let file_id = Uuid::new_v4();
     let path = format!("official-{}-{file_id}.osu", official.map.md5);
     let temporary = state.maps_root.join(format!("official-{file_id}.part"));
+    let mut temporary_owned = false;
     let write = async {
         use tokio::io::AsyncWriteExt;
         let mut file = tokio::fs::OpenOptions::new()
@@ -885,6 +941,7 @@ async fn insert_official_map(
             .create_new(true)
             .open(&temporary)
             .await?;
+        temporary_owned = true;
         file.write_all(&official.map.bytes).await?;
         file.flush().await?;
         drop(file);
@@ -892,15 +949,25 @@ async fn insert_official_map(
     }
     .await;
     if let Err(error) = write {
-        let _ = tokio::fs::remove_file(&temporary).await;
+        if temporary_owned {
+            let _ = tokio::fs::remove_file(&temporary).await;
+        }
         return Err(error.into());
     }
     let mut may_be_published = false;
     let outcome = async {
         let mut tx = state.db.begin().await?;
-        let active = sqlx::query_scalar::<_, i64>("SELECT id FROM users WHERE id=$1 AND NOT is_restricted FOR SHARE")
-            .bind(user_id).fetch_optional(&mut *tx).await?;
-        if active.is_none() { return Err(ApiError::unauthorized()); }
+        let actor = if let Some(snapshot) = website {
+            let actor = auth::mutation_actor(&mut tx, snapshot, &[], auth::MutationScope::Permissions).await?;
+            actor.require("beatmaps.import")?;
+            Some(actor)
+        } else {
+            // Trusted native discovery has its own user-only authority policy.
+            let active = sqlx::query_scalar::<_, i64>("SELECT id FROM users WHERE id=$1 AND NOT is_restricted FOR SHARE")
+                .bind(user_id).fetch_optional(&mut *tx).await?;
+            if active.is_none() { return Err(ApiError::unauthorized()); }
+            None
+        };
         let map = &official.map;
         let inserted = sqlx::query_scalar::<_, i64>("INSERT INTO beatmaps(official_id,official_set_id,uploaded_by,title,artist,creator,version,mode,status,source,stars,bpm,length_seconds,max_combo,md5,osu_path) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'official',$10,$11,$12,$13,$14,$15) ON CONFLICT DO NOTHING RETURNING id")
             .bind(official.id).bind(official.set_id).bind(user_id).bind(&map.title).bind(&map.artist).bind(&map.creator).bind(&map.version).bind(map.mode).bind(official.status).bind(map.stars).bind(map.bpm).bind(map.length).bind(map.max_combo).bind(&map.md5).bind(&path).fetch_optional(&mut *tx).await?;
@@ -912,10 +979,17 @@ async fn insert_official_map(
         // official_id is unique in this schema. Never mutate an older checksum
         // into a new official version: existing scores/replays depend on it.
         let value = value.ok_or_else(|| ApiError(StatusCode::CONFLICT, "official_version_conflict", "A different checksum for this official beatmap is already stored.".into()))?;
+        if let Some(actor) = &actor {
+            audit_manual_import(&mut tx, actor, selector, &value).await?;
+            auth::ensure_mutation_actor(&mut tx, actor).await?;
+        }
         // A transport error during COMMIT has an unknown outcome. Retain bytes
         // once commit is attempted for our insert, rather than risk a dangling row.
         may_be_published = inserted.is_some();
-        tx.commit().await?;
+        if let Err(error) = tx.commit().await {
+            if commit_definitely_rolled_back(&error) { may_be_published = false; }
+            return Err(error.into());
+        }
         Ok(value)
     }.await;
     if !may_be_published
@@ -927,8 +1001,64 @@ async fn insert_official_map(
 }
 
 async fn resolve_map(state: &AppState, user_id: i64, selector: MapSelector) -> ApiResult<Value> {
-    if let Some(value) = stored_map(&state.db, &selector).await? {
+    resolve_map_as(state, user_id, selector, None).await
+}
+
+async fn audit_manual_import(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    actor: &auth::MutationActor,
+    selector: &MapSelector,
+    value: &Value,
+) -> ApiResult<()> {
+    let MapSelector::OfficialId(official_id) = selector else {
+        return Err(ApiError::internal("invalid manual import selector"));
+    };
+    let id = value["id"]
+        .as_i64()
+        .ok_or_else(|| ApiError::internal("missing resolved map id"))?;
+    sqlx::query("INSERT INTO audit_events(actor_id,action,target_type,target_id,details) VALUES($1,'beatmaps.import','beatmap',$2,$3)")
+        .bind(actor.id).bind(id.to_string()).bind(json!({"official_id":official_id})).execute(&mut **tx).await?;
+    Ok(())
+}
+
+async fn finish_stored_resolution(
+    state: &AppState,
+    selector: &MapSelector,
+    website: Option<&auth::User>,
+    value: Value,
+) -> ApiResult<Value> {
+    let Some(snapshot) = website else {
         return Ok(value);
+    };
+    let mut tx = state.db.begin().await?;
+    let actor =
+        auth::mutation_actor(&mut tx, snapshot, &[], auth::MutationScope::Permissions).await?;
+    actor.require("beatmaps.import")?;
+    let id = value["id"]
+        .as_i64()
+        .ok_or_else(|| ApiError::internal("missing resolved map id"))?;
+    sqlx::query("SELECT id FROM beatmaps WHERE id=$1 FOR SHARE")
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(ApiError::missing)?;
+    let value = stored_map(&mut *tx, selector)
+        .await?
+        .ok_or_else(ApiError::missing)?;
+    audit_manual_import(&mut tx, &actor, selector, &value).await?;
+    auth::ensure_mutation_actor(&mut tx, &actor).await?;
+    tx.commit().await?;
+    Ok(value)
+}
+
+async fn resolve_map_as(
+    state: &AppState,
+    user_id: i64,
+    selector: MapSelector,
+    website: Option<&auth::User>,
+) -> ApiResult<Value> {
+    if let Some(value) = stored_map(&state.db, &selector).await? {
+        return finish_stored_resolution(state, &selector, website, value).await;
     }
     let (flight, slots) = {
         let mut official = state.official.lock().await;
@@ -968,7 +1098,7 @@ async fn resolve_map(state: &AppState, user_id: i64, selector: MapSelector) -> A
     // Repeat after waiting: another caller, manual upload or moderator may have
     // supplied this map. Local authority always precedes negative caches.
     if let Some(value) = stored_map(&state.db, &selector).await? {
-        return Ok(value);
+        return finish_stored_resolution(state, &selector, website, value).await;
     }
     {
         let official = state.official.lock().await;
@@ -988,7 +1118,7 @@ async fn resolve_map(state: &AppState, user_id: i64, selector: MapSelector) -> A
         )
     })?;
     let result = match fetch_official_map(state, &selector).await {
-        Ok(map) => insert_official_map(state, user_id, map).await,
+        Ok(map) => insert_official_map(state, user_id, map, website, &selector).await,
         Err(error) => Err(error),
     };
     if let Err(error) = &result
@@ -1044,21 +1174,22 @@ pub async fn import(
     if input.official_id <= 0 {
         return Err(ApiError::bad("Enter a positive official beatmap ID."));
     }
-    let resolved = resolve_map(&state, user.id, MapSelector::OfficialId(input.official_id)).await?;
+    let resolved = resolve_map_as(
+        &state,
+        user.id,
+        MapSelector::OfficialId(input.official_id),
+        Some(&user),
+    )
+    .await?;
     let id = resolved["id"]
         .as_i64()
         .ok_or_else(|| ApiError::internal("missing resolved map id"))?;
-    audit(
-        &state,
-        user.id,
-        "beatmaps.import",
-        "beatmap",
-        id,
-        json!({"official_id":input.official_id}),
-    )
-    .await?;
     Ok(Json(get(&state, id).await?))
 }
+
+#[cfg(test)]
+#[path = "map_mutation_tests.rs"]
+pub(crate) mod map_mutation_tests;
 
 #[cfg(test)]
 mod tests {

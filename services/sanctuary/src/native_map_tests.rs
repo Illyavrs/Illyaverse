@@ -218,19 +218,19 @@ fn osu_bytes(id: i64, set_id: i64, mode: i16, title: &str) -> Vec<u8> {
 }
 
 #[derive(Clone)]
-struct OfficialMap {
+pub(crate) struct OfficialMap {
     metadata: Value,
     bytes: Vec<u8>,
 }
 impl OfficialMap {
-    fn new(id: i64, status: &str) -> Self {
+    pub(crate) fn new(id: i64, status: &str) -> Self {
         let bytes = osu_bytes(id, id + 1000, 0, &format!("Fixture {id}"));
         Self {
             metadata: json!({"id":id,"beatmapset_id":id+1000,"checksum":format!("{:x}",md5::compute(&bytes)),"mode_int":0,"status":status}),
             bytes,
         }
     }
-    fn checksum(&self) -> String {
+    pub(crate) fn checksum(&self) -> String {
         self.metadata["checksum"].as_str().unwrap().into()
     }
 }
@@ -279,13 +279,13 @@ struct FixtureState {
     counters: Arc<Counters>,
     data: Arc<Mutex<FixtureData>>,
 }
-struct OfficialServer {
-    origin: String,
+pub(crate) struct OfficialServer {
+    pub(crate) origin: String,
     state: FixtureState,
     task: tokio::task::JoinHandle<()>,
 }
 impl OfficialServer {
-    async fn start() -> Self {
+    pub(crate) async fn start() -> Self {
         let state = FixtureState::default();
         let app = Router::new()
             .route("/oauth/token", post(fixture_oauth))
@@ -302,13 +302,13 @@ impl OfficialServer {
             task,
         }
     }
-    async fn add(&self, map: OfficialMap) {
+    pub(crate) async fn add(&self, map: OfficialMap) {
         let mut data = self.state.data.lock().await;
         let id = map.metadata["id"].as_i64().unwrap();
         data.lookup_routes.insert(map.checksum(), id);
         data.maps.insert(id, map);
     }
-    fn counters(&self) -> [usize; 4] {
+    pub(crate) fn counters(&self) -> [usize; 4] {
         self.state.counters.snapshot()
     }
 }

@@ -422,7 +422,20 @@ fn router(state: AppState) -> Router {
             post(scores::recalculate_relax).layer(DefaultBodyLimit::max(1024)),
         )
         .route("/api/v1/admin/audit", get(admin::audit_events))
-        .nest_service("/media", ServeDir::new(&state.media_root))
+        // Mount only published image kinds. Private staging remains on the
+        // same volume for atomic rename and has no static route of its own.
+        .nest_service(
+            "/media/avatar",
+            ServeDir::new(state.media_root.join("avatar")),
+        )
+        .nest_service(
+            "/media/banner",
+            ServeDir::new(state.media_root.join("banner")),
+        )
+        .nest_service(
+            "/media/background",
+            ServeDir::new(state.media_root.join("background")),
+        )
         .layer(DefaultBodyLimit::max(32 * 1024))
         .layer(middleware::from_fn_with_state(state.clone(), guard))
         .layer(cors)

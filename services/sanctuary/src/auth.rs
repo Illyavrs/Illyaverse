@@ -6,7 +6,7 @@ use axum::{
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
 };
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use illya_domain::{
     Preferences, ScoreVariant, has_permission, validate_color, validate_password, validate_username,
 };
@@ -35,6 +35,119 @@ impl User {
         } else {
             Err(ApiError::forbidden())
         }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum MutationScope {
+    Session,
+    Permissions,
+    RoleChanges,
+}
+
+/// Authorization held by the transaction that acquired it. The original session
+/// deadline remains authoritative even when this operation deliberately revokes
+/// its own session or removes its own permissions.
+pub(crate) struct MutationActor {
+    user: User,
+    expires_at: DateTime<Utc>,
+}
+
+impl std::ops::Deref for MutationActor {
+    type Target = User;
+
+    fn deref(&self) -> &Self::Target {
+        &self.user
+    }
+}
+
+/// Acquire before resource locks: permission tables, sorted users, then session.
+/// Verification issuance is the one recipient-limiter-first caller; it requires
+/// no permission-table fence. Never upgrade a Permissions scope to RoleChanges.
+pub(crate) async fn mutation_actor(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    snapshot: &User,
+    extra_user_ids: &[i64],
+    scope: MutationScope,
+) -> ApiResult<MutationActor> {
+    match scope {
+        MutationScope::Session => {}
+        MutationScope::Permissions => {
+            sqlx::query("LOCK TABLE roles,user_roles IN SHARE MODE")
+                .execute(&mut **tx)
+                .await?;
+        }
+        MutationScope::RoleChanges => {
+            sqlx::query("LOCK TABLE roles,user_roles IN SHARE ROW EXCLUSIVE MODE")
+                .execute(&mut **tx)
+                .await?;
+        }
+    }
+    let mut users = Vec::with_capacity(extra_user_ids.len() + 1);
+    users.push(snapshot.id);
+    users.extend_from_slice(extra_user_ids);
+    users.sort_unstable();
+    users.dedup();
+    sqlx::query("SELECT id FROM users WHERE id=ANY($1) ORDER BY id FOR UPDATE")
+        .bind(&users)
+        .fetch_all(&mut **tx)
+        .await?;
+    // A WHERE deadline predicate may be evaluated before a queued, unchanged
+    // session row lock returns. Fetch unconditionally and check the clock after.
+    let expires_at = sqlx::query_scalar::<_, DateTime<Utc>>(
+        "SELECT expires_at FROM sessions WHERE id=$1 AND user_id=$2 FOR UPDATE",
+    )
+    .bind(snapshot.session)
+    .bind(snapshot.id)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(ApiError::unauthorized)?;
+    let valid = sqlx::query_scalar::<_, bool>(
+        "SELECT NOT is_restricted AND $1::timestamptz>clock_timestamp() FROM users WHERE id=$2",
+    )
+    .bind(expires_at)
+    .bind(snapshot.id)
+    .fetch_optional(&mut **tx)
+    .await?
+    .unwrap_or(false);
+    if !valid {
+        return Err(ApiError::unauthorized());
+    }
+    let permissions = match scope {
+        MutationScope::Session => Vec::new(),
+        MutationScope::Permissions | MutationScope::RoleChanges => {
+            sqlx::query_scalar::<_, String>(
+                "SELECT DISTINCT unnest(r.permissions) FROM roles r JOIN user_roles ur ON ur.role_id=r.id WHERE ur.user_id=$1",
+            )
+            .bind(snapshot.id)
+            .fetch_all(&mut **tx)
+            .await?
+        }
+    };
+    Ok(MutationActor {
+        user: User {
+            id: snapshot.id,
+            session: snapshot.session,
+            permissions,
+        },
+        expires_at,
+    })
+}
+
+/// Recheck after resource waits and immediately before publication/commit.
+/// Held fences block external revocation; only natural expiry can advance.
+pub(crate) async fn ensure_mutation_actor(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    actor: &MutationActor,
+) -> ApiResult<()> {
+    let valid: bool = sqlx::query_scalar("SELECT $1::timestamptz>clock_timestamp()")
+        .bind(actor.expires_at)
+        .fetch_one(&mut **tx)
+        .await?;
+    if valid {
+        Ok(())
+    } else {
+        Err(ApiError::unauthorized())
     }
 }
 
@@ -299,16 +412,17 @@ pub async fn update_preferences(
     Json(patch): Json<Value>,
 ) -> ApiResult {
     let user = require(&state, &headers).await?;
+    let object = patch
+        .as_object()
+        .ok_or_else(|| ApiError::bad("Preferences must be an object."))?;
     let mut tx = state.db.begin().await?;
+    let user = mutation_actor(&mut tx, &user, &[], MutationScope::Session).await?;
     let original: Value =
         sqlx::query_scalar("SELECT preferences FROM users WHERE id=$1 FOR UPDATE")
             .bind(user.id)
             .fetch_one(&mut *tx)
             .await?;
     let mut value = json!(serde_json::from_value::<Preferences>(original).unwrap_or_default());
-    let object = patch
-        .as_object()
-        .ok_or_else(|| ApiError::bad("Preferences must be an object."))?;
     for (key, v) in object {
         value[key] = v.clone();
     }
@@ -320,6 +434,7 @@ pub async fn update_preferences(
         .bind(json!(preferences))
         .execute(&mut *tx)
         .await?;
+    ensure_mutation_actor(&mut tx, &user).await?;
     tx.commit().await?;
     Ok(Json(json!(preferences)))
 }
@@ -359,7 +474,11 @@ pub async fn update_profile(
     {
         return Err(ApiError::bad("Enter a six-digit hex color."));
     }
-    sqlx::query("UPDATE users SET bio=COALESCE($2,bio),country=COALESCE($3,country),accent_color=COALESCE($4,accent_color) WHERE id=$1").bind(user.id).bind(input.bio).bind(input.country).bind(input.accent_color).execute(&state.db).await?;
+    let mut tx = state.db.begin().await?;
+    let user = mutation_actor(&mut tx, &user, &[], MutationScope::Session).await?;
+    sqlx::query("UPDATE users SET bio=COALESCE($2,bio),country=COALESCE($3,country),accent_color=COALESCE($4,accent_color) WHERE id=$1").bind(user.id).bind(input.bio).bind(input.country).bind(input.accent_color).execute(&mut *tx).await?;
+    ensure_mutation_actor(&mut tx, &user).await?;
+    tx.commit().await?;
     Ok(Json(profile(&state, user.id, true).await?))
 }
 pub async fn upload_media(
@@ -440,28 +559,70 @@ pub async fn upload_media(
     .map_err(ApiError::internal)??;
     let relative = format!("{kind}/{}.webp", Uuid::new_v4());
     tokio::fs::create_dir_all(state.media_root.join(&kind)).await?;
-    tokio::fs::write(state.media_root.join(&relative), encoded).await?;
+    // Only avatar/banner/background are served. Keep private staging inside
+    // the media volume so publication never renames across a mount boundary.
+    // Multipart/image work and file writing hold no authorization locks.
+    let staging_root = state.media_root.join(".illya-media-staging");
+    tokio::fs::create_dir_all(&staging_root).await?;
+    let temporary = staging_root.join(format!("{}.part", Uuid::new_v4()));
+    let destination = state.media_root.join(&relative);
     let url = format!("/media/{relative}");
-    match kind.as_str() {
-        "avatar" => {
-            sqlx::query("UPDATE users SET avatar_url=$2 WHERE id=$1")
-                .bind(user.id)
-                .bind(&url)
-                .execute(&state.db)
-                .await?;
+    let mut staged = false;
+    let mut published = false;
+    let mut commit_attempted = false;
+    let result = async {
+        use tokio::io::AsyncWriteExt;
+        let mut file = tokio::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+            .await?;
+        staged = true;
+        file.write_all(&encoded).await?;
+        file.sync_all().await?;
+        drop(file);
+
+        let mut tx = state.db.begin().await?;
+        let user = mutation_actor(&mut tx, &user, &[], MutationScope::Session).await?;
+        match kind.as_str() {
+            "avatar" => {
+                sqlx::query("UPDATE users SET avatar_url=$2 WHERE id=$1")
+                    .bind(user.id)
+                    .bind(&url)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+            "banner" => {
+                sqlx::query("UPDATE users SET banner_url=$2 WHERE id=$1")
+                    .bind(user.id)
+                    .bind(&url)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+            _ => {
+                sqlx::query("UPDATE users SET preferences=jsonb_set(preferences,'{background_url}',to_jsonb($2::text)) WHERE id=$1").bind(user.id).bind(&url).execute(&mut *tx).await?;
+            }
         }
-        "banner" => {
-            sqlx::query("UPDATE users SET banner_url=$2 WHERE id=$1")
-                .bind(user.id)
-                .bind(&url)
-                .execute(&state.db)
-                .await?;
+        ensure_mutation_actor(&mut tx, &user).await?;
+        tokio::fs::rename(&temporary, &destination).await?;
+        published = true;
+        ensure_mutation_actor(&mut tx, &user).await?;
+        // A failed COMMIT acknowledgement may follow a successful commit.
+        // Retain the published file in that case rather than break its URL.
+        commit_attempted = true;
+        tx.commit().await?;
+        Ok(Json(json!({"url":url,"kind":kind})))
+    }
+    .await;
+    if result.is_err() && !commit_attempted {
+        if staged {
+            let _ = tokio::fs::remove_file(&temporary).await;
         }
-        _ => {
-            sqlx::query("UPDATE users SET preferences=jsonb_set(preferences,'{background_url}',to_jsonb($2::text)) WHERE id=$1").bind(user.id).bind(&url).execute(&state.db).await?;
+        if published {
+            let _ = tokio::fs::remove_file(&destination).await;
         }
     }
-    Ok(Json(json!({"url":url,"kind":kind})))
+    result
 }
 
 #[derive(Clone, Copy, Deserialize, Serialize)]
@@ -484,25 +645,7 @@ pub async fn remove_profile_media(
 ) -> ApiResult {
     let user = require(&state, &headers).await?;
     let mut tx = state.db.begin().await?;
-    // Recovery and administrative revocation also lock users before sessions.
-    // Recheck authorization at the write after either lock has finished waiting.
-    let owner = sqlx::query_scalar::<_, i64>("SELECT id FROM users WHERE id=$1 FOR UPDATE")
-        .bind(user.id)
-        .fetch_optional(&mut *tx)
-        .await?;
-    if owner.is_none() {
-        return Err(ApiError::unauthorized());
-    }
-    let session = sqlx::query_scalar::<_, Uuid>(
-        "SELECT id FROM sessions WHERE id=$1 AND user_id=$2 FOR UPDATE",
-    )
-    .bind(user.session)
-    .bind(user.id)
-    .fetch_optional(&mut *tx)
-    .await?;
-    if session.is_none() {
-        return Err(ApiError::unauthorized());
-    }
+    let user = mutation_actor(&mut tx, &user, &[], MutationScope::Session).await?;
     let update = match input.kind {
         ProfileMediaKind::Avatar => {
             "UPDATE users SET avatar_url=NULL WHERE id=$1 AND NOT is_restricted AND EXISTS(SELECT 1 FROM sessions WHERE id=$2 AND user_id=$1 AND expires_at>clock_timestamp())"
@@ -519,6 +662,7 @@ pub async fn remove_profile_media(
     if changed.rows_affected() != 1 {
         return Err(ApiError::unauthorized());
     }
+    ensure_mutation_actor(&mut tx, &user).await?;
     tx.commit().await?;
     Ok(Json(json!({"kind":input.kind,"url":null})))
 }
@@ -569,13 +713,11 @@ pub async fn change_password(
     if input.current_password.len() > 128 {
         return Err(ApiError::unauthorized());
     }
-    let mut tx = state.db.begin().await?;
-    let current: String =
-        sqlx::query_scalar("SELECT password_hash FROM users WHERE id=$1 FOR UPDATE")
-            .bind(user.id)
-            .fetch_one(&mut *tx)
-            .await?;
-    if !verify(input.current_password, current).await {
+    let verified: String = sqlx::query_scalar("SELECT password_hash FROM users WHERE id=$1")
+        .bind(user.id)
+        .fetch_one(&state.db)
+        .await?;
+    if !verify(input.current_password, verified.clone()).await {
         return Err(ApiError(
             StatusCode::UNAUTHORIZED,
             "invalid_password",
@@ -583,6 +725,15 @@ pub async fn change_password(
         ));
     }
     let (hash, legacy) = hash_password(input.new_password).await?;
+    let mut tx = state.db.begin().await?;
+    let user = mutation_actor(&mut tx, &user, &[], MutationScope::Session).await?;
+    let current: String = sqlx::query_scalar("SELECT password_hash FROM users WHERE id=$1")
+        .bind(user.id)
+        .fetch_one(&mut *tx)
+        .await?;
+    if current != verified {
+        return Err(ApiError::unauthorized());
+    }
     sqlx::query("UPDATE users SET password_hash=$2,password_md5_hash=$3 WHERE id=$1")
         .bind(user.id)
         .bind(hash)
@@ -591,6 +742,7 @@ pub async fn change_password(
         .await?;
     revoke_sessions(&mut tx, user.id, Some(user.session)).await?;
     sqlx::query("INSERT INTO audit_events(actor_id,action,target_type,target_id,details) VALUES($1,'users.password_change','user',$2,'{\"other_sessions_revoked\":true}')").bind(user.id).bind(user.id.to_string()).execute(&mut *tx).await?;
+    ensure_mutation_actor(&mut tx, &user).await?;
     tx.commit().await?;
     Ok(Json(json!({"ok":true})))
 }
@@ -627,3 +779,7 @@ pub async fn bootstrap(state: &AppState) -> ApiResult<()> {
     sqlx::query("INSERT INTO user_roles(user_id,role_id) SELECT $1,id FROM roles WHERE name IN ('administrator','player') ON CONFLICT DO NOTHING").bind(id).execute(&state.db).await?;
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "auth_mutation_tests.rs"]
+mod mutation_tests;

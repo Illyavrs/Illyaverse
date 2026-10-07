@@ -315,6 +315,7 @@ async fn ingest(
     user_id: i64,
     input: Submission,
     client: &str,
+    website: Option<&auth::User>,
 ) -> ApiResult<Value> {
     if input.score < 0
         || !input.accuracy.is_finite()
@@ -335,8 +336,31 @@ async fn ingest(
         if key.len() > 128 || key.is_empty() {
             return Err(ApiError::bad("Invalid ingestion key."));
         }
-        if let Some(existing)=sqlx::query_scalar::<_,Value>("SELECT to_jsonb(s)-'replay_path'||jsonb_build_object('accuracy_source',CASE WHEN s.client='lazer' THEN 'client_reported' ELSE 'judgements' END) FROM scores s WHERE ingestion_key=$1").bind(key).fetch_optional(&state.db).await?{
-            if existing["user_id"].as_i64()!=Some(user_id)||existing["beatmap_id"].as_i64()!=Some(input.beatmap_id)||existing["mode"].as_i64()!=Some(i64::from(input.mode))||existing["score_variant"].as_str()!=Some(variant.as_str()){return Err(ApiError(axum::http::StatusCode::CONFLICT,"ingestion_conflict","The ingestion key belongs to another score partition.".into()));}return Ok(existing);
+        if sqlx::query_scalar::<_, i64>("SELECT id FROM scores WHERE ingestion_key=$1")
+            .bind(key)
+            .fetch_optional(&state.db)
+            .await?
+            .is_some()
+        {
+            let mut tx = state.db.begin().await?;
+            let actor = score_publication_actor(&mut tx, user_id, website).await?;
+            let existing=sqlx::query_scalar::<_,Value>("SELECT to_jsonb(s)-'replay_path'||jsonb_build_object('accuracy_source',CASE WHEN s.client='lazer' THEN 'client_reported' ELSE 'judgements' END) FROM scores s WHERE ingestion_key=$1 FOR SHARE OF s").bind(key).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::missing)?;
+            if existing["user_id"].as_i64() != Some(user_id)
+                || existing["beatmap_id"].as_i64() != Some(input.beatmap_id)
+                || existing["mode"].as_i64() != Some(i64::from(input.mode))
+                || existing["score_variant"].as_str() != Some(variant.as_str())
+            {
+                return Err(ApiError(
+                    axum::http::StatusCode::CONFLICT,
+                    "ingestion_conflict",
+                    "The ingestion key belongs to another score partition.".into(),
+                ));
+            }
+            if let Some(actor) = &actor {
+                auth::ensure_mutation_actor(&mut tx, actor).await?;
+            }
+            tx.commit().await?;
+            return Ok(existing);
         }
     }
     let counts = &input.hit_counts;
@@ -397,14 +421,49 @@ async fn ingest(
         .await
         .map_err(ApiError::internal)??;
     let scales = calculated.scales;
+    let mut tx = state.db.begin().await?;
+    let actor = score_publication_actor(&mut tx, user_id, website).await?;
     let mut value:Value=sqlx::query_scalar("INSERT INTO scores(user_id,beatmap_id,mode,score,accuracy,max_combo,mods,pp,passed,hit_counts,client,ingestion_key,api_mods,pp_eligible,standardised_score,standardised_without_mods,classic_score,native_submission,native_basic_maximum,score_scale_status,score_scale_version,score_scale_reason,legacy_attributes,score_variant,pp_calculation_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,'rosu_pp4.v1') ON CONFLICT(ingestion_key) DO UPDATE SET ingestion_key=scores.ingestion_key WHERE scores.user_id=excluded.user_id AND scores.beatmap_id=excluded.beatmap_id AND scores.mode=excluded.mode AND scores.score_variant=excluded.score_variant RETURNING to_jsonb(scores)-'replay_path'")
-        .bind(user_id).bind(input.beatmap_id).bind(input.mode).bind(input.score).bind(accuracy).bind(input.max_combo as i32).bind(i64::from(input.mods)).bind(calculated.pp).bind(input.passed).bind(json!(input.hit_counts)).bind(client).bind(input.ingestion_key).bind(input.api_mods).bind(pp_eligible).bind(scales.standardised_score).bind(scales.standardised_without_mods).bind(scales.classic_score).bind(scales.native_submission).bind(scales.native_basic_maximum).bind(scales.status).bind(scales.version).bind(scales.reason).bind(scales.legacy_attributes).bind(variant.as_str()).fetch_optional(&state.db).await?.ok_or_else(||ApiError(axum::http::StatusCode::CONFLICT,"ingestion_conflict","The ingestion key belongs to another score.".into()))?;
+        .bind(user_id).bind(input.beatmap_id).bind(input.mode).bind(input.score).bind(accuracy).bind(input.max_combo as i32).bind(i64::from(input.mods)).bind(calculated.pp).bind(input.passed).bind(json!(input.hit_counts)).bind(client).bind(input.ingestion_key).bind(input.api_mods).bind(pp_eligible).bind(scales.standardised_score).bind(scales.standardised_without_mods).bind(scales.classic_score).bind(scales.native_submission).bind(scales.native_basic_maximum).bind(scales.status).bind(scales.version).bind(scales.reason).bind(scales.legacy_attributes).bind(variant.as_str()).fetch_optional(&mut *tx).await?.ok_or_else(||ApiError(axum::http::StatusCode::CONFLICT,"ingestion_conflict","The ingestion key belongs to another score.".into()))?;
+    if let Some(actor) = &actor {
+        auth::ensure_mutation_actor(&mut tx, actor).await?;
+    }
+    tx.commit().await?;
     value["accuracy_source"] = json!(if client == "lazer" {
         "client_reported"
     } else {
         "judgements"
     });
     Ok(value)
+}
+
+async fn score_publication_actor(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    user_id: i64,
+    website: Option<&auth::User>,
+) -> ApiResult<Option<auth::MutationActor>> {
+    if let Some(snapshot) = website {
+        if snapshot.id != user_id {
+            return Err(ApiError::unauthorized());
+        }
+        Ok(Some(
+            auth::mutation_actor(tx, snapshot, &[], auth::MutationScope::Session).await?,
+        ))
+    } else {
+        // Native ingress authenticates the service separately, then retains the
+        // player's restriction lock through publication without a web session.
+        let active = sqlx::query_scalar::<_, bool>(
+            "SELECT NOT is_restricted FROM users WHERE id=$1 FOR SHARE",
+        )
+        .bind(user_id)
+        .fetch_optional(&mut **tx)
+        .await?
+        .unwrap_or(false);
+        if !active {
+            return Err(ApiError::unauthorized());
+        }
+        Ok(None)
+    }
 }
 
 fn mod_partition(score: &Submission, client: &str) -> ApiResult<(ScoreVariant, bool)> {
@@ -635,7 +694,9 @@ pub async fn submit(
             "API submissions belong to the signed-in user, use the api client, and cannot supply an ingestion key.",
         ));
     }
-    Ok(Json(ingest(&state, user.id, input, "api").await?))
+    Ok(Json(
+        ingest(&state, user.id, input, "api", Some(&user)).await?,
+    ))
 }
 pub async fn internal_submit(
     State(state): State<AppState>,
@@ -662,13 +723,25 @@ pub async fn internal_submit(
     if !matches!(client.as_str(), "stable" | "lazer") {
         return Err(ApiError::bad("Unsupported internal client."));
     }
-    Ok(Json(ingest(&state, user_id, input, &client).await?))
+    Ok(Json(ingest(&state, user_id, input, &client, None).await?))
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RelaxRecalculation {
     score_ids: Vec<i64>,
+}
+fn relax_calculation_binding(row: &sqlx::postgres::PgRow) -> Value {
+    json!({
+        "user_id":row.get::<i64,_>("user_id"),"beatmap_id":row.get::<i64,_>("beatmap_id"),
+        "mode":row.get::<i16,_>("mode"),"score":row.get::<i64,_>("score"),
+        "accuracy":row.get::<f64,_>("accuracy"),"max_combo":row.get::<i32,_>("max_combo"),
+        "mods":row.get::<i64,_>("mods"),"passed":row.get::<bool,_>("passed"),
+        "hit_counts":row.get::<Value,_>("hit_counts"),"api_mods":row.get::<Option<Value>,_>("api_mods"),
+        "native_submission":row.get::<Option<Value>,_>("native_submission"),
+        "client":row.get::<String,_>("client"),"score_variant":row.get::<String,_>("score_variant"),
+        "osu_path":row.get::<String,_>("osu_path")
+    })
 }
 pub async fn recalculate_relax(
     State(state): State<AppState>,
@@ -691,13 +764,17 @@ pub async fn recalculate_relax(
         return Err(ApiError::bad("Score IDs must be unique."));
     }
     let _permit = state.upload_permit()?;
-    let mut tx = state.db.begin().await?;
-    let operator = crate::admin::lock_actor(&mut tx, &operator, None).await?;
-    operator.require("scores.moderate")?;
-    let mut results = Vec::with_capacity(ids.len());
+    // Check live moderation authority before private resource existence, then
+    // release these locks while doing bounded file and calculation work.
+    let mut preflight = state.db.begin().await?;
+    let preflight_actor = crate::admin::lock_actor(&mut preflight, &operator, None).await?;
+    preflight_actor.require("scores.moderate")?;
+    auth::ensure_mutation_actor(&mut preflight, &preflight_actor).await?;
+    preflight.commit().await?;
+    let mut prepared = Vec::with_capacity(ids.len());
     for id in ids {
-        let row=sqlx::query("SELECT s.*,b.osu_path FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id JOIN users u ON u.id=s.user_id WHERE s.id=$1 AND NOT u.is_restricted FOR UPDATE OF s")
-            .bind(id).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::missing)?;
+        let row=sqlx::query("SELECT s.*,b.osu_path FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id JOIN users u ON u.id=s.user_id WHERE s.id=$1 AND NOT u.is_restricted")
+            .bind(id).fetch_optional(&state.db).await?.ok_or_else(ApiError::missing)?;
         if row.get::<String, _>("score_variant") != "relax"
             || row.get::<i16, _>("mode") == 3
             || !matches!(
@@ -728,18 +805,133 @@ pub async fn recalculate_relax(
             tokio::task::spawn_blocking(move || calculate_score(&bytes, &submission, lazer))
                 .await
                 .map_err(ApiError::internal)??;
+        prepared.push((
+            id,
+            row.get::<i64, _>("user_id"),
+            relax_calculation_binding(&row),
+            calculated.pp,
+        ));
+    }
+    let owners: Vec<i64> = prepared.iter().map(|(_, owner, _, _)| *owner).collect();
+    let mut tx = state.db.begin().await?;
+    let operator = auth::mutation_actor(
+        &mut tx,
+        &operator,
+        &owners,
+        auth::MutationScope::RoleChanges,
+    )
+    .await?;
+    operator.require("scores.moderate")?;
+    let mut results = Vec::with_capacity(prepared.len());
+    for (id, _, binding, pp) in prepared {
+        let row=sqlx::query("SELECT s.*,b.osu_path FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id JOIN users u ON u.id=s.user_id WHERE s.id=$1 AND NOT u.is_restricted FOR UPDATE OF s")
+            .bind(id).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::missing)?;
+        if relax_calculation_binding(&row) != binding
+            || !matches!(
+                row.get::<String, _>("verification").as_str(),
+                "pending" | "verified"
+            )
+        {
+            return Err(ApiError(
+                axum::http::StatusCode::CONFLICT,
+                "score_changed_retry",
+                "A score changed while preparing its calculation. Please retry.".into(),
+            ));
+        }
         let previous = row.get::<f64, _>("pp");
         let previous_eligible = row.get::<bool, _>("pp_eligible");
         sqlx::query("UPDATE scores SET pp=$2,pp_eligible=true,pp_calculation_version='rosu_pp4.relax.v1' WHERE id=$1")
-            .bind(id).bind(calculated.pp).execute(&mut *tx).await?;
+            .bind(id).bind(pp).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO audit_events(actor_id,action,target_type,target_id,details) VALUES($1,'scores.relax_recalculate','score',$2,$3)")
-            .bind(operator.id).bind(id.to_string()).bind(json!({"previous_pp":previous,"pp":calculated.pp,"previous_pp_eligible":previous_eligible,"pp_eligible":true,"mode":row.get::<i16,_>("mode"),"score_variant":"relax","calculation_version":"rosu_pp4.relax.v1","verification_unchanged":true}))
+            .bind(operator.id).bind(id.to_string()).bind(json!({"previous_pp":previous,"pp":pp,"previous_pp_eligible":previous_eligible,"pp_eligible":true,"mode":row.get::<i16,_>("mode"),"score_variant":"relax","calculation_version":"rosu_pp4.relax.v1","verification_unchanged":true}))
             .execute(&mut *tx).await?;
-        results.push(json!({"id":id,"pp":calculated.pp,"pp_eligible":true,"score_variant":"relax","pp_calculation_version":"rosu_pp4.relax.v1","verification":row.get::<String,_>("verification")}));
+        results.push(json!({"id":id,"pp":pp,"pp_eligible":true,"score_variant":"relax","pp_calculation_version":"rosu_pp4.relax.v1","verification":row.get::<String,_>("verification")}));
     }
+    auth::ensure_mutation_actor(&mut tx, &operator).await?;
     tx.commit().await?;
     Ok(Json(json!({"items":results,"count":results.len()})))
 }
+#[derive(Clone, PartialEq)]
+struct ReplayUploadBinding {
+    user_id: i64,
+    username: String,
+    md5: String,
+    mode: i16,
+    total: i64,
+    combo: i32,
+    mods: i64,
+    hits: Value,
+    lazer: bool,
+    submission: Option<Value>,
+}
+
+impl ReplayUploadBinding {
+    fn from_row(score: &sqlx::postgres::PgRow) -> Self {
+        let lazer = score.get::<String, _>("client") == "lazer";
+        Self {
+            user_id: score.get("user_id"),
+            username: score.get("username"),
+            md5: score.get("md5"),
+            mode: score.get("mode"),
+            total: score.get("score"),
+            combo: score.get("max_combo"),
+            mods: score.get("mods"),
+            hits: score.get("hit_counts"),
+            lazer,
+            submission: if lazer {
+                score.get("replay_submission")
+            } else {
+                None
+            },
+        }
+    }
+
+    fn validate(&self, id: i64, bytes: &[u8]) -> ApiResult<()> {
+        if self.lazer {
+            let input: resonance_protocol::lazer::SoloScoreSubmission = serde_json::from_value(
+                self.submission
+                    .clone()
+                    .ok_or_else(|| ApiError::bad("Stored lazer submission is required."))?,
+            )
+            .map_err(ApiError::internal)?;
+            let replay = resonance_protocol::lazer_replay::ExtendedReplay::parse(bytes)
+                .map_err(|e| ApiError::bad(format!("Invalid extended replay: {e}")))?;
+            let binding = resonance_protocol::lazer_replay::ReplayScore {
+                online_id: id,
+                user_id: self.user_id,
+                username: &self.username,
+                beatmap_md5: &self.md5,
+                client_version: "",
+                mods_bits: self.mods as u32,
+                timestamp_ticks: 0,
+                submission: &input,
+            };
+            replay
+                .matches(&binding)
+                .map_err(|_| ApiError::bad("Replay metadata does not match the stored score."))?;
+        } else {
+            let replay = resonance_protocol::replay::LegacyReplay::parse(bytes)
+                .map_err(|e| ApiError::bad(format!("Invalid replay container: {e}")))?;
+            let h: HitCounts =
+                serde_json::from_value(self.hits.clone()).map_err(ApiError::internal)?;
+            if replay.beatmap_md5 != self.md5
+                || replay.player_name != self.username
+                || i16::from(replay.mode) != self.mode
+                || i64::from(replay.total_score) != self.total
+                || i32::from(replay.max_combo) != self.combo
+                || i64::from(replay.mods) != self.mods
+                || replay.hit_counts.map(u32::from)
+                    != [h.n300, h.n100, h.n50, h.geki, h.katu, h.misses]
+            {
+                return Err(ApiError::bad(
+                    "Replay metadata does not match the stored score.",
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
 pub async fn upload_replay(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -748,7 +940,7 @@ pub async fn upload_replay(
 ) -> ApiResult {
     let user = auth::require(&state, &headers).await?;
     let _permit = state.upload_permit()?;
-    let score=sqlx::query("SELECT s.*,b.md5,u.username FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id JOIN users u ON u.id=s.user_id WHERE s.id=$1").bind(id).fetch_optional(&state.db).await?.ok_or_else(ApiError::missing)?;
+    let score=sqlx::query("SELECT s.*,b.md5,u.username,COALESCE(s.native_submission,(SELECT submission FROM lazer_score_tokens WHERE score_id=s.id AND user_id=s.user_id ORDER BY id LIMIT 1)) replay_submission FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id JOIN users u ON u.id=s.user_id WHERE s.id=$1").bind(id).fetch_optional(&state.db).await?.ok_or_else(ApiError::missing)?;
     if score.get::<i64, _>("user_id") != user.id {
         return Err(ApiError::forbidden());
     }
@@ -786,120 +978,99 @@ pub async fn upload_replay(
         bytes = Some(buffer);
     }
     let bytes = bytes.ok_or_else(|| ApiError::bad("Attach a replay file."))?;
-    let mut tx = state.db.begin().await?;
-    let score=sqlx::query("SELECT s.*,b.md5,u.username FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id JOIN users u ON u.id=s.user_id WHERE s.id=$1 AND s.user_id=$2 FOR UPDATE OF s").bind(id).bind(user.id).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::missing)?;
-    let lazer = score.get::<String, _>("client") == "lazer";
-    let submission: Option<Value> = if lazer {
-        let persisted: Option<Value> = score.get("native_submission");
-        if persisted.is_some() {
-            persisted
-        } else {
-            sqlx::query_scalar("SELECT submission FROM lazer_score_tokens WHERE score_id=$1 AND user_id=$2 ORDER BY id LIMIT 1").bind(id).bind(user.id).fetch_optional(&mut *tx).await?.flatten()
-        }
-    } else {
-        None
-    };
-    let expected_user = score.get::<i64, _>("user_id");
-    let username = score.get::<String, _>("username");
-    let md5 = score.get::<String, _>("md5");
-    let mode = score.get::<i16, _>("mode");
-    let total = score.get::<i64, _>("score");
-    let combo = score.get::<i32, _>("max_combo");
-    let mods = score.get::<i64, _>("mods");
-    let hits: Value = score.get("hit_counts");
+    let binding = ReplayUploadBinding::from_row(&score);
+    let prepared_binding = binding.clone();
     let (bytes, sha) = tokio::task::spawn_blocking(move || -> ApiResult<(Vec<u8>, String)> {
         use sha2::{Digest, Sha256};
-        if lazer {
-            let input: resonance_protocol::lazer::SoloScoreSubmission = serde_json::from_value(
-                submission.ok_or_else(|| ApiError::bad("Stored lazer submission is required."))?,
-            )
-            .map_err(ApiError::internal)?;
-            let replay = resonance_protocol::lazer_replay::ExtendedReplay::parse(&bytes)
-                .map_err(|e| ApiError::bad(format!("Invalid extended replay: {e}")))?;
-            let binding = resonance_protocol::lazer_replay::ReplayScore {
-                online_id: id,
-                user_id: expected_user,
-                username: &username,
-                beatmap_md5: &md5,
-                client_version: "",
-                mods_bits: mods as u32,
-                timestamp_ticks: 0,
-                submission: &input,
-            };
-            replay
-                .matches(&binding)
-                .map_err(|_| ApiError::bad("Replay metadata does not match the stored score."))?;
-        } else {
-            let replay = resonance_protocol::replay::LegacyReplay::parse(&bytes)
-                .map_err(|e| ApiError::bad(format!("Invalid replay container: {e}")))?;
-            let h: HitCounts = serde_json::from_value(hits).map_err(ApiError::internal)?;
-            if replay.beatmap_md5 != md5
-                || replay.player_name != username
-                || i16::from(replay.mode) != mode
-                || i64::from(replay.total_score) != total
-                || i32::from(replay.max_combo) != combo
-                || i64::from(replay.mods) != mods
-                || replay.hit_counts.map(u32::from)
-                    != [h.n300, h.n100, h.n50, h.geki, h.katu, h.misses]
-            {
-                return Err(ApiError::bad(
-                    "Replay metadata does not match the stored score.",
-                ));
-            }
-        }
+        prepared_binding.validate(id, &bytes)?;
         let sha = format!("{:x}", Sha256::digest(&bytes));
         Ok((bytes, sha))
     })
     .await
     .map_err(ApiError::internal)??;
-    if let Some(previous) = score.get::<Option<String>, _>("replay_path") {
-        let existing = if let Some(sha) = score.get::<Option<String>, _>("replay_sha256") {
-            sha
-        } else {
+    // Legacy stored rows may not have a digest. Read their file before the
+    // short transaction and use it only if the locked row still names it.
+    let initial_path: Option<String> = score.get("replay_path");
+    let initial_sha: Option<String> = score.get("replay_sha256");
+    let fallback_sha = if let Some(previous) = &initial_path {
+        if initial_sha.is_none() {
             use sha2::{Digest, Sha256};
-            if previous.contains(['/', '\\']) || previous.contains("..") {
+            if std::path::Path::new(previous).is_absolute()
+                || previous.contains(['/', '\\'])
+                || previous.contains("..")
+            {
                 return Err(ApiError::internal("unsafe stored replay path"));
             }
-            let stored = tokio::fs::read(state.replay_root.join(previous)).await?;
-            format!("{:x}", Sha256::digest(stored))
-        };
-        if existing != sha {
-            return Err(ApiError(
-                axum::http::StatusCode::CONFLICT,
-                "replay_already_uploaded",
-                "This score already has a different replay.".into(),
-            ));
+            Some(format!(
+                "{:x}",
+                Sha256::digest(tokio::fs::read(state.replay_root.join(previous)).await?)
+            ))
+        } else {
+            None
         }
-        return Ok(Json(
-            json!({"ok":true,"verification":score.get::<String,_>("verification"),"has_replay":true,"idempotent":true}),
-        ));
-    }
+    } else {
+        None
+    };
     let path = format!("{}-{}.osr", id, Uuid::new_v4());
     let temporary = state.replay_root.join(format!("{path}.tmp"));
     let destination = state.replay_root.join(&path);
     use tokio::io::AsyncWriteExt;
+    let mut temporary_owned = false;
+    let mut published = false;
+    let mut commit_attempted = false;
+    let outcome: ApiResult = async {
     let mut file = tokio::fs::OpenOptions::new()
         .create_new(true)
         .write(true)
         .open(&temporary)
         .await?;
+    temporary_owned = true;
     file.write_all(&bytes).await?;
     file.sync_all().await?;
     drop(file);
+    let mut tx = state.db.begin().await?;
+    let actor = auth::mutation_actor(&mut tx, &user, &[], auth::MutationScope::Session).await?;
+    let score=sqlx::query("SELECT s.*,b.md5,u.username,COALESCE(s.native_submission,(SELECT submission FROM lazer_score_tokens WHERE score_id=s.id AND user_id=s.user_id ORDER BY id LIMIT 1)) replay_submission FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id JOIN users u ON u.id=s.user_id WHERE s.id=$1 AND s.user_id=$2 FOR UPDATE OF s").bind(id).bind(actor.id).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::missing)?;
+    if ReplayUploadBinding::from_row(&score) != binding {
+        return Err(ApiError(axum::http::StatusCode::CONFLICT,"replay_binding_changed","The stored score changed while preparing its replay. Please retry.".into()));
+    }
+    auth::ensure_mutation_actor(&mut tx, &actor).await?;
+    if let Some(previous) = score.get::<Option<String>, _>("replay_path") {
+        let existing = score.get::<Option<String>, _>("replay_sha256").or_else(|| {
+            (initial_path.as_ref() == Some(&previous)).then(|| fallback_sha.clone()).flatten()
+        }).ok_or_else(|| ApiError(axum::http::StatusCode::CONFLICT,"replay_changed_retry","The stored replay changed. Please retry.".into()))?;
+        if existing != sha {
+            return Err(ApiError(axum::http::StatusCode::CONFLICT,"replay_already_uploaded","This score already has a different replay.".into()));
+        }
+        auth::ensure_mutation_actor(&mut tx, &actor).await?;
+        tx.commit().await?;
+        return Ok(Json(json!({"ok":true,"verification":score.get::<String,_>("verification"),"has_replay":true,"idempotent":true})));
+    }
     tokio::fs::rename(&temporary, &destination).await?;
-    let result:ApiResult<()>=async {sqlx::query("UPDATE scores SET replay_path=$2,replay_sha256=$3,replay_format=$4,replay_complete=NULL,verification='pending' WHERE id=$1")
+    published = true;
+    sqlx::query("UPDATE scores SET replay_path=$2,replay_sha256=$3,replay_format=$4,replay_complete=NULL,verification='pending' WHERE id=$1")
         .bind(id)
         .bind(&path)
-        .bind(&sha).bind(if lazer {"lazer"} else {"legacy"})
+        .bind(&sha).bind(if binding.lazer {"lazer"} else {"legacy"})
         .execute(&mut *tx)
         .await?;
-    sqlx::query("INSERT INTO audit_events(actor_id,action,target_type,target_id,details) VALUES($1,'scores.replay_upload','score',$2,$3)").bind(user.id).bind(id.to_string()).bind(json!({"metadata_matches":true,"gameplay_verified":false,"sha256":sha,"format":if lazer {"lazer"} else {"legacy"}})).execute(&mut *tx).await?;tx.commit().await?;Ok(())}.await;
-    // Retain the full file on an uncertain database commit acknowledgement;
-    // deleting it could invalidate a reference that actually committed.
-    result?;
-    Ok(Json(
-        json!({"ok":true,"verification":"pending","has_replay":true}),
-    ))
+    sqlx::query("INSERT INTO audit_events(actor_id,action,target_type,target_id,details) VALUES($1,'scores.replay_upload','score',$2,$3)").bind(actor.id).bind(id.to_string()).bind(json!({"metadata_matches":true,"gameplay_verified":false,"sha256":sha,"format":if binding.lazer {"lazer"} else {"legacy"}})).execute(&mut *tx).await?;
+    auth::ensure_mutation_actor(&mut tx, &actor).await?;
+    commit_attempted = true;
+        if let Err(error) = tx.commit().await {
+            commit_attempted = !crate::maps::commit_definitely_rolled_back(&error);
+            return Err(error.into());
+        }
+    Ok(Json(json!({"ok":true,"verification":"pending","has_replay":true})))
+    }.await;
+    if temporary_owned {
+        let _ = tokio::fs::remove_file(&temporary).await;
+    }
+    // A failed acknowledgement after COMMIT may still have published its row.
+    if published && !commit_attempted {
+        let _ = tokio::fs::remove_file(&destination).await;
+    }
+    outcome
 }
 pub async fn replay(
     State(state): State<AppState>,
@@ -944,6 +1115,10 @@ pub async fn replay(
 #[cfg(test)]
 #[path = "replay_upload_tests.rs"]
 mod replay_upload_tests;
+
+#[cfg(test)]
+#[path = "score_mutation_tests.rs"]
+mod score_mutation_tests;
 
 #[cfg(test)]
 mod tests {

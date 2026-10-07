@@ -100,39 +100,9 @@ pub(crate) async fn lock_actor(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     actor: &auth::User,
     target: Option<i64>,
-) -> ApiResult<auth::User> {
-    sqlx::query("LOCK TABLE roles,user_roles IN SHARE ROW EXCLUSIVE MODE")
-        .execute(&mut **tx)
-        .await?;
-    let mut users = vec![actor.id];
-    if let Some(target) = target {
-        users.push(target);
-    }
-    sqlx::query("SELECT id FROM users WHERE id=ANY($1) ORDER BY id FOR UPDATE")
-        .bind(&users)
-        .fetch_all(&mut **tx)
-        .await?;
-    let session = sqlx::query_scalar::<_, uuid::Uuid>(
-        "SELECT s.id FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=$1 AND s.user_id=$2 AND s.expires_at>clock_timestamp() AND NOT u.is_restricted FOR UPDATE OF s",
-    )
-    .bind(actor.session)
-    .bind(actor.id)
-    .fetch_optional(&mut **tx)
-    .await?;
-    if session.is_none() {
-        return Err(ApiError::unauthorized());
-    }
-    let permissions = sqlx::query_scalar::<_, String>(
-        "SELECT DISTINCT unnest(r.permissions) FROM roles r JOIN user_roles ur ON ur.role_id=r.id WHERE ur.user_id=$1",
-    )
-    .bind(actor.id)
-    .fetch_all(&mut **tx)
-    .await?;
-    Ok(auth::User {
-        id: actor.id,
-        session: actor.session,
-        permissions,
-    })
+) -> ApiResult<auth::MutationActor> {
+    let targets = target.into_iter().collect::<Vec<_>>();
+    auth::mutation_actor(tx, actor, &targets, auth::MutationScope::RoleChanges).await
 }
 
 async fn target_permissions(
@@ -261,6 +231,7 @@ pub async fn update_user(
     }
     retain_administrator(&mut tx).await?;
     sqlx::query("INSERT INTO audit_events(actor_id,action,target_type,target_id,details) VALUES($1,'users.update','user',$2,$3)").bind(user.id).bind(id.to_string()).bind(json!({"roles":input.roles,"is_restricted":input.is_restricted})).execute(&mut *tx).await?;
+    auth::ensure_mutation_actor(&mut tx, &user).await?;
     tx.commit().await?;
     Ok(Json(json!({"ok":true})))
 }
@@ -334,6 +305,7 @@ pub async fn create_role(
     can_delegate(&user.permissions, &input.permissions)?;
     let value:Value=sqlx::query_scalar("INSERT INTO roles(name,description,permissions) VALUES($1,$2,$3) RETURNING to_jsonb(roles)||jsonb_build_object('membership_count',0,'is_builtin',id BETWEEN 1 AND 3 OR name IN ('player','moderator','administrator'))").bind(&input.name).bind(&input.description).bind(&input.permissions).fetch_one(&mut *tx).await?;
     sqlx::query("INSERT INTO audit_events(actor_id,action,target_type,target_id,details) VALUES($1,'roles.create','role',$2,$3)").bind(user.id).bind(value["id"].to_string()).bind(json!({"name":input.name,"permissions":input.permissions})).execute(&mut *tx).await?;
+    auth::ensure_mutation_actor(&mut tx, &user).await?;
     tx.commit().await?;
     Ok(Json(value))
 }
@@ -378,6 +350,7 @@ pub async fn update_role(
     let value:Value=sqlx::query_scalar("UPDATE roles SET name=$2,description=$3,permissions=$4 WHERE id=$1 RETURNING to_jsonb(roles)||jsonb_build_object('membership_count',(SELECT count(*) FROM user_roles ur WHERE ur.role_id=roles.id),'is_builtin',id BETWEEN 1 AND 3 OR name IN ('player','moderator','administrator'))").bind(id).bind(&input.name).bind(&input.description).bind(&input.permissions).fetch_one(&mut *tx).await?;
     retain_administrator(&mut tx).await?;
     sqlx::query("INSERT INTO audit_events(actor_id,action,target_type,target_id,details) VALUES($1,'roles.update','role',$2,$3)").bind(user.id).bind(id.to_string()).bind(json!({"name":input.name,"permissions":input.permissions})).execute(&mut *tx).await?;
+    auth::ensure_mutation_actor(&mut tx, &user).await?;
     tx.commit().await?;
     Ok(Json(value))
 }
@@ -427,6 +400,7 @@ pub async fn delete_role(
     retain_administrator(&mut tx).await?;
     sqlx::query("INSERT INTO audit_events(actor_id,action,target_type,target_id,details) VALUES($1,'roles.delete','role',$2,$3)")
         .bind(actor.id).bind(id.to_string()).bind(value).execute(&mut *tx).await?;
+    auth::ensure_mutation_actor(&mut tx, &actor).await?;
     tx.commit().await?;
     Ok(Json(json!({"ok":true})))
 }
@@ -461,6 +435,7 @@ pub async fn revoke_user_sessions(
     let revoked = json!({"web":web,"stable":stable,"lazer":lazer});
     sqlx::query("INSERT INTO audit_events(actor_id,action,target_type,target_id,details) VALUES($1,'users.sessions.revoke','user',$2,$3)")
         .bind(actor.id).bind(id.to_string()).bind(json!({"revoked":revoked})).execute(&mut *tx).await?;
+    auth::ensure_mutation_actor(&mut tx, &actor).await?;
     tx.commit().await?;
     Ok(Json(json!({"ok":true,"revoked":revoked})))
 }
@@ -506,6 +481,7 @@ pub async fn update_map(
         return Err(ApiError::missing());
     }
     sqlx::query("INSERT INTO audit_events(actor_id,action,target_type,target_id,details) VALUES($1,'beatmaps.status','beatmap',$2,$3)").bind(user.id).bind(id.to_string()).bind(json!({"status":input.status})).execute(&mut *tx).await?;
+    auth::ensure_mutation_actor(&mut tx, &user).await?;
     tx.commit().await?;
     Ok(Json(crate::maps::get(&state, id).await?))
 }
@@ -539,6 +515,7 @@ pub async fn update_score(
         return Err(ApiError::missing());
     }
     sqlx::query("INSERT INTO audit_events(actor_id,action,target_type,target_id,details) VALUES($1,'scores.verify','score',$2,$3)").bind(user.id).bind(id.to_string()).bind(json!({"verification":input.verification})).execute(&mut *tx).await?;
+    auth::ensure_mutation_actor(&mut tx, &user).await?;
     tx.commit().await?;
     Ok(Json(json!({"ok":true})))
 }

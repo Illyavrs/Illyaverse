@@ -331,7 +331,7 @@ async fn profile_media_removal_persistence_and_queued_authorization() {
                 .bind(owner).fetch_one(&mut *blocking).await.unwrap();
             let queued_app = app.clone();
             let queued = tokio::spawn(async move { remove(&queued_app, Some(&cookie), "avatar").await });
-            wait_for_lock(&pool, &application, "SELECT id FROM users WHERE id=$1 FOR UPDATE").await;
+            wait_for_lock(&pool, &application, "SELECT id FROM users WHERE id=ANY($1) ORDER BY id FOR UPDATE").await;
             match invalidation {
                 "deleted" => { sqlx::query("DELETE FROM sessions WHERE id=$1").bind(sid).execute(&mut *blocking).await.unwrap(); }
                 "expired" => { sqlx::query("UPDATE sessions SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1").bind(sid).execute(&mut *blocking).await.unwrap(); }
@@ -356,7 +356,7 @@ async fn profile_media_removal_persistence_and_queued_authorization() {
         sqlx::query("SELECT id FROM sessions WHERE id=$1 FOR UPDATE").bind(sid).fetch_one(&mut *blocking).await.unwrap();
         let queued_app = app.clone();
         let queued = tokio::spawn(async move { remove(&queued_app, Some(&cookie), "banner").await });
-        wait_for_lock(&pool, &application, "SELECT id FROM sessions WHERE id=$1 AND user_id=$2 FOR UPDATE").await;
+        wait_for_lock(&pool, &application, "SELECT expires_at FROM sessions WHERE id=$1 AND user_id=$2 FOR UPDATE").await;
         tokio::time::sleep(Duration::from_millis(1100)).await;
         blocking.commit().await.unwrap();
         assert_eq!(tokio::time::timeout(Duration::from_secs(5), queued).await.unwrap().unwrap().0,

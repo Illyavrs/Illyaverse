@@ -202,8 +202,28 @@ async fn issue(
     purpose: Purpose,
     requested_locale: Option<&str>,
 ) -> ApiResult<bool> {
+    issue_with_actor(state, email, user_id, purpose, requested_locale, None).await
+}
+
+async fn issue_with_actor(
+    state: &AppState,
+    email: &str,
+    user_id: Option<i64>,
+    purpose: Purpose,
+    requested_locale: Option<&str>,
+    actor: Option<&auth::User>,
+) -> ApiResult<bool> {
     let mut tx = state.db.begin().await?;
-    let queued = issue_in_tx(state, &mut tx, email, user_id, purpose, requested_locale).await?;
+    let queued = issue_in_tx(
+        state,
+        &mut tx,
+        email,
+        user_id,
+        purpose,
+        requested_locale,
+        actor,
+    )
+    .await?;
     tx.commit().await?;
     Ok(queued)
 }
@@ -215,13 +235,39 @@ async fn issue_in_tx(
     user_id: Option<i64>,
     purpose: Purpose,
     requested_locale: Option<&str>,
+    actor: Option<&auth::User>,
 ) -> ApiResult<bool> {
     let now: DateTime<Utc> = sqlx::query_scalar("SELECT clock_timestamp()")
         .fetch_one(&mut **tx)
         .await?;
-    if !permit_recipient(tx, email, now).await? {
-        return Ok(false);
+    let permitted = permit_recipient(tx, email, now).await?;
+    // Public issuance locks recipient before user. Keep that order here, even
+    // for rate denial, so no stale session commits limiter/token/job writes.
+    let actor = if let Some(actor) = actor {
+        Some(auth::mutation_actor(tx, actor, &[], auth::MutationScope::Session).await?)
+    } else {
+        None
+    };
+    let queued = if permitted {
+        queue_in_tx(state, tx, email, user_id, purpose, requested_locale, now).await?
+    } else {
+        false
+    };
+    if let Some(actor) = actor {
+        auth::ensure_mutation_actor(tx, &actor).await?;
     }
+    Ok(queued)
+}
+
+async fn queue_in_tx(
+    state: &AppState,
+    tx: &mut Transaction<'_, Postgres>,
+    email: &str,
+    user_id: Option<i64>,
+    purpose: Purpose,
+    requested_locale: Option<&str>,
+    now: DateTime<Utc>,
+) -> ApiResult<bool> {
     let row = sqlx::query("SELECT id,email,preferences,is_restricted,email_verified_at FROM users WHERE lower(email)=$1 AND ($2::bigint IS NULL OR id=$2) FOR UPDATE")
         .bind(email).bind(user_id).fetch_optional(&mut **tx).await?;
     let Some(row) = row else {
@@ -321,23 +367,22 @@ pub async fn request_reset(
 
 /// Disabled delivery is a deliberate no-op; it never produces a recovery token
 /// with nowhere to send it. Registration uses the transaction helper below.
-pub(crate) async fn enqueue_verification(state: &AppState, user_id: i64) -> ApiResult<bool> {
+pub(crate) async fn enqueue_verification(state: &AppState, actor: &auth::User) -> ApiResult<bool> {
     if !state.mail.is_enabled() {
         return Ok(false);
     }
     let email: Option<String> = sqlx::query_scalar("SELECT email FROM users WHERE id=$1")
-        .bind(user_id)
+        .bind(actor.id)
         .fetch_optional(&state.db)
         .await?;
-    let Some(email) = email else {
-        return Ok(false);
-    };
-    issue(
+    let email = email.ok_or_else(ApiError::unauthorized)?;
+    issue_with_actor(
         state,
         &normalize_email(&email)?,
-        Some(user_id),
+        Some(actor.id),
         Purpose::Verify,
         None,
+        Some(actor),
     )
     .await
 }
@@ -363,6 +408,7 @@ pub(crate) async fn enqueue_verification_in_tx(
         Some(user_id),
         Purpose::Verify,
         None,
+        None,
     )
     .await
 }
@@ -381,7 +427,7 @@ pub async fn request_verification(
         serde_json::from_slice::<EmptyRequest>(&body)
             .map_err(|_| ApiError::bad("Email verification requests do not accept any fields."))?;
     }
-    let _ = enqueue_verification(&state, user.id).await?;
+    let _ = enqueue_verification(&state, &user).await?;
     Ok(accepted())
 }
 
@@ -468,9 +514,22 @@ pub async fn confirm_reset(
     let decoded = Zeroizing::new(decode_token(&input.token)?);
     input.token.zeroize();
     let hash = token_hash(&decoded);
+    // Avoid hashing attacker-selected passwords for unknown/invalid links, and
+    // keep Argon2 outside user/token locks. The locked binding is checked again
+    // below, so this preflight cannot authorize a consumed or changed token.
+    let valid: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM account_recovery_tokens t JOIN users u ON u.id=t.user_id WHERE t.token_hash=$1 AND t.purpose=$2 AND t.consumed_at IS NULL AND t.expires_at>clock_timestamp() AND t.email_snapshot=u.email AND NOT u.is_restricted)",
+    )
+    .bind(&hash)
+    .bind(Purpose::Reset.as_str())
+    .fetch_one(&state.db)
+    .await?;
+    if !valid {
+        return Err(invalid_token());
+    }
+    let (password_hash, legacy_hash) = auth::hash_password(input.password).await?;
     let mut tx = state.db.begin().await?;
     let (token_id, user_id) = lock_token(&mut tx, &hash, Purpose::Reset).await?;
-    let (password_hash, legacy_hash) = auth::hash_password(input.password).await?;
     consume_token(&mut tx, token_id).await?;
     sqlx::query("UPDATE users SET password_hash=$2,password_md5_hash=$3 WHERE id=$1")
         .bind(user_id)
@@ -931,7 +990,7 @@ mod tests {
             let mut disabled = state.clone();
             disabled.mail = Arc::new(crate::mail_delivery::MailConfig::disabled());
             assert_eq!(request_reset(State(disabled.clone()), Json(ResetRequest { email:"recoveralice@example.invalid".into(),locale:None })).await.unwrap_err().0, StatusCode::SERVICE_UNAVAILABLE);
-            assert!(!enqueue_verification(&disabled, alice).await.unwrap());
+            assert!(!enqueue_verification(&disabled, &auth::User { id: alice, session: Uuid::new_v4(), permissions: Vec::new() }).await.unwrap());
         }).catch_unwind().await;
         db.close().await;
         let cleanup = sqlx::query(&format!("DROP SCHEMA {schema} CASCADE"))

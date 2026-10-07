@@ -67,14 +67,17 @@ async fn alter(
         return Err(ApiError::bad("Choose another player."));
     }
     let mut tx = state.db.begin().await?;
-    // All transports take this lock order, preventing races between block and friend requests.
-    let locked = sqlx::query_scalar::<_, i64>(
-        "SELECT id FROM users WHERE id=ANY($1) AND NOT is_restricted ORDER BY id FOR UPDATE",
-    )
-    .bind(vec![user.id, target])
-    .fetch_all(&mut *tx)
-    .await?;
-    if locked.len() != 2 {
+    // The shared guard retains the ascending user-row order used by native
+    // transports, and holds the live web session and permission fences too.
+    let user =
+        auth::mutation_actor(&mut tx, &user, &[target], auth::MutationScope::Permissions).await?;
+    user.require("social.manage")?;
+    let target_active: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 AND NOT is_restricted)")
+            .bind(target)
+            .fetch_one(&mut *tx)
+            .await?;
+    if !target_active {
         return Err(ApiError::missing());
     }
     if remove {
@@ -122,6 +125,7 @@ async fn alter(
         sqlx::query("INSERT INTO bancho_packet_queue(user_id,payload) SELECT $1,$2 WHERE EXISTS(SELECT 1 FROM bancho_sessions WHERE user_id=$1 AND expires_at>now())")
             .bind(player).bind(packet).execute(&mut *tx).await?;
     }
+    auth::ensure_mutation_actor(&mut tx, &user).await?;
     tx.commit().await?;
     Ok(())
 }

@@ -13,6 +13,10 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::time::Duration;
 
+#[cfg(test)]
+#[path = "community_mutation_tests.rs"]
+mod mutation_tests;
+
 async fn can_read(state: &AppState, headers: &HeaderMap, id: i64) -> ApiResult<()> {
     let required: Option<String> =
         sqlx::query_scalar("SELECT required_permission FROM channels WHERE id=$1")
@@ -89,7 +93,6 @@ pub async fn send(
 ) -> ApiResult {
     let user = auth::require(&state, &headers).await?;
     user.require("chat.send")?;
-    can_read(&state, &headers, id).await?;
     let content = input.content.trim();
     if content.is_empty()
         || content.chars().count() > 1000
@@ -99,15 +102,37 @@ pub async fn send(
     {
         return Err(ApiError::bad("Message must contain 1–1,000 characters."));
     }
+    let mut tx = state.db.begin().await?;
+    let user = auth::mutation_actor(&mut tx, &user, &[], auth::MutationScope::Permissions).await?;
+    user.require("chat.send")?;
+    // Hold the channel policy through publication. A queued permission change
+    // must be observed before sending, rather than using an earlier read check.
+    let required: Option<String> =
+        sqlx::query_scalar("SELECT required_permission FROM channels WHERE id=$1 FOR SHARE")
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or_else(ApiError::missing)?;
+    if let Some(permission) = required {
+        if matches!(
+            permission.as_str(),
+            "lazer.room" | "stable.room" | "chat.pm"
+        ) {
+            return Err(ApiError::missing());
+        }
+        user.require(&permission)?;
+    }
     let message_id: i64 = sqlx::query_scalar(
         "INSERT INTO chat_messages(channel_id,user_id,content) VALUES($1,$2,$3) RETURNING id",
     )
     .bind(id)
     .bind(user.id)
     .bind(content)
-    .fetch_one(&state.db)
+    .fetch_one(&mut *tx)
     .await?;
-    let value:Value=sqlx::query_scalar("SELECT to_jsonb(m)||jsonb_build_object('username',u.username,'avatar_url',u.avatar_url) FROM chat_messages m JOIN users u ON u.id=m.user_id WHERE m.id=$1").bind(message_id).fetch_one(&state.db).await?;
+    let value:Value=sqlx::query_scalar("SELECT to_jsonb(m)||jsonb_build_object('username',u.username,'avatar_url',u.avatar_url) FROM chat_messages m JOIN users u ON u.id=m.user_id WHERE m.id=$1").bind(message_id).fetch_one(&mut *tx).await?;
+    auth::ensure_mutation_actor(&mut tx, &user).await?;
+    tx.commit().await?;
     Ok(Json(value))
 }
 pub async fn stream(
