@@ -1,6 +1,7 @@
 'use client';
-import { useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { Suspense, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
+import { useSearchParams } from 'next/navigation';
 import useSWR, { useSWRConfig } from 'swr';
 import Link from 'next/link';
 import { LoaderCircle, ShieldCheck, Plus, Search } from 'lucide-react';
@@ -35,6 +36,49 @@ const grants = [
   'admin.view',
 ];
 type Section = 'users' | 'roles' | 'beatmaps' | 'scores' | 'audit';
+const mapStatuses = ['pending', 'ranked', 'loved', 'unranked'] as const;
+const mapModes = ['osu!', 'taiko', 'catch', 'mania'] as const;
+type MapStatus = (typeof mapStatuses)[number];
+type MapFilters = {
+  q: string;
+  mode: string;
+  source: string;
+  status: string;
+  page: number;
+};
+function readMapFilters(query: Pick<URLSearchParams, 'get'>): MapFilters {
+  const mode = query.get('mode') ?? '';
+  const source = query.get('source') ?? '';
+  const status = query.get('status') ?? '';
+  const rawPage = query.get('page') ?? '1';
+  const page = /^\d+$/.test(rawPage) ? Number(rawPage) : 1;
+  return {
+    q: (query.get('q') ?? '').trim(),
+    mode: /^[0-3]$/.test(mode) ? mode : 'all',
+    source: ['local', 'official'].includes(source) ? source : 'all',
+    status: mapStatuses.includes(status as MapStatus) ? status : 'all',
+    page: Number.isSafeInteger(page) && page > 0 && page <= 4294967295 ? page : 1,
+  };
+}
+function mapQuery(query: string, filters: MapFilters) {
+  const next = new URLSearchParams(query);
+  next.set('tab', 'beatmaps');
+  for (const name of ['q', 'mode', 'source', 'status'] as const) {
+    const value = filters[name];
+    if (value && value !== 'all') next.set(name, value);
+    else next.delete(name);
+  }
+  if (filters.page > 1) next.set('page', String(filters.page));
+  else next.delete('page');
+  return next;
+}
+function mapListKey(filters: MapFilters) {
+  const query = new URLSearchParams({ page: String(filters.page), page_size: '24' });
+  for (const name of ['q', 'mode', 'source', 'status'] as const) {
+    if (filters[name] && filters[name] !== 'all') query.set(name, filters[name]);
+  }
+  return `/admin/beatmaps?${query}`;
+}
 type RefreshAdmin = () => Promise<boolean>;
 const errorKeys = {
   builtin_role: 'errorBuiltinRole',
@@ -602,10 +646,389 @@ function RolesEditor({ changed, permissions }: { changed: RefreshAdmin; permissi
   );
 }
 
+function MapModerationRow({
+  map,
+  returnTo,
+  busy,
+  disabled,
+  save,
+}: {
+  map: Beatmap;
+  returnTo: string;
+  busy: boolean;
+  disabled: boolean;
+  save: (map: Beatmap, status: MapStatus) => Promise<boolean>;
+}) {
+  const t = useTranslations('mapModeration');
+  const c = useTranslations('common');
+  const describeError = useAdminError();
+  const [chosen, setChosen] = useState<MapStatus | null>(null);
+  const [error, setError] = useState('');
+  const status = chosen ?? map.status;
+  const detail = new URLSearchParams({
+    mode: String(map.mode),
+    variant: 'vanilla',
+    returnTo,
+  });
+  return (
+    <tr data-beatmap-id={map.id}>
+      <td>
+        <Link href={`/beatmaps/${map.id}?${detail}`} className="score-title">
+          {map.artist} — {map.title}
+          <span>{map.version}</span>
+        </Link>
+        <p className="hint admin-map-meta">
+          {map.creator} · #{map.id}
+        </p>
+      </td>
+      <td>{mapModes[map.mode] ?? '—'}</td>
+      <td>{c(map.source === 'local' ? 'local' : 'official')}</td>
+      <td>
+        <span className={`status-text status-${map.status}`}>{c(map.status)}</span>
+      </td>
+      <td>
+        <form
+          className="admin-map-actions"
+          aria-label={t('statusFor', { title: map.title })}
+          onSubmit={async (event) => {
+            event.preventDefault();
+            if (disabled || status === map.status) return;
+            setError('');
+            try {
+              if (await save(map, status as MapStatus)) setChosen(null);
+            } catch (error) {
+              setError(describeError(error));
+            }
+          }}
+        >
+          <div className="actions">
+            <select
+              className="native-select"
+              aria-label={t('statusFor', { title: map.title })}
+              aria-describedby={error ? `map-status-${map.id}-error` : undefined}
+              value={status}
+              disabled={disabled}
+              onChange={(event) => setChosen(event.target.value as MapStatus)}
+            >
+              {mapStatuses.map((value) => (
+                <option key={value} value={value}>
+                  {c(value)}
+                </option>
+              ))}
+            </select>
+            <Button
+              type="submit"
+              size="sm"
+              variant="outline"
+              disabled={disabled || status === map.status}
+            >
+              {busy && <LoaderCircle className="spin" aria-hidden="true" />}
+              {t('updateStatus')}
+            </Button>
+          </div>
+          {error && (
+            <div id={`map-status-${map.id}-error`}>
+              <Feedback error={error} />
+            </div>
+          )}
+        </form>
+      </td>
+    </tr>
+  );
+}
+
+function MapModeration() {
+  const t = useTranslations('mapModeration');
+  const a = useTranslations('admin');
+  const c = useTranslations('common');
+  const query = useSearchParams();
+  const filters = readMapFilters(query);
+  const key = mapListKey(filters);
+  const { cache } = useSWRConfig();
+  const describeError = useAdminError();
+  const [searchError, setSearchError] = useState('');
+  const [busy, setBusy] = useState<number | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [stale, setStale] = useState(false);
+  const [feedback, setFeedback] = useState('');
+  const mounted = useRef(true);
+  const saving = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  function currentRequest(requestedKey: string) {
+    if (!mounted.current) return false;
+    const current = new URLSearchParams(window.location.search);
+    const tab = current.get('tab');
+    return (!tab || tab === 'beatmaps') && mapListKey(readMapFilters(current)) === requestedKey;
+  }
+  function select(next: Partial<MapFilters>) {
+    const current = new URLSearchParams(window.location.search);
+    const params = mapQuery(current.toString(), { ...readMapFilters(current), page: 1, ...next });
+    window.history.pushState(null, '', `?${params}`);
+    setSearchError('');
+  }
+  const { data, error, isLoading, mutate } = useSWR<Page<Beatmap>>(key, fetcher, {
+    keepPreviousData: false,
+    dedupingInterval: 0,
+    onSuccess: (result, requestedKey) => {
+      // A response for a previous filter, page or tab cannot move the current view.
+      if (!currentRequest(requestedKey) || result.page_size < 1) return;
+      setStale(false);
+      const lastPage = Math.max(1, Math.ceil(result.total / result.page_size));
+      if (result.page > lastPage) {
+        const current = new URLSearchParams(window.location.search);
+        const params = mapQuery(current.toString(), { ...readMapFilters(current), page: lastPage });
+        window.history.replaceState(null, '', `?${params}`);
+      }
+    },
+  });
+  async function refreshList() {
+    setRefreshing(true);
+    try {
+      const result = await mutate();
+      // A failed SWR revalidation may resolve with previously cached records.
+      const refreshed = Boolean(result) && !cache.get(key)?.error;
+      if (currentRequest(key)) setStale(!refreshed);
+      return refreshed;
+    } catch {
+      if (currentRequest(key)) setStale(true);
+      return false;
+    } finally {
+      if (mounted.current) setRefreshing(false);
+    }
+  }
+  async function save(map: Beatmap, status: MapStatus) {
+    if (saving.current || stale) return false;
+    saving.current = true;
+    setBusy(map.id);
+    setFeedback('');
+    try {
+      await api(`/admin/beatmaps/${map.id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+      if (mounted.current) setFeedback(t('statusSaved', { title: map.title, status: c(status) }));
+      return await refreshList();
+    } finally {
+      saving.current = false;
+      if (mounted.current) setBusy(null);
+    }
+  }
+  const filtered =
+    filters.q !== '' ||
+    [filters.mode, filters.source, filters.status].some((value) => value !== 'all');
+  const returnTo = `/admin?${mapQuery(query.toString(), filters)}`;
+  return (
+    <div className="admin-map-workbench">
+      <div className="section-heading">
+        <div>
+          <h2>{t('title')}</h2>
+          <p className="hint">{t('description')}</p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={busy !== null}
+          onClick={() => select({ source: 'local', status: 'pending' })}
+        >
+          {t('pendingCommunity')}
+        </Button>
+      </div>
+      <form
+        className="map-review-filters admin-map-controls"
+        aria-label={t('search')}
+        onSubmit={(event) => {
+          event.preventDefault();
+          const values = new FormData(event.currentTarget);
+          const search = String(values.get('q') ?? '').trim();
+          if (new TextEncoder().encode(search).length > 100) {
+            setSearchError(t('searchTooLong'));
+            return;
+          }
+          select({ q: search });
+        }}
+      >
+        <div className="admin-map-search">
+          <div className="field">
+            <label htmlFor="admin-map-search">{t('search')}</label>
+            <Input
+              key={filters.q}
+              id="admin-map-search"
+              name="q"
+              type="search"
+              maxLength={100}
+              defaultValue={filters.q}
+              aria-describedby="admin-map-search-hint"
+              aria-invalid={Boolean(searchError)}
+            />
+            <p className="hint" id="admin-map-search-hint">
+              {t('searchHint')}
+            </p>
+          </div>
+          <Button type="submit" variant="outline" disabled={busy !== null}>
+            <Search aria-hidden="true" />
+            {c('search')}
+          </Button>
+        </div>
+        <div className="admin-map-filters">
+          <div className="field">
+            <label htmlFor="admin-map-mode">{c('mode')}</label>
+            <select
+              id="admin-map-mode"
+              name="mode"
+              className="native-select"
+              value={filters.mode}
+              disabled={busy !== null}
+              onChange={(event) => select({ mode: event.target.value })}
+            >
+              <option value="all">{c('all')}</option>
+              {mapModes.map((label, mode) => (
+                <option key={mode} value={mode}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="admin-map-source">{t('source')}</label>
+            <select
+              id="admin-map-source"
+              name="source"
+              className="native-select"
+              value={filters.source}
+              disabled={busy !== null}
+              onChange={(event) => select({ source: event.target.value })}
+            >
+              <option value="all">{c('all')}</option>
+              <option value="local">{c('local')}</option>
+              <option value="official">{c('official')}</option>
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="admin-map-status">{c('status')}</label>
+            <select
+              id="admin-map-status"
+              name="status"
+              className="native-select"
+              value={filters.status}
+              disabled={busy !== null}
+              onChange={(event) => select({ status: event.target.value })}
+            >
+              <option value="all">{c('all')}</option>
+              {mapStatuses.map((status) => (
+                <option key={status} value={status}>
+                  {c(status)}
+                </option>
+              ))}
+            </select>
+          </div>
+          {filtered && (
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={busy !== null}
+              onClick={() => select({ q: '', mode: 'all', source: 'all', status: 'all' })}
+            >
+              {t('clearFilters')}
+            </Button>
+          )}
+        </div>
+        <Feedback error={searchError} />
+      </form>
+      <Feedback success={feedback} />
+      {stale && (
+        <div className="admin-map-summary" role="status">
+          <p className="hint">{t('refreshFailed')}</p>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={refreshing}
+            onClick={() => refreshList()}
+          >
+            {refreshing && <LoaderCircle className="spin" aria-hidden="true" />}
+            {t('refreshRetry')}
+          </Button>
+        </div>
+      )}
+      <section
+        className="glass content-panel"
+        aria-label={t('title')}
+        aria-busy={isLoading || refreshing}
+      >
+        <div className="admin-map-summary">
+          {data && <p role="status">{t('results', { count: data.total })}</p>}
+          <p className="hint">{t('actionHint')}</p>
+        </div>
+        {isLoading ? (
+          <Loading />
+        ) : error && !data ? (
+          <>
+            <Feedback error={describeError(error)} />
+            <LoadError retry={() => mutate()} />
+          </>
+        ) : !data?.items.length ? (
+          <Empty title={t(filtered ? 'noResults' : 'empty')}>
+            <p>{t(filtered ? 'noResultsHint' : 'emptyHint')}</p>
+          </Empty>
+        ) : (
+          <>
+            <p className="hint admin-scroll-hint" id="admin-map-scroll-hint">
+              {t('scrollHint')}
+            </p>
+            <div
+              className="table-scroll admin-map-scroll"
+              role="region"
+              aria-label={a('beatmaps')}
+              aria-describedby="admin-map-scroll-hint"
+              tabIndex={0}
+            >
+              <table className="data-table admin-map-table">
+                <thead>
+                  <tr>
+                    {[a('beatmaps'), c('mode'), t('source'), c('status'), a('action')].map(
+                      (label) => (
+                        <th scope="col" key={label}>
+                          {label}
+                        </th>
+                      ),
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.items.map((map) => (
+                    <MapModerationRow
+                      key={map.id}
+                      map={map}
+                      returnTo={returnTo}
+                      busy={busy === map.id}
+                      disabled={busy !== null || stale}
+                      save={save}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </section>
+      {data && (
+        <Pagination
+          page={filters.page}
+          total={data.total}
+          pageSize={data.page_size}
+          onChange={(page) => select({ page })}
+        />
+      )}
+    </div>
+  );
+}
+
 function AdminContents() {
   const t = useTranslations('admin');
   const c = useTranslations('common');
   const f = useFormatter();
+  const query = useSearchParams();
   const { user, refresh } = useSession();
   const { mutate: refreshCache, cache } = useSWRConfig();
   const describeError = useAdminError();
@@ -618,8 +1041,9 @@ function AdminContents() {
   if (allowed('beatmaps.moderate')) sections.push('beatmaps');
   if (allowed('scores.moderate')) sections.push('scores');
   if (allowed('audit.read')) sections.push('audit');
-  const [selected, setSelected] = useState<Section | null>(null);
-  const section = selected && sections.includes(selected) ? selected : sections[0];
+  const requestedSection = query.get('tab') as Section | null;
+  const section =
+    requestedSection && sections.includes(requestedSection) ? requestedSection : sections[0];
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -629,8 +1053,8 @@ function AdminContents() {
       : section
         ? `/admin/${section}?page=${page}&page_size=24${section === 'users' && search ? `&search=${encodeURIComponent(search)}` : ''}`
         : null;
-  const { data, error, isLoading, mutate } = useSWR<Page<AdminUser | Beatmap | Score | Audit>>(
-    section === 'roles' ? null : key,
+  const { data, error, isLoading, mutate } = useSWR<Page<AdminUser | Score | Audit>>(
+    section === 'roles' || section === 'beatmaps' ? null : key,
     fetcher,
     {
       keepPreviousData: false,
@@ -640,7 +1064,7 @@ function AdminContents() {
         // Only a response for this collection and page can shrink its pagination.
         if (requestedKey !== key || result.page !== page || result.page_size < 1) return;
         const lastPage = Math.max(1, Math.ceil(result.total / result.page_size));
-        setPage((current) => current === result.page && current > lastPage ? lastPage : current);
+        setPage((current) => (current === result.page && current > lastPage ? lastPage : current));
       },
     },
   );
@@ -691,7 +1115,10 @@ function AdminContents() {
             key={s}
             aria-pressed={section === s}
             onClick={() => {
-              setSelected(s);
+              const next = new URLSearchParams(window.location.search);
+              next.set('tab', s);
+              next.delete('page');
+              window.history.pushState(null, '', `?${next}`);
               setPage(1);
               setFailed('');
               setFeedback(false);
@@ -701,7 +1128,9 @@ function AdminContents() {
           </button>
         ))}
       </div>
-      <Feedback error={failed} success={feedback ? t('saved') : ''} stale={stale} />
+      {section !== 'beatmaps' && (
+        <Feedback error={failed} success={feedback ? t('saved') : ''} stale={stale} />
+      )}
       {section === 'users' && (
         <form
           className="admin-search"
@@ -747,146 +1176,115 @@ function AdminContents() {
           </div>
         </form>
       )}
-      <section className="glass content-panel">
-        {section === 'users' && (
-          <p className="hint admin-scroll-hint" id="admin-scroll-hint">
-            {t('scrollUsers')}
-          </p>
-        )}
-        {section === 'roles' ? (
-          <RolesEditor changed={refreshAdministration} permissions={permissions} />
-        ) : !section ? (
-          <Empty title={c('noPermission')} />
-        ) : isLoading ? (
-          <Loading />
-        ) : error && !data ? (
-          <>
-            <Feedback error={describeError(error)} />
-            <LoadError retry={() => mutate()} />
-          </>
-        ) : !data?.items.length ? (
-          <Empty title={t(search && section === 'users' ? 'noSearchResults' : 'empty')} />
-        ) : (
-          <div
-            className={`table-scroll${section === 'users' ? ' admin-users-scroll' : ''}`}
-            role="region"
-            aria-label={t(section)}
-            aria-describedby={section === 'users' ? 'admin-scroll-hint' : undefined}
-            tabIndex={0}
-          >
-            <table className={`data-table${section === 'users' ? ' admin-users-table' : ''}`}>
-              <thead>
-                <tr>
-                  {(section === 'users'
-                    ? [c('username'), c('status'), t('roles'), t('action')]
-                    : section === 'beatmaps'
-                      ? [t('beatmaps'), c('status'), t('action')]
+      {section === 'beatmaps' ? (
+        <MapModeration />
+      ) : (
+        <section className="glass content-panel">
+          {section === 'users' && (
+            <p className="hint admin-scroll-hint" id="admin-scroll-hint">
+              {t('scrollUsers')}
+            </p>
+          )}
+          {section === 'roles' ? (
+            <RolesEditor changed={refreshAdministration} permissions={permissions} />
+          ) : !section ? (
+            <Empty title={c('noPermission')} />
+          ) : isLoading ? (
+            <Loading />
+          ) : error && !data ? (
+            <>
+              <Feedback error={describeError(error)} />
+              <LoadError retry={() => mutate()} />
+            </>
+          ) : !data?.items.length ? (
+            <Empty title={t(search && section === 'users' ? 'noSearchResults' : 'empty')} />
+          ) : (
+            <div
+              className={`table-scroll${section === 'users' ? ' admin-users-scroll' : ''}`}
+              role="region"
+              aria-label={t(section)}
+              aria-describedby={section === 'users' ? 'admin-scroll-hint' : undefined}
+              tabIndex={0}
+            >
+              <table className={`data-table${section === 'users' ? ' admin-users-table' : ''}`}>
+                <thead>
+                  <tr>
+                    {(section === 'users'
+                      ? [c('username'), c('status'), t('roles'), t('action')]
                       : section === 'scores'
                         ? [c('username'), c('score'), c('replay'), t('action')]
                         : [c('date'), t('actor'), t('action'), t('target')]
-                  ).map((label) => (
-                    <th key={label}>{label}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {data.items.map((item) =>
-                  section === 'users'
-                    ? (() => {
-                        const u = item as AdminUser;
-                        return (
-                          <tr key={u.id} className="admin-user-row" data-user-id={u.id}>
-                            <td>
-                              <Link href={`/players/${u.id}`} className="player-cell">
-                                <Avatar name={u.username} url={u.avatar_url} />
-                                {u.username}
-                              </Link>
-                              <p className="hint admin-player-id">
-                                #{u.id} · {u.country}
-                              </p>
-                            </td>
-                            <td>
-                              {u.is_restricted ? (
-                                <Badge variant="destructive">{t('restricted')}</Badge>
-                              ) : (
-                                <Badge variant="secondary">{t('active')}</Badge>
-                              )}
-                            </td>
-                            <td>
-                              {allowed('roles.manage') && u.can_manage_roles && roles ? (
-                                <UserRoles
+                    ).map((label) => (
+                      <th key={label}>{label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.items.map((item) =>
+                    section === 'users'
+                      ? (() => {
+                          const u = item as AdminUser;
+                          return (
+                            <tr key={u.id} className="admin-user-row" data-user-id={u.id}>
+                              <td>
+                                <Link href={`/players/${u.id}`} className="player-cell">
+                                  <Avatar name={u.username} url={u.avatar_url} />
+                                  {u.username}
+                                </Link>
+                                <p className="hint admin-player-id">
+                                  #{u.id} · {u.country}
+                                </p>
+                              </td>
+                              <td>
+                                {u.is_restricted ? (
+                                  <Badge variant="destructive">{t('restricted')}</Badge>
+                                ) : (
+                                  <Badge variant="secondary">{t('active')}</Badge>
+                                )}
+                              </td>
+                              <td>
+                                {allowed('roles.manage') && u.can_manage_roles && roles ? (
+                                  <UserRoles
+                                    player={u}
+                                    roles={roles.items}
+                                    permissions={permissions}
+                                    changed={refreshAdministration}
+                                  />
+                                ) : (
+                                  <div className="admin-user-roles">
+                                    <div className="permission-list">
+                                      {u.roles.map((role) => (
+                                        <span key={role.id}>{role.name}</span>
+                                      ))}
+                                    </div>
+                                    {allowed('roles.manage') && (
+                                      <p className="hint admin-access-hint">
+                                        {t(u.can_manage_roles ? 'rolesLoading' : 'rolesReadOnly')}
+                                      </p>
+                                    )}
+                                    {u.can_manage_roles &&
+                                      rolesError &&
+                                      allowed('roles.manage') && (
+                                        <>
+                                          <Feedback error={describeError(rolesError)} />
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => refreshRoles()}
+                                          >
+                                            {c('retry')}
+                                          </Button>
+                                        </>
+                                      )}
+                                  </div>
+                                )}
+                              </td>
+                              <td>
+                                <UserActions
                                   player={u}
-                                  roles={roles.items}
                                   permissions={permissions}
                                   changed={refreshAdministration}
                                 />
-                              ) : (
-                                <div className="admin-user-roles">
-                                  <div className="permission-list">
-                                    {u.roles.map((role) => (
-                                      <span key={role.id}>{role.name}</span>
-                                    ))}
-                                  </div>
-                                  {allowed('roles.manage') && (
-                                    <p className="hint admin-access-hint">
-                                      {t(u.can_manage_roles ? 'rolesLoading' : 'rolesReadOnly')}
-                                    </p>
-                                  )}
-                                  {u.can_manage_roles && rolesError && allowed('roles.manage') && (
-                                    <>
-                                      <Feedback error={describeError(rolesError)} />
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => refreshRoles()}
-                                      >
-                                        {c('retry')}
-                                      </Button>
-                                    </>
-                                  )}
-                                </div>
-                              )}
-                            </td>
-                            <td>
-                              <UserActions
-                                player={u}
-                                permissions={permissions}
-                                changed={refreshAdministration}
-                              />
-                            </td>
-                          </tr>
-                        );
-                      })()
-                    : section === 'beatmaps'
-                      ? (() => {
-                          const b = item as Beatmap;
-                          return (
-                            <tr key={b.id}>
-                              <td>
-                                <Link href={`/beatmaps/${b.id}`} className="score-title">
-                                  {b.title}
-                                  <span>{b.version}</span>
-                                </Link>
-                              </td>
-                              <td>{c(b.status)}</td>
-                              <td>
-                                <select
-                                  className="native-select"
-                                  aria-label={t('moderate')}
-                                  value={b.status}
-                                  disabled={busy === b.id}
-                                  onChange={(e) =>
-                                    change(`/admin/beatmaps/${b.id}`, b.id, {
-                                      status: e.target.value,
-                                    })
-                                  }
-                                >
-                                  {['pending', 'ranked', 'loved', 'unranked'].map((s) => (
-                                    <option key={s} value={s}>
-                                      {c(s)}
-                                    </option>
-                                  ))}
-                                </select>
                               </td>
                             </tr>
                           );
@@ -963,13 +1361,14 @@ function AdminContents() {
                               </tr>
                             );
                           })(),
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-      {section !== 'roles' && data && (
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+      {section !== 'roles' && section !== 'beatmaps' && data && (
         <Pagination page={page} total={data.total} pageSize={data.page_size} onChange={setPage} />
       )}
     </>
@@ -981,7 +1380,9 @@ export function AdminPage() {
     <div className="page-container">
       <PageHeading title={t('title')} description={t('subtitle')} />
       <Protected permission="admin.view">
-        <AdminContents />
+        <Suspense fallback={<Loading />}>
+          <AdminContents />
+        </Suspense>
       </Protected>
     </div>
   );

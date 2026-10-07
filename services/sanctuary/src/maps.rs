@@ -245,9 +245,9 @@ async fn list_inner(state: &AppState, filter: Filter) -> ApiResult {
     }
     .bounds();
     let q = filter.q.map(|q| format!("%{q}%"));
-    let total:i64=sqlx::query_scalar("SELECT count(*) FROM beatmaps WHERE ($1::text IS NULL OR title ILIKE $1 OR artist ILIKE $1 OR creator ILIKE $1) AND ($2::smallint IS NULL OR mode=$2) AND ($3::text IS NULL OR source=$3) AND ($4::text IS NULL OR status=$4)").bind(&q).bind(filter.mode).bind(&filter.source).bind(&filter.status).fetch_one(&state.db).await?;
+    let total:i64=sqlx::query_scalar("SELECT count(*) FROM beatmaps WHERE ($1::text IS NULL OR title ILIKE $1 OR artist ILIKE $1 OR creator ILIKE $1 OR version ILIKE $1) AND ($2::smallint IS NULL OR mode=$2) AND ($3::text IS NULL OR source=$3) AND ($4::text IS NULL OR status=$4)").bind(&q).bind(filter.mode).bind(&filter.source).bind(&filter.status).fetch_one(&state.db).await?;
     let query = format!(
-        "SELECT {PUBLIC_MAP} FROM beatmaps b WHERE ($1::text IS NULL OR title ILIKE $1 OR artist ILIKE $1 OR creator ILIKE $1) AND ($2::smallint IS NULL OR mode=$2) AND ($3::text IS NULL OR source=$3) AND ($4::text IS NULL OR status=$4) ORDER BY b.created_at DESC,b.id DESC LIMIT $5 OFFSET $6"
+        "SELECT {PUBLIC_MAP} FROM beatmaps b WHERE ($1::text IS NULL OR title ILIKE $1 OR artist ILIKE $1 OR creator ILIKE $1 OR version ILIKE $1) AND ($2::smallint IS NULL OR mode=$2) AND ($3::text IS NULL OR source=$3) AND ($4::text IS NULL OR status=$4) ORDER BY b.created_at DESC,b.id DESC LIMIT $5 OFFSET $6"
     );
     let items = sqlx::query_scalar::<_, Value>(&query)
         .bind(q)

@@ -34,7 +34,7 @@ import type {
   BeatmapDifficulty,
   BeatmapUploadResult,
   Page,
-  Score,
+  ScoreBoard,
   ScoreVariant,
 } from '@/lib/types';
 import { ScoreTable } from './scores';
@@ -261,10 +261,12 @@ export function BeatmapsPage() {
   const q = useDeferredValue(search);
   const [mode, setMode] = useState('all');
   const [status, setStatus] = useState('all');
+  const [source, setSource] = useState('all');
   const [page, setPage] = useState(1);
   const query = new URLSearchParams({ page: String(page), page_size: '24', q });
   if (mode !== 'all') query.set('mode', mode);
   if (status !== 'all') query.set('status', status);
+  if (source !== 'all') query.set('source', source);
   const { data, error, isLoading, mutate } = useSWR<Page<Beatmap>>(`/beatmaps?${query}`, fetcher);
   return (
     <div className="page-container">
@@ -311,6 +313,22 @@ export function BeatmapsPage() {
             </option>
           ))}
         </select>
+        <select
+          className="native-select"
+          name="source"
+          value={source}
+          aria-label={t('source')}
+          onChange={(event) => {
+            setSource(event.target.value);
+            setPage(1);
+          }}
+        >
+          {['all', 'official', 'local'].map((value) => (
+            <option value={value} key={value}>
+              {c(value)}
+            </option>
+          ))}
+        </select>
         <GameMode
           value={mode}
           onChange={(v) => {
@@ -336,9 +354,28 @@ export function BeatmapsPage() {
   );
 }
 
+function boundedReviewSearch(title: string) {
+  let value = '';
+  let bytes = 0;
+  const encoder = new TextEncoder();
+  for (const character of title) {
+    const length = encoder.encode(character).length;
+    if (bytes + length > 100) break;
+    value += character;
+    bytes += length;
+  }
+  return value;
+}
+
 export function BeatmapPage({ id }: { id: number }) {
   const t = useTranslations('maps');
   const c = useTranslations('common');
+  const review = useTranslations('mapModeration');
+  const { user } = useSession();
+  const canReview =
+    !!user &&
+    hasPermission(user.permissions, 'admin.view') &&
+    hasPermission(user.permissions, 'beatmaps.moderate');
   const { data: map, error, isLoading, mutate } = useSWR<Beatmap>(`/beatmaps/${id}`, fetcher);
   const search = useSearchParams();
   const { mode: requestedMode, select } = useScoreSelection(map?.mode ?? 0);
@@ -346,6 +383,21 @@ export function BeatmapPage({ id }: { id: number }) {
   const variant: ScoreVariant =
     mode !== '3' && search.get('variant') === 'relax' ? 'relax' : 'vanilla';
   const selection = new URLSearchParams({ mode, variant });
+  const requestedReturn = search.get('returnTo');
+  let reviewReturn: string | null = null;
+  if (canReview && requestedReturn) {
+    try {
+      const url = new URL(requestedReturn, 'https://illya.invalid');
+      if (
+        url.origin === 'https://illya.invalid' &&
+        url.pathname === '/admin' &&
+        url.searchParams.get('tab') === 'beatmaps'
+      )
+        reviewReturn = `${url.pathname}${url.search}`;
+    } catch {
+      /* Keep the normal catalogue link for malformed return targets. */
+    }
+  }
   useEffect(() => {
     if (!map) return;
     const invalidMode = search.has('mode') && search.get('mode') !== mode;
@@ -362,14 +414,14 @@ export function BeatmapPage({ id }: { id: number }) {
     data: scores,
     error: scoreError,
     mutate: reloadScores,
-  } = useSWR<Page<Score>>(
+  } = useSWR<ScoreBoard>(
     map ? `/beatmaps/${id}/scores?${selection}&page=${page}&page_size=24` : null,
     fetcher,
   );
   return (
     <div className="page-container">
-      <Link href="/beatmaps" className="back-link">
-        {t('back')}
+      <Link href={reviewReturn ?? '/beatmaps'} className="back-link">
+        {reviewReturn ? review('backToQueue') : t('back')}
       </Link>
       {isLoading ? (
         <Loading />
@@ -395,7 +447,21 @@ export function BeatmapPage({ id }: { id: number }) {
                   </Badge>
                 </div>
               </div>
-              <MapDownloads map={map} />
+              <div className="map-detail-actions">
+                <MapDownloads map={map} />
+                {canReview && (
+                  <Button asChild variant="outline">
+                    <Link
+                      href={
+                        reviewReturn ??
+                        `/admin?${new URLSearchParams({ tab: 'beatmaps', q: boundedReviewSearch(map.title), mode: String(map.mode), source: map.source })}`
+                      }
+                    >
+                      {review('manageMap')}
+                    </Link>
+                  </Button>
+                )}
+              </div>
             </section>
             <dl className="map-detail-stats glass">
               {[
@@ -450,7 +516,7 @@ export function BeatmapPage({ id }: { id: number }) {
                 <Loading />
               ) : scores.items.length ? (
                 <>
-                  <ScoreTable scores={scores.items} leaderboard />
+                  <ScoreTable scores={scores.items} leaderboard orderedBy={scores.ordered_by} />
                   <Pagination page={page} total={scores.total} onChange={setPage} />
                 </>
               ) : (

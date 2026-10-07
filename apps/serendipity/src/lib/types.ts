@@ -1,5 +1,11 @@
 export type Page<T> = { items: T[]; total: number; page: number; page_size: number };
 export type ScoreVariant = 'vanilla' | 'relax';
+export type ScoreBoardOrder = 'standardised_score' | 'pp';
+export type ScoreBoard = Page<Score> & {
+  mode: number;
+  score_variant: ScoreVariant;
+  ordered_by: ScoreBoardOrder;
+};
 export type User = {
   id: number;
   username: string;
@@ -103,6 +109,7 @@ export type Score = {
   created_at: string;
   has_replay: boolean;
   replay_complete?: boolean | null;
+  position?: number;
 };
 export type Channel = {
   id: number;

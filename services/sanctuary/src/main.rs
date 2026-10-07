@@ -14,6 +14,8 @@ mod mail_delivery;
 mod mail_queue_tests;
 #[cfg(test)]
 mod map_package_migration_tests;
+#[cfg(test)]
+mod map_search_tests;
 mod maps;
 #[cfg(test)]
 mod native_map_tests;
