@@ -1,0 +1,13 @@
+# Reversible beatmap withdrawal — implementation pending
+
+Current ranking status is independent of visibility: pending, ranked, loved and unranked maps remain public. A complete staff withdrawal action requires a durable state at canonical native-set identity, including official sets whose members have not all been cached. This contract is a source-grounded plan, not an implemented or verified capability.
+
+Withdrawal must suppress public and native search/lookup/download, new score admission, playlist selection and new rounds while retaining immutable packages, files, hashes, IDs, aliases, existing scores, review decisions, replays, tokens, frozen rounds and audit history. Existing result/replay/history access continues under its normal privacy rules. Active ranked totals and best-play collections exclude withdrawn sets; restoration restores the contribution of retained qualified results.
+
+Saved score retries remain idempotent. New score publication rechecks withdrawal inside its transaction; a gateway preflight is insufficient. Incomplete tokens/receipts stay retained, with publication denied until a valid restoration. A normal import, exact package retry or cached official response must never restore withdrawn content implicitly.
+
+Identity resolvers must distinguish retained-and-withdrawn from absent; treating withdrawal as a miss would permit official rediscovery. Check durable state before cache hits/upstream requests, after waits and responses, and before publication/response. Share a consistent resource-lock order with import and score admission, audit changes and enqueue native set update events atomically. Cache invalidation is supplemental to the durable authority.
+
+Implementation crosses Sanctuary maps/official archive/official metadata caches/score admission/ranking; Resonance native identity and archive helpers/stable web/lazer discovery and solo submission/room playlist-round-score processing; public and administrative website surfaces; and a new migration. Existing migration files and immutable identities must stay unchanged. Staff retained-content queries need an explicit history mode separate from active public discovery.
+
+Verification must cover every ranking status, both local and official namespaces, cached IDs/hashes/filename selectors and archive fallbacks, warm/in-flight metadata caches, exact saved versus unsaved retries, room tokens and receipts, retained replay/history, removal/restoration of rank contribution, and atomic native update events. Relevant fixtures include map mutation/package/search/native-map, official archive/metadata, score mutation and room-score suites. Partial public filtering alone cannot establish this capability.

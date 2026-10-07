@@ -24,6 +24,8 @@ mod official_archive_tests;
 #[cfg(test)]
 mod official_set_metadata_tests;
 #[cfg(test)]
+mod profile_best_tests;
+#[cfg(test)]
 mod profile_media_tests;
 #[cfg(test)]
 mod profile_presentation_tests;
@@ -376,6 +378,7 @@ fn router(state: AppState) -> Router {
                 .merge(delete(auth::remove_profile_media).layer(DefaultBodyLimit::max(1024))),
         )
         .route("/api/v1/users/{id}", get(auth::user_profile))
+        .route("/api/v1/users/{id}/scores/best", get(scores::best_for_user))
         .route("/api/v1/beatmaps", get(maps::list))
         .route(
             "/api/v1/beatmaps/upload",

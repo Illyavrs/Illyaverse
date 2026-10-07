@@ -6,6 +6,12 @@ export type ScoreBoard = Page<Score> & {
   score_variant: ScoreVariant;
   ordered_by: ScoreBoardOrder;
 };
+export type BestScorePage = Page<Score> & {
+  collection: 'best';
+  ordered_by: 'pp';
+  mode: number;
+  score_variant: ScoreVariant;
+};
 export type User = {
   id: number;
   username: string;
@@ -110,6 +116,8 @@ export type Score = {
   has_replay: boolean;
   replay_complete?: boolean | null;
   position?: number;
+  pp_weight?: number;
+  weighted_pp?: number;
 };
 export type Channel = {
   id: number;

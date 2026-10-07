@@ -1645,6 +1645,27 @@ svg {
   margin: 4px 0 0;
   color: var(--readable-accent);
 }
+.profile-scores-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.profile-score-collection {
+  flex: 0 1 auto;
+}
+.profile-scores-description {
+  max-width: 65ch;
+  margin: -12px 0 20px;
+}
+.profile-best-score-table .score-weight,
+.profile-best-score-table .score-weighted-pp {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.profile-best-score-table .score-weight {
+  color: var(--secondary-text);
+}
 .chat-layout {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
@@ -2985,6 +3006,9 @@ input[type='checkbox'] {
   }
   .profile-scores-header .mode-control button {
     white-space: nowrap;
+  }
+  .profile-score-collection button {
+    flex: 1;
   }
   .auth-layout {
     padding: 0 16px;

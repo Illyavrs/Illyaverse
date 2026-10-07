@@ -56,7 +56,10 @@ async function fixture(page: Page, locale = 'zh-TW', mode = 'dark') {
       );
       return route.fulfill({ json: publicUser });
     }
-    if (url.pathname === '/api/v1/scores')
+    if (
+      url.pathname === '/api/v1/scores' ||
+      url.pathname === `/api/v1/users/${user.id}/scores/best`
+    )
       return route.fulfill({ json: { items: [], total: 0, page: 1, page_size: 24 } });
     if (url.pathname === '/api/v1/me/profile' && request.method() === 'PATCH') {
       const body = request.postDataJSON() as Record<string, unknown>;
@@ -102,11 +105,17 @@ async function capture(page: Page, name: string) {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   });
   await page.mouse.move(0, 0);
-  await expect.poll(() => page.evaluate(async () => {
-    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-    return window.scrollY;
-  })).toBe(0);
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        );
+        return window.scrollY;
+      }),
+    )
+    .toBe(0);
   await page.screenshot({
     path: `../../.impeccable/review/profile-presentation-${name}.png`,
     fullPage: true,

@@ -1,0 +1,64 @@
+{
+  "webImage": "sha256:7cb7312fa5c4b2e0c64e0089ef35b1afaf4eeceadbeab72708a619c58eee8659",
+  "sanctuaryImage": "sha256:9ca459f82618a975fe97e35e6c7880e198d701a73f073bfcefb3fbd6d8b601a6",
+  "rootInspectionRound": 2,
+  "browserCasesPassed": 8,
+  "browserCasesFailed": 0,
+  "fixtureType": "synthetic intercepted API requests; no retained community accounts, images or gameplay",
+  "captures": [
+    {
+      "path": ".impeccable/review/profile-best-desktop-dark-zh-best.png",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "image": {
+        "width": 1440,
+        "height": 1398
+      },
+      "locale": "zh-TW",
+      "theme": "dark",
+      "fullPage": true,
+      "documentTopVisible": true,
+      "fontsReady": true,
+      "sha256": "556c669f1273233f258245ef4503b0a1dca3bb2865970f60a864628c8f54c287",
+      "modifiedAt": "2026-10-07T21:38:44.223Z"
+    },
+    {
+      "path": ".impeccable/review/profile-best-mobile-light-en-error.png",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "image": {
+        "width": 390,
+        "height": 1583
+      },
+      "locale": "en",
+      "theme": "light",
+      "fullPage": true,
+      "documentTopVisible": true,
+      "fontsReady": true,
+      "sha256": "a3e74a2565097589bce5379cd998acda4719c33932a5367a134968996fd4dc78",
+      "modifiedAt": "2026-10-07T21:38:44.895Z"
+    },
+    {
+      "path": ".impeccable/review/profile-best-mobile-dark-ja-empty.png",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "image": {
+        "width": 390,
+        "height": 1583
+      },
+      "locale": "ja",
+      "theme": "dark",
+      "fullPage": true,
+      "documentTopVisible": true,
+      "fontsReady": true,
+      "sha256": "1f6ad96f1d422724e2ac4de6535291a4d6dba72eb59a49e0862065e8273122fd",
+      "modifiedAt": "2026-10-07T21:38:45.780Z"
+    }
+  ]
+}

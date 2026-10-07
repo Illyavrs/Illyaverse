@@ -10,22 +10,36 @@ export function ScoreTable({
   scores,
   leaderboard = false,
   orderedBy,
+  profileBest = false,
 }: {
   scores: Score[];
   leaderboard?: boolean;
   orderedBy?: ScoreBoardOrder;
+  profileBest?: boolean;
 }) {
   const c = useTranslations('common');
   const p = useTranslations('profile');
   const t = useTranslations('scores');
   const f = useFormatter();
   return (
-    <div className="table-scroll">
-      <table className="data-table score-table">
+    <div
+      className="table-scroll"
+      tabIndex={profileBest ? 0 : undefined}
+      role={profileBest ? 'region' : undefined}
+      aria-label={profileBest ? p('best') : undefined}
+    >
+      <table className={`data-table score-table${profileBest ? ' profile-best-score-table' : ''}`}>
         <thead>
           <tr>
-            {leaderboard && <th scope="col">{t('rankPosition')}</th>}
+            {(leaderboard || profileBest) && <th scope="col">{t('rankPosition')}</th>}
             <th>{c('score')}</th>
+            {profileBest && (
+              <>
+                <th scope="col">pp</th>
+                <th scope="col">{p('ppWeight')}</th>
+                <th scope="col">{p('weightedPp')}</th>
+              </>
+            )}
             {leaderboard && (
               <th scope="col">
                 {orderedBy === 'pp' ? t('comparisonPp') : t('comparisonStandardised')}
@@ -34,7 +48,7 @@ export function ScoreTable({
             <th scope="col">{c('mods')}</th>
             <th>{c('accuracy')}</th>
             <th>{c('combo')}</th>
-            {(!leaderboard || orderedBy !== 'pp') && <th>pp</th>}
+            {!profileBest && (!leaderboard || orderedBy !== 'pp') && <th>pp</th>}
             <th>{p('verification')}</th>
             <th>{c('replay')}</th>
           </tr>
@@ -50,7 +64,7 @@ export function ScoreTable({
             const verificationKey = scoreVerificationKey(score.verification);
             return (
               <tr key={score.id}>
-                {leaderboard && (
+                {(leaderboard || profileBest) && (
                   <td className="score-board-position">
                     {typeof score.position === 'number' ? f.number(score.position) : '—'}
                   </td>
@@ -77,6 +91,30 @@ export function ScoreTable({
                     <small>{f.dateTime(new Date(score.created_at), { dateStyle: 'medium' })}</small>
                   </div>
                 </td>
+                {profileBest && (
+                  <>
+                    <td className="pp-value">
+                      {f.number(score.pp, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td className="score-weight">
+                      {typeof score.pp_weight === 'number'
+                        ? f.number(score.pp_weight, {
+                            style: 'percent',
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })
+                        : '—'}
+                    </td>
+                    <td className="pp-value score-weighted-pp">
+                      {typeof score.weighted_pp === 'number'
+                        ? f.number(score.weighted_pp, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })
+                        : '—'}
+                    </td>
+                  </>
+                )}
                 {leaderboard && (
                   <td className="score-board-comparison">
                     {orderedBy === 'pp'
@@ -87,9 +125,17 @@ export function ScoreTable({
                   </td>
                 )}
                 <td>{modText}</td>
-                <td>{score.accuracy.toFixed(2)}%</td>
-                <td>{score.max_combo}x</td>
-                {(!leaderboard || orderedBy !== 'pp') && (
+                <td>
+                  {profileBest
+                    ? f.number(score.accuracy / 100, {
+                        style: 'percent',
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })
+                    : `${score.accuracy.toFixed(2)}%`}
+                </td>
+                <td>{profileBest ? f.number(score.max_combo) : score.max_combo}x</td>
+                {!profileBest && (!leaderboard || orderedBy !== 'pp') && (
                   <td className="pp-value">{score.pp.toFixed(2)}</td>
                 )}
                 <td>

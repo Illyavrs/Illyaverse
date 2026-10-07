@@ -293,7 +293,14 @@
     "scoreLegacyEstimated": "Estimated from a stable score summary. The order of judgments cannot be recovered, so this is not an exact lazer gameplay score.",
     "scoreLegacyScoreV2": "Preserves the stable ScoreV2 score and converts its Classic display value.",
     "scoreScaleUnavailable": "This result has insufficient conversion context and is excluded from cross-client score comparisons.",
-    "globalRank": "Global rank"
+    "globalRank": "Global rank",
+    "scoreView": "Score collection",
+    "bestHint": "One approved, passed, pp-eligible performance per ranked map, ordered by pp. Weights and contributions are supplied by the server.",
+    "recentHint": "Newest results first. Pending or rejected results are shown only when your account may view them.",
+    "emptyBestTitle": "No qualifying best performances yet.",
+    "emptyBestDescription": "Approved, passed and pp-eligible results on ranked maps appear here.",
+    "ppWeight": "Weight",
+    "weightedPp": "Weighted pp"
   },
   "settings": {
     "title": "Settings",

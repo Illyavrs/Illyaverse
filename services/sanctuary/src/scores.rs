@@ -24,6 +24,77 @@ pub struct ScoreQuery {
     variant: Option<ScoreVariant>,
     verification: Option<String>,
 }
+
+#[derive(Deserialize)]
+pub struct BestForUserQuery {
+    page: Option<u32>,
+    page_size: Option<u32>,
+    mode: Option<i16>,
+    variant: Option<ScoreVariant>,
+}
+
+pub async fn best_for_user(
+    State(state): State<AppState>,
+    Path(user_id): Path<i64>,
+    Query(query): Query<BestForUserQuery>,
+) -> ApiResult {
+    let mode = query.mode.unwrap_or(0);
+    let variant = query.variant.unwrap_or_default();
+    validate_partition(mode, variant)?;
+    let (p, size, offset) = Pagination {
+        page: query.page,
+        page_size: query.page_size,
+    }
+    .bounds();
+
+    // Visibility, qualification, the deduplicated count and globally weighted
+    // positions all use one database snapshot, including for authenticated viewers.
+    let mut response = sqlx::query_scalar::<_, Value>(
+        "WITH public_player AS (
+            SELECT id,username FROM users WHERE id=$1 AND NOT is_restricted
+        ),eligible AS (
+            SELECT s.*,u.username,b.title,b.version
+            FROM scores s JOIN public_player u ON u.id=s.user_id
+            JOIN beatmaps b ON b.id=s.beatmap_id
+            WHERE s.mode=$2 AND s.score_variant=$3 AND s.verification='verified'
+                AND s.passed AND b.status='ranked' AND s.pp_eligible
+        ),best AS (
+            SELECT DISTINCT ON(beatmap_id) * FROM eligible
+            ORDER BY beatmap_id,pp DESC,accuracy DESC,max_combo DESC,id
+        ),positioned AS (
+            SELECT *,row_number() OVER(ORDER BY pp DESC,beatmap_id,id) position FROM best
+        ),weighted AS (
+            SELECT *,power(0.95,position-1) pp_weight,
+                pp*power(0.95,position-1) weighted_pp FROM positioned
+        ),paged AS (
+            SELECT * FROM weighted ORDER BY position LIMIT $4 OFFSET $5
+        )
+        SELECT jsonb_build_object(
+            'total',(SELECT count(*) FROM best),
+            'items',COALESCE((SELECT jsonb_agg(
+                to_jsonb(p)-'replay_path'-'ingestion_key'||jsonb_build_object(
+                    'has_replay',p.replay_path IS NOT NULL,
+                    'accuracy_source',CASE WHEN p.client='lazer' THEN 'client_reported' ELSE 'judgements' END
+                ) ORDER BY p.position) FROM paged p),'[]'::jsonb)
+        ) FROM public_player",
+    )
+    .bind(user_id)
+    .bind(mode)
+    .bind(variant.as_str())
+    .bind(size)
+    .bind(offset)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(ApiError::missing)?;
+    response["page"] = json!(p);
+    response["page_size"] = json!(size);
+    response["mode"] = json!(mode);
+    response["score_variant"] = json!(variant);
+    response["collection"] = json!("best");
+    response["ordered_by"] = json!("pp");
+    Ok(Json(response))
+}
+
 pub async fn list(
     State(state): State<AppState>,
     headers: HeaderMap,

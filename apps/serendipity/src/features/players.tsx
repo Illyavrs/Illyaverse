@@ -1,8 +1,9 @@
 'use client';
-import { useState, type CSSProperties } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import Link from 'next/link';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { useFormatter, useTranslations } from 'next-intl';
-import useSWR from 'swr';
+import useSWR, { unstable_serialize, useSWRConfig } from 'swr';
 import { Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -16,8 +17,8 @@ import {
   Avatar,
 } from '@/components/common';
 import { useSession } from '@/components/providers';
-import { fetcher } from '@/lib/api';
-import type { Leader, Page, User, Score } from '@/lib/types';
+import { ApiError, fetcher } from '@/lib/api';
+import type { BestScorePage, Leader, Page, User, Score, ScoreVariant } from '@/lib/types';
 import { ScoreTable } from './scores';
 import { RelationshipActions } from './social';
 import { ScoreVariantControl, useScoreSelection } from '@/components/score-selection';
@@ -143,31 +144,163 @@ export function RankingsPage() {
     </div>
   );
 }
+type ProfileScoreView = 'best' | 'recent';
+type ProfileScoreSelection = {
+  mode: string;
+  variant: ScoreVariant;
+  view: ProfileScoreView;
+  page: number;
+};
+
+function readProfileScoreSelection(query: Pick<URLSearchParams, 'get'>): ProfileScoreSelection {
+  const rawMode = query.get('mode') ?? '0';
+  const mode = /^[0-3]$/.test(rawMode) ? rawMode : '0';
+  const rawPage = query.get('page') ?? '1';
+  const page = /^\d+$/.test(rawPage) ? Number(rawPage) : 1;
+  return {
+    mode,
+    variant: mode !== '3' && query.get('variant') === 'relax' ? 'relax' : 'vanilla',
+    view: query.get('score_view') === 'recent' ? 'recent' : 'best',
+    page: Number.isSafeInteger(page) ? Math.max(1, Math.min(page, 1_000_000)) : 1,
+  };
+}
+
+function updateProfileScoreSelection(change: Partial<ProfileScoreSelection>, replace = false) {
+  // Read live URL state so sequential collection/mode/variant changes compose before React renders.
+  const query = new URLSearchParams(window.location.search);
+  const next = { ...readProfileScoreSelection(query), ...change };
+  if (next.mode === '3') next.variant = 'vanilla';
+  next.page = Number.isSafeInteger(next.page) ? Math.max(1, Math.min(next.page, 1_000_000)) : 1;
+  if (change.mode !== undefined || change.variant !== undefined || change.view !== undefined)
+    next.page = 1;
+  query.set('mode', next.mode);
+  query.set('variant', next.variant);
+  if (next.view === 'recent') query.set('score_view', 'recent');
+  else query.delete('score_view');
+  if (next.page > 1) query.set('page', String(next.page));
+  else query.delete('page');
+  const url = `${window.location.pathname}?${query}${window.location.hash}`;
+  if (replace) window.history.replaceState(null, '', url);
+  else window.history.pushState(null, '', url);
+}
+
+export function ProfileScoreCollectionControl({
+  value,
+  onChange,
+}: {
+  value: ProfileScoreView;
+  onChange: (value: ProfileScoreView) => void;
+}) {
+  const t = useTranslations('profile');
+  return (
+    <div className="mode-control profile-score-collection" role="group" aria-label={t('scoreView')}>
+      {(['best', 'recent'] as const).map((view) => (
+        <button
+          key={view}
+          type="button"
+          aria-pressed={value === view}
+          onClick={() => onChange(view)}
+        >
+          {t(view === 'best' ? 'best' : 'scores')}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function isProfileAccessError(error: unknown): error is ApiError {
+  return error instanceof ApiError && [401, 403, 404].includes(error.status);
+}
+
 export function PlayerPage({ id }: { id: number }) {
   const t = useTranslations('profile');
   const c = useTranslations('common');
   const f = useFormatter();
-  const { user } = useSession();
-  const { mode, variant, select, selection } = useScoreSelection();
-  const [page, setPage] = useState(1);
+  const { user, loading: sessionLoading } = useSession();
+  const { mutate: mutateCache } = useSWRConfig();
+  const search = useSearchParams();
+  const pathname = usePathname();
+  const { mode, variant, view, page } = readProfileScoreSelection(search);
+  const selection = new URLSearchParams({ mode, variant });
+  const profileKey = `/users/${id}?${selection}`;
+  const [accessFailures, setAccessFailures] = useState<Record<string, ApiError>>({});
+  function clearAccessFailure(key: string) {
+    setAccessFailures((current) => {
+      if (!current[key]) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  }
+  function handleAccessError(requestError: unknown, requestedKey: string) {
+    if (!isProfileAccessError(requestError)) return;
+    setAccessFailures((current) => ({ ...current, [requestedKey]: requestError }));
+    // Purge the precise failed key, even if a newer profile selection is already active.
+    void mutateCache(requestedKey, undefined, { revalidate: false });
+  }
   const {
     data: player,
-    error,
+    error: playerError,
     isLoading,
     mutate,
-  } = useSWR<User>(`/users/${id}?${selection}`, fetcher);
+  } = useSWR<User>(profileKey, fetcher, {
+    keepPreviousData: false,
+    shouldRetryOnError: (requestError) => !isProfileAccessError(requestError),
+    onError: handleAccessError,
+    onSuccess: (_data, requestedKey) => clearAccessFailure(requestedKey),
+  });
+  const error = playerError ?? accessFailures[profileKey];
   const query = new URLSearchParams({
-    user_id: String(id),
     mode,
     variant,
     page: String(page),
     page_size: '24',
   });
+  const bestPath = `/users/${id}/scores/best?${query}`;
+  query.set('user_id', String(id));
+  const recentPath = `/scores?${query}`;
+  const scoreKey =
+    player?.id === id && !error && !(view === 'recent' && sessionLoading)
+      ? view === 'best'
+        ? bestPath
+        : ([recentPath, user?.id ?? 'guest'] as const)
+      : null;
+  const serializedScoreKey = scoreKey ? unstable_serialize(scoreKey) : '';
   const {
     data: scores,
-    error: scoreError,
+    error: scoreRequestError,
     mutate: reloadScores,
-  } = useSWR<Page<Score>>(player ? `/scores?${query}` : null, fetcher);
+  } = useSWR<BestScorePage | Page<Score>>(
+    scoreKey,
+    (key: string | readonly [string, number | string]) =>
+      fetcher<BestScorePage | Page<Score>>(typeof key === 'string' ? key : key[0]),
+    {
+      keepPreviousData: false,
+      // Returning to a private recent collection must recheck access immediately.
+      dedupingInterval: 0,
+      shouldRetryOnError: (requestError) => !isProfileAccessError(requestError),
+      onError: handleAccessError,
+      onSuccess: (_data, requestedKey) => clearAccessFailure(requestedKey),
+    },
+  );
+  const scoreError = scoreRequestError ?? accessFailures[serializedScoreKey];
+  useEffect(() => {
+    const live = readProfileScoreSelection(new URLSearchParams(window.location.search));
+    if (
+      window.location.pathname !== pathname ||
+      live.mode !== mode ||
+      live.variant !== variant ||
+      live.view !== view ||
+      live.page !== page
+    )
+      return;
+    const lastPage =
+      scores && !scoreError ? Math.max(1, Math.ceil(scores.total / scores.page_size)) : page;
+    const boundedPage = Math.min(page, lastPage);
+    const rawPage = search.get('page');
+    if (boundedPage !== page || (rawPage !== null && rawPage !== String(boundedPage)))
+      updateProfileScoreSelection({ page: boundedPage }, true);
+  }, [pathname, mode, variant, view, page, search, scores, scoreError]);
   return (
     <div
       className={`page-container profile-page${player ? ' profile-accent-scope' : ''}`}
@@ -220,18 +353,12 @@ export function PlayerPage({ id }: { id: number }) {
             <div className="filter-bar glass">
               <GameMode
                 value={mode}
-                onChange={(v) => {
-                  select(v, variant);
-                  setPage(1);
-                }}
+                onChange={(nextMode) => updateProfileScoreSelection({ mode: nextMode })}
               />
               <ScoreVariantControl
                 mode={mode}
                 value={variant}
-                onChange={(v) => {
-                  select(mode, v);
-                  setPage(1);
-                }}
+                onChange={(nextVariant) => updateProfileScoreSelection({ variant: nextVariant })}
               />
               {mode === '3' && <p className="hint">{c('relaxUnsupported')}</p>}
             </div>
@@ -268,20 +395,39 @@ export function PlayerPage({ id }: { id: number }) {
               </aside>
               <section className="content-panel glass">
                 <header className="section-heading profile-scores-header">
-                  <h2>{t('scores')}</h2>
-                  <Badge variant="secondary">{c(variant)}</Badge>
+                  <div className="profile-scores-heading">
+                    <h2>{t(view === 'best' ? 'best' : 'scores')}</h2>
+                    <Badge variant="secondary">{c(variant)}</Badge>
+                  </div>
+                  <ProfileScoreCollectionControl
+                    value={view}
+                    onChange={(nextView) => updateProfileScoreSelection({ view: nextView })}
+                  />
                 </header>
-                {scoreError ? (
+                <p className="hint profile-scores-description">
+                  {t(view === 'best' ? 'bestHint' : 'recentHint')}
+                </p>
+                {view === 'recent' && sessionLoading ? (
+                  <Loading />
+                ) : scoreError ? (
                   <LoadError retry={() => reloadScores()} />
                 ) : !scores ? (
                   <Loading />
                 ) : scores.items.length ? (
                   <>
-                    <ScoreTable scores={scores.items} />
-                    <Pagination page={page} total={scores.total} onChange={setPage} />
+                    <ScoreTable scores={scores.items} profileBest={view === 'best'} />
+                    <Pagination
+                      page={page}
+                      total={scores.total}
+                      pageSize={scores.page_size}
+                      onChange={(nextPage) => updateProfileScoreSelection({ page: nextPage })}
+                    />
                   </>
                 ) : (
-                  <Empty title={t('emptyScores')} />
+                  <Empty
+                    title={t(view === 'best' ? 'emptyBestTitle' : 'emptyScores')}
+                    description={view === 'best' ? t('emptyBestDescription') : undefined}
+                  />
                 )}
               </section>
             </div>
