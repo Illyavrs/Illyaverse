@@ -148,10 +148,12 @@ export function GameMode({
   value,
   onChange,
   all = false,
+  allowedModes,
 }: {
   value: string;
   onChange: (value: string) => void;
   all?: boolean;
+  allowedModes?: readonly string[];
 }) {
   const t = useTranslations('common');
   return (
@@ -163,7 +165,9 @@ export function GameMode({
         ['2', 'catch'],
         ['3', 'mania'],
       ].map(([id, name]) => (
-        <button key={id} type="button" aria-pressed={value === id} onClick={() => onChange(id)}>
+        <button key={id} type="button" aria-pressed={value === id}
+          disabled={allowedModes !== undefined && !allowedModes.includes(id)}
+          onClick={() => onChange(id)}>
           {name}
         </button>
       ))}

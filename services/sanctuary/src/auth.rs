@@ -463,6 +463,66 @@ pub async fn upload_media(
     }
     Ok(Json(json!({"url":url,"kind":kind})))
 }
+
+#[derive(Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ProfileMediaKind {
+    Avatar,
+    Banner,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProfileMediaRemoval {
+    kind: ProfileMediaKind,
+}
+
+pub async fn remove_profile_media(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<ProfileMediaRemoval>,
+) -> ApiResult {
+    let user = require(&state, &headers).await?;
+    let mut tx = state.db.begin().await?;
+    // Recovery and administrative revocation also lock users before sessions.
+    // Recheck authorization at the write after either lock has finished waiting.
+    let owner = sqlx::query_scalar::<_, i64>("SELECT id FROM users WHERE id=$1 FOR UPDATE")
+        .bind(user.id)
+        .fetch_optional(&mut *tx)
+        .await?;
+    if owner.is_none() {
+        return Err(ApiError::unauthorized());
+    }
+    let session = sqlx::query_scalar::<_, Uuid>(
+        "SELECT id FROM sessions WHERE id=$1 AND user_id=$2 FOR UPDATE",
+    )
+    .bind(user.session)
+    .bind(user.id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if session.is_none() {
+        return Err(ApiError::unauthorized());
+    }
+    let update = match input.kind {
+        ProfileMediaKind::Avatar => {
+            "UPDATE users SET avatar_url=NULL WHERE id=$1 AND NOT is_restricted AND EXISTS(SELECT 1 FROM sessions WHERE id=$2 AND user_id=$1 AND expires_at>clock_timestamp())"
+        }
+        ProfileMediaKind::Banner => {
+            "UPDATE users SET banner_url=NULL WHERE id=$1 AND NOT is_restricted AND EXISTS(SELECT 1 FROM sessions WHERE id=$2 AND user_id=$1 AND expires_at>clock_timestamp())"
+        }
+    };
+    let changed = sqlx::query(update)
+        .bind(user.id)
+        .bind(user.session)
+        .execute(&mut *tx)
+        .await?;
+    if changed.rows_affected() != 1 {
+        return Err(ApiError::unauthorized());
+    }
+    tx.commit().await?;
+    Ok(Json(json!({"kind":input.kind,"url":null})))
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PasswordChange {

@@ -5,3 +5,4 @@ Dockerfile text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
 Caddyfile* text eol=lf
+/migrations/*.sql text eol=lf

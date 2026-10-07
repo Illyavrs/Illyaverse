@@ -6,8 +6,10 @@ COPY crates ./crates
 COPY services ./services
 COPY tools/kaleidoscope ./tools/kaleidoscope
 COPY migrations ./migrations
+# Refresh this package when restored source timestamps predate the shared cache.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/illyaverse/target,sharing=locked \
+    cargo clean --release -p resonance && \
     cargo build --locked --release -p resonance && install -m 0755 target/release/resonance /usr/local/bin/resonance
 
 FROM debian:bookworm-slim AS runtime

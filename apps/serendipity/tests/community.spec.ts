@@ -4,17 +4,40 @@ import path from 'node:path';
 const suffix = Date.now().toString(36);
 const username = `e2e_${suffix}`;
 const password = `Illyaverse-E2E-${suffix}-secure`;
+const webOrigin = process.env.ILLYA_WEB_URL ?? 'http://localhost:3000';
+
+// These two tests write real accounts. Only an explicitly owned test stack may run them.
+function disposableCredentials(): Record<string, string> {
+  const envPath = process.env.ILLYA_TEST_ENV_FILE;
+  if (
+    process.env.ILLYA_ALLOW_DISPOSABLE_TEST !== '1' ||
+    !envPath ||
+    !path.isAbsolute(envPath) ||
+    path.basename(envPath) === '.env' ||
+    !/^http:\/\/(localhost|127\.0\.0\.1):[1-9][0-9]{0,4}$/.test(webOrigin)
+  )
+    throw new Error('Run real community workflows with infra/disposable-web-smoke.mjs.');
+  return Object.fromEntries(
+    readFileSync(envPath, 'utf8')
+      .split(/\r?\n/)
+      .filter((line) => /^[A-Z_][A-Z0-9_]*=/.test(line))
+      .map((line) => {
+        const at = line.indexOf('=');
+        return [line.slice(0, at), line.slice(at + 1)];
+      }),
+  );
+}
 test('public pages, pure black default, multilingual cookie and mobile navigation', async ({
   page,
 }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('找到你的節奏');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Illyaverse');
   await expect
     .poll(() => page.evaluate(() => getComputedStyle(document.body).backgroundColor))
     .toBe('rgb(0, 0, 0)');
   await expect(page.locator('.global-scene')).toHaveCSS('background-image', 'none');
   await page.getByLabel('語言', { exact: true }).selectOption('en');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Find your rhythm');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Illyaverse');
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   await page.goto('/docs/connection');
@@ -32,6 +55,7 @@ test('registration, persistent locale/theme/profile, chat draft and server RBAC'
   page,
   request,
 }) => {
+  disposableCredentials();
   await page.goto('/register');
   await page.getByLabel('使用者名稱', { exact: true }).fill(username);
   await page.getByLabel('電子郵件', { exact: true }).fill(`${username}@example.test`);
@@ -100,8 +124,8 @@ test('registration, persistent locale/theme/profile, chat draft and server RBAC'
     'E2E test profile — original local fixture',
   );
   const peerContext = await apiRequest.newContext({
-    baseURL: 'http://localhost:3000',
-    extraHTTPHeaders: { Origin: 'http://localhost:3000' },
+    baseURL: webOrigin,
+    extraHTTPHeaders: { Origin: webOrigin },
   });
   const peerRegistration = await peerContext.post('/api/v1/auth/register', {
     data: { username: `peer_${suffix}`, email: `peer_${suffix}@example.test`, password },
@@ -129,26 +153,9 @@ test('registration, persistent locale/theme/profile, chat draft and server RBAC'
   expect((await request.get('/api/v1/admin/users')).status()).toBe(401);
 });
 test('operator can inspect permissions and audit without revealing secrets', async ({ page }) => {
-  const envPath = path.resolve(process.cwd(), '../../.env');
-  let env: Record<string, string> = {};
-  try {
-    env = Object.fromEntries(
-      readFileSync(envPath, 'utf8')
-        .split(/\r?\n/)
-        .filter((l) => l.includes('=') && !l.startsWith('#'))
-        .map((l) => {
-          const at = l.indexOf('=');
-          return [l.slice(0, at), l.slice(at + 1)];
-        }),
-    );
-  } catch {
-    test.skip(true, 'No local operator environment');
-    return;
-  }
-  test.skip(
-    !env.BOOTSTRAP_ADMIN_USERNAME || !env.BOOTSTRAP_ADMIN_PASSWORD,
-    'Bootstrap credentials disabled',
-  );
+  const env = disposableCredentials();
+  if (!env.BOOTSTRAP_ADMIN_USERNAME || !env.BOOTSTRAP_ADMIN_PASSWORD)
+    throw new Error('The disposable stack must provide its bootstrap account.');
   await page.goto('/login');
   await page.getByLabel('使用者名稱', { exact: true }).fill(env.BOOTSTRAP_ADMIN_USERNAME);
   await page.getByLabel('密碼', { exact: true }).fill(env.BOOTSTRAP_ADMIN_PASSWORD);

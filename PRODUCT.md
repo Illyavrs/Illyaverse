@@ -24,7 +24,7 @@ The monorepo lives in osu-ps/Illyaverse. Operators deploy containers, configure 
 
 ## Capabilities and Constraints
 
-Public registration. Landing and connection guides. Light/dark themes; uploaded backgrounds, independent background blur and dim, independent panel blur and opacity, accent and radius controls. Private appearance preferences preview immediately and remain in the guest's browser; signed-in players explicitly save them to their account. Background uploads require an account. Profile banners and customization. Server-enforced permissions with restricted administrative areas. Chat, official beatmap fetching with rate limits, local exclusive beatmap uploads, scores, replays and rosu-pp calculations. All source must be original: upstream projects inform behavior and structure only.
+Public registration. Landing and connection guides. Light/dark themes; uploaded backgrounds, independent background blur and dim, independent panel blur and opacity, accent and radius controls. Private appearance preferences preview immediately and remain in the guest's browser; signed-in players explicitly save them to their account. Background uploads require an account. Players can edit biography/country and upload, replace or remove their own avatar/banner; image actions preserve unsaved profile text. Server-enforced permissions with restricted administrative areas. Chat, official beatmap fetching with rate limits, local exclusive beatmap uploads, scores, replays and rosu-pp calculations. All source must be original: upstream projects inform behavior and structure only.
 
 ## Brand Commitments
 

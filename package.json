@@ -8,7 +8,9 @@
     "build": "npm run build --workspace @illyaverse/serendipity",
     "lint": "npm run lint --workspace @illyaverse/serendipity",
     "typecheck": "npm run typecheck --workspace @illyaverse/serendipity",
-    "test:rust": "cargo test --workspace"
+    "test:rust": "cargo test --workspace",
+    "test:migrations": "node --test infra/tests/migration-source.test.mjs",
+    "test:web:disposable": "node infra/disposable-web-smoke.mjs"
   },
   "engines": {"node": ">=22.0.0"}
 }

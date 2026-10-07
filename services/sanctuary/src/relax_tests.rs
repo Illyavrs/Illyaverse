@@ -155,6 +155,20 @@ async fn relax_scores_statistics_and_recalculation_are_partitioned() {
         assert_eq!(nm_board["items"][0]["id"],nm_a_scorebest);assert_eq!(nm_board["items"][1]["id"],nm_b);assert_eq!(nm_board["ordered_by"],"standardised_score");assert_eq!(nm_board["total"],2);assert!(nm_board["items"].as_array().unwrap().iter().all(|row|row["id"]!=nm_a));
         let (_,_,rx_board)=request(&app,Method::GET,&format!("/api/v1/beatmaps/{first}/scores?mode=0&variant=relax&page_size=1&page=2"),None,None).await;
         assert_eq!(rx_board["items"][0]["id"],rx_b);assert_eq!(rx_board["items"][0]["position"],2);assert_eq!(rx_board["total"],2);assert_eq!(rx_board["ordered_by"],"pp");
+        // These are real SQL results, independently checking the browser table contract.
+        for (row,variant,user,username,raw,pp) in [
+            (&nm_board["items"][0],"vanilla",alice,"RelaxAlice",1000,50.0),
+            (&rx_board["items"][0],"relax",bob,"RelaxBob",0,50.0),
+        ] {
+            assert_eq!(row["title"],"First");assert_eq!(row["version"],"Two circles");
+            assert_eq!(row["beatmap_id"],first);assert_eq!(row["user_id"],user);assert_eq!(row["username"],username);
+            assert_eq!(row["mode"],0);assert_eq!(row["score_variant"],variant);assert_eq!(row["score"],raw);assert_eq!(row["pp"],pp);
+            assert_eq!(row["verification"],"verified");assert_eq!(row["has_replay"],false);assert!(row["created_at"].is_string());
+            assert!(row.get("replay_path").is_none());assert!(row.get("ingestion_key").is_none());
+            let (status,_,detail)=request(&app,Method::GET,&format!("/api/v1/scores/{}",row["id"]),None,None).await;
+            assert_eq!(status,StatusCode::OK);assert_eq!(detail["title"],row["title"]);assert_eq!(detail["version"],row["version"]);
+            assert_eq!(detail["beatmap"]["id"],first);assert_eq!(detail["user"]["id"],user);assert!(detail["replay_url"].is_null());
+        }
         let (_,_,scores)=request(&app,Method::GET,&format!("/api/v1/scores?user_id={alice}"),None,None).await;
         assert_eq!(scores["total"],3);assert!(scores["items"].as_array().unwrap().iter().all(|row|row["score_variant"]=="vanilla"&&row["mode"]==0));
         let (_,_,recent)=request(&app,Method::GET,"/api/v1/scores",None,None).await;

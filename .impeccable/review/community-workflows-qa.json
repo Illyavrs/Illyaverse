@@ -1,0 +1,16 @@
+{
+  "date": "2026-10-07",
+  "scope": "Profile media removal, moderation pagination, actual map-board metadata and supported ruleset selection",
+  "browser_provenance": "Fresh PostgreSQL 17 and random owned Compose project; synthetic intercepted fixtures plus real HTTP registration/preferences/profile/chat/RBAC workflows. No existing player database was used.",
+  "browser_gate": {"passed": 40, "failed": 0, "skipped": 1, "skip_reason": "Existing opt-in RBAC visual capture; behavioral RBAC tests ran", "evidence": "data-community-workflows/web-image-smoke-confirm.log"},
+  "source_gate": {"unit_cli": 158, "postgres_integration": 27, "native_artifact_vectors": 2, "rustfmt": "passed", "clippy_all_targets_warnings_denied": "passed", "evidence": "data-community-workflows/source-gate.log"},
+  "protocol_image_gate": {"http_requests": 308, "categories": 34, "passed": true, "evidence": "data-community-workflows/protocol-image-smoke-final.log"},
+  "migration_source_gate": {"checks": 6, "migration_files": 15, "autocrlf_modes": ["true", "false", "input"], "checkout_and_archive_checksums": "passed"},
+  "frontend": {"typescript": "passed", "eslint": "passed", "production_compilation": "passed"},
+  "focused_capture_confirmation": {"catalogue_checks_passed": 9, "moderation_scroll_y": 0, "evidence": "data-community-workflows/catalog-capture-confirm.log"},
+  "web_helper_guard_checks": 20,
+  "detector": {"runs": 1, "findings": [], "targets": ["admin.tsx", "beatmaps.tsx", "settings.tsx", "common.tsx"]},
+  "captures": ["workflow-catalog-moderation-desktop-en.png", "workflow-catalog-moderation-mobile-en.png", "workflow-native-beatmap-desktop-en.png", "workflow-native-beatmap-mobile-en.png", "workflow-profile-media-desktop-zhTW.png", "workflow-profile-media-mobile-ja-error.png"],
+  "bounded_corrections": ["After the first full gate, refresh recently cached admin page 1 rather than retain its pre-decision total", "Align the authenticated Japanese fixture's persisted locale and scope errors to its form", "Correct the two moderation captures to document top with settled fonts and disabled motion"],
+  "limitations": "These checks do not certify whole-product completeness, native stable/lazer login or gameplay, official OAuth credentials, or production deployment. Native client testing remains human-operated. No new shipping raster was added."
+}

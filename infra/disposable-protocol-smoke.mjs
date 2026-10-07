@@ -86,6 +86,12 @@ export async function disposableSmoke(environment = process.env) {
     process.stderr.write(redact(result.stderr, secrets));
     if (result.code !== 0) throw new Error('The isolated final-image protocol smoke failed.');
     success = true;
+  } catch (error) {
+    if (started) {
+      const diagnostics = await runCommand('docker', [...base, 'logs', '--no-color', '--tail', '20', 'sanctuary', 'resonance'], { env });
+      process.stderr.write(redact(diagnostics.stdout + diagnostics.stderr, secrets));
+    }
+    throw error;
   } finally {
     process.removeListener('SIGINT', interrupt);
     process.removeListener('SIGTERM', interrupt);

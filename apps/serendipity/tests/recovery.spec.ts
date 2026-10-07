@@ -50,7 +50,7 @@ test('forgot password has an honest unavailable state and a generic accepted res
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('/login');
   await page.getByRole('link', { name: '忘記密碼？', exact: true }).click();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('找回你的帳號。');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('重設密碼');
   await expect(page.getByRole('button', { name: '取得重設連結', exact: true })).toBeDisabled();
   await expect(
     page.getByText('郵件服務暫時無法使用。請稍後再試，或聯絡社群管理員。'),
@@ -61,7 +61,7 @@ test('forgot password has an honest unavailable state and a generic accepted res
   available = true;
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByLabel('語言', { exact: true }).selectOption('en');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Find your way back.');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Reset your password');
   await page.reload();
   await page.getByLabel('Email', { exact: true }).fill('fixture@example.test');
   await page.getByRole('button', { name: 'Request reset link', exact: true }).click();

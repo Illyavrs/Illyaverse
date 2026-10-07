@@ -203,6 +203,7 @@ function ProfileControls() {
     e.preventDefault();
     setBusy(true);
     setError('');
+    setFeedback('');
     try {
       await api('/me/profile', { method: 'PATCH', body: JSON.stringify({ bio, country }) });
       await refresh();
@@ -217,6 +218,7 @@ function ProfileControls() {
     if (!file) return;
     setBusy(true);
     setError('');
+    setFeedback('');
     const data = new FormData();
     data.set('file', file);
     data.set('kind', kind);
@@ -226,6 +228,20 @@ function ProfileControls() {
       setFeedback(t('imageUploaded'));
     } catch {
       setError(c('serviceError'));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function removeMedia(kind: 'avatar' | 'banner') {
+    setBusy(true);
+    setError('');
+    setFeedback('');
+    try {
+      await api('/me/media', { method: 'DELETE', body: JSON.stringify({ kind }) });
+      await refresh();
+      setFeedback(t('imageRemoved'));
+    } catch {
+      setError(t('imageRemovalError'));
     } finally {
       setBusy(false);
     }
@@ -250,6 +266,26 @@ function ProfileControls() {
                 />
               </label>
             ))}
+            {user?.avatar_url && (
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => removeMedia('avatar')}
+              >
+                {t('removeAvatar')}
+              </Button>
+            )}
+            {user?.banner_url && (
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => removeMedia('banner')}
+              >
+                {t('removeBanner')}
+              </Button>
+            )}
           </div>
         </div>
       </div>

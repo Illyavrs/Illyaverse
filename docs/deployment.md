@@ -110,3 +110,13 @@ docker compose run --rm --no-deps --user root --entrypoint tar sanctuary -czf - 
 需要 DB／檔案時間點一致時，先進入維護狀態、停止會寫入的 Sanctuary／Resonance，再完成備份，最後啟動服務。PowerShell 7.4 以上可使用 native stdout binary redirection；舊版 Windows PowerShell 可能轉換二進位輸出，請改用容器內檔案加 `docker cp` 保存 dump。Caddy 的 volume 也應納入主機備份，避免不必要的重複發證。
 
 現在的媒體 volume 是單機儲存。如果之後要水平擴充，需先加入共用 object storage 與多實例一致的節流／chat event transport；不能只增加 replica 而沿用每個容器各自的本機檔案或記憶體狀態。
+
+### Migration 換行與 checksum
+
+`migrations/*.sql` 必須保持 UTF-8、無 BOM、LF 換行。此目錄的 `.gitattributes` 規則明確設定 `text eol=lf`，讓 Windows、Linux／macOS 的 Git checkout 和來源 archive 保持相同 SQL bytes，無須修改全域 `core.autocrlf`；[Git 官方文件](https://git-scm.com/docs/gitattributes/2.43.0#_eol) 說明明確的 `eol` 優先於預設換行設定。建置前執行 `node --test infra/tests/migration-source.test.mjs`，會驗證目前所有 migration 的 bytes／Git blob，以及 `core.autocrlf=true`、`false`、`input` 的獨立 checkout 與 archive。
+
+已套用的 migration 內容不可修改；schema 變更請新增版本。鎖定的 [SQLx 0.8.6 使用 SQL bytes 計算 SHA-384](https://github.com/launchbadge/sqlx/blob/v0.8.6/sqlx-core/src/migrate/migration.rs#L25)，因此只把 LF 換成 CRLF 也會改變 checksum，並在啟動時產生 `VersionMismatch`。曾用 CRLF migration 建立的資料庫，不會因為加入 LF checkout 規則自動相容。
+
+若既有部署出現 mismatch，停止更新並保留資料庫／媒體備份、原部署來源與 image；不要修改歷史 SQL 或 `_sqlx_migrations` checksum 來繞過驗證。先在隔離環境比對原 SQL bytes 與目前 migration、驗證備份可還原，再由營運者明確制定並驗證遷移方案。尚未完成方案前，保持 migration 驗證失敗時停止啟動。
+
+Docker 建置保留依賴快取，但每次執行 Rust 建置步驟前，以 [package-scoped `cargo clean`](https://doc.rust-lang.org/cargo/commands/cargo-clean.html) 刷新該服務的 release 產物，重新嵌入目前 migration。這避免從較舊 commit／archive 還原來源時，Cargo 的 [mtime 變更檢查](https://doc.rust-lang.org/cargo/reference/build-scripts.html#rerun-if-changed) 沿用快取中的舊 migration 定義。更新後先對新 image 執行 disposable HTTP／瀏覽器測試，通過後再替換既有服務；不需要清空資料庫或整份依賴快取。

@@ -10,6 +10,8 @@ mod mail_delivery;
 mod mail_queue_tests;
 mod maps;
 #[cfg(test)]
+mod profile_media_tests;
+#[cfg(test)]
 mod rbac_tests;
 #[cfg(test)]
 mod relax_tests;
@@ -24,7 +26,7 @@ use axum::{
     http::{StatusCode, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{get, patch, post},
+    routing::{delete, get, patch, post},
 };
 use serde_json::{Value, json};
 use sqlx::{PgPool, postgres::PgPoolOptions};
@@ -345,7 +347,9 @@ fn router(state: AppState) -> Router {
         )
         .route(
             "/api/v1/me/media",
-            post(auth::upload_media).layer(DefaultBodyLimit::max(14 * 1024 * 1024)),
+            post(auth::upload_media)
+                .layer(DefaultBodyLimit::max(14 * 1024 * 1024))
+                .merge(delete(auth::remove_profile_media).layer(DefaultBodyLimit::max(1024))),
         )
         .route("/api/v1/users/{id}", get(auth::user_profile))
         .route("/api/v1/beatmaps", get(maps::list))

@@ -632,6 +632,17 @@ function AdminContents() {
   const { data, error, isLoading, mutate } = useSWR<Page<AdminUser | Beatmap | Score | Audit>>(
     section === 'roles' ? null : key,
     fetcher,
+    {
+      keepPreviousData: false,
+      // A decision can return to a page whose cached response predates the write.
+      dedupingInterval: 0,
+      onSuccess: (result, requestedKey) => {
+        // Only a response for this collection and page can shrink its pagination.
+        if (requestedKey !== key || result.page !== page || result.page_size < 1) return;
+        const lastPage = Math.max(1, Math.ceil(result.total / result.page_size));
+        setPage((current) => current === result.page && current > lastPage ? lastPage : current);
+      },
+    },
   );
   const {
     data: roles,

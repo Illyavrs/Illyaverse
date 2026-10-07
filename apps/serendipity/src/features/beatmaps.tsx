@@ -1,6 +1,7 @@
 'use client';
-import { useDeferredValue, useState, type FormEvent } from 'react';
+import { useDeferredValue, useEffect, useState, type FormEvent } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 import {
@@ -28,7 +29,7 @@ import {
 } from '@/components/common';
 import { useSession } from '@/components/providers';
 import { api, fetcher, hasPermission } from '@/lib/api';
-import type { Beatmap, Page, Score } from '@/lib/types';
+import type { Beatmap, Page, Score, ScoreVariant } from '@/lib/types';
 import { ScoreTable } from './scores';
 import { ScoreVariantControl, useScoreSelection } from '@/components/score-selection';
 
@@ -166,7 +167,22 @@ export function BeatmapPage({ id }: { id: number }) {
   const t = useTranslations('maps');
   const c = useTranslations('common');
   const { data: map, error, isLoading, mutate } = useSWR<Beatmap>(`/beatmaps/${id}`, fetcher);
-  const { mode, variant, select, selection } = useScoreSelection(map?.mode ?? 0);
+  const search = useSearchParams();
+  const { mode: requestedMode, select } = useScoreSelection(map?.mode ?? 0);
+  const mode = map && map.mode !== 0 ? String(map.mode) : requestedMode;
+  const variant: ScoreVariant = mode !== '3' && search.get('variant') === 'relax' ? 'relax' : 'vanilla';
+  const selection = new URLSearchParams({ mode, variant });
+  useEffect(() => {
+    if (!map) return;
+    const invalidMode = search.has('mode') && search.get('mode') !== mode;
+    const invalidVariant = search.has('variant') && search.get('variant') !== variant;
+    if (!invalidMode && !invalidVariant) return;
+    const query = new URLSearchParams(search.toString());
+    query.set('mode', mode);
+    query.set('variant', variant);
+    query.delete('page');
+    window.history.replaceState(null, '', `?${query}`);
+  }, [map, mode, variant, search]);
   const [page, setPage] = useState(1);
   const { data: scores, error: scoreError, mutate: reloadScores } = useSWR<Page<Score>>(
     map ? `/beatmaps/${id}/scores?${selection}&page=${page}&page_size=24` : null,
@@ -224,7 +240,8 @@ export function BeatmapPage({ id }: { id: number }) {
             <section className="glass content-panel">
               <header className="section-heading"><h2>{t('leaderboard')}</h2></header>
               <div className="filter-bar">
-                <GameMode value={mode} onChange={(v) => { select(v, variant); setPage(1); }} />
+                <GameMode value={mode} allowedModes={map.mode === 0 ? undefined : [String(map.mode)]}
+                  onChange={(v) => { select(v, variant); setPage(1); }} />
                 <ScoreVariantControl mode={mode} value={variant} onChange={(v) => { select(mode, v); setPage(1); }} />
               </div>
               <p className="hint">{mode === '3' ? c('relaxUnsupported') : t(variant === 'relax' ? 'relaxBoard' : 'normalBoard')}</p>

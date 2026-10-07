@@ -234,11 +234,12 @@ pub async fn beatmap_leaderboard(
     let variant = query.variant.unwrap_or_default();
     validate_partition(mode, variant)?;
     validate_country(query.country.as_deref())?;
-    let source: i16 = sqlx::query_scalar("SELECT mode FROM beatmaps WHERE id=$1")
+    let map = sqlx::query("SELECT mode,title,version FROM beatmaps WHERE id=$1")
         .bind(beatmap_id)
         .fetch_optional(&state.db)
         .await?
         .ok_or_else(ApiError::missing)?;
+    let source: i16 = map.get("mode");
     if source != 0 && source != mode {
         return Err(ApiError::bad(
             "This beatmap does not support the requested ruleset.",
@@ -252,8 +253,8 @@ pub async fn beatmap_leaderboard(
     let rx = variant == ScoreVariant::Relax;
     let total:i64=sqlx::query_scalar("SELECT count(DISTINCT s.user_id) FROM scores s JOIN users u ON u.id=s.user_id WHERE s.beatmap_id=$1 AND s.mode=$2 AND s.score_variant=$3 AND s.verification='verified' AND s.passed AND s.pp_eligible AND NOT u.is_restricted AND ($4 OR s.standardised_score IS NOT NULL) AND ($5::text IS NULL OR u.country=$5)")
         .bind(beatmap_id).bind(mode).bind(variant.as_str()).bind(rx).bind(&query.country).fetch_one(&state.db).await?;
-    let items=sqlx::query_scalar::<_,Value>("WITH best AS (SELECT DISTINCT ON(s.user_id) s.*,u.username,u.country,u.avatar_url FROM scores s JOIN users u ON u.id=s.user_id WHERE s.beatmap_id=$1 AND s.mode=$2 AND s.score_variant=$3 AND s.verification='verified' AND s.passed AND s.pp_eligible AND NOT u.is_restricted AND ($4 OR s.standardised_score IS NOT NULL) AND ($5::text IS NULL OR u.country=$5) ORDER BY s.user_id,CASE WHEN $4 THEN s.pp END DESC NULLS LAST,CASE WHEN NOT $4 THEN s.standardised_score END DESC NULLS LAST,s.accuracy DESC,s.max_combo DESC,s.id),placed AS (SELECT *,row_number() OVER(ORDER BY CASE WHEN $4 THEN pp END DESC NULLS LAST,CASE WHEN NOT $4 THEN standardised_score END DESC NULLS LAST,accuracy DESC,max_combo DESC,id) position FROM best) SELECT to_jsonb(p)-'replay_path'-'ingestion_key'||jsonb_build_object('has_replay',replay_path IS NOT NULL,'accuracy_source',CASE WHEN client='lazer' THEN 'client_reported' ELSE 'judgements' END) FROM placed p ORDER BY position LIMIT $6 OFFSET $7")
-        .bind(beatmap_id).bind(mode).bind(variant.as_str()).bind(rx).bind(query.country).bind(size).bind(offset).fetch_all(&state.db).await?;
+    let items=sqlx::query_scalar::<_,Value>("WITH best AS (SELECT DISTINCT ON(s.user_id) s.*,u.username,u.country,u.avatar_url FROM scores s JOIN users u ON u.id=s.user_id WHERE s.beatmap_id=$1 AND s.mode=$2 AND s.score_variant=$3 AND s.verification='verified' AND s.passed AND s.pp_eligible AND NOT u.is_restricted AND ($4 OR s.standardised_score IS NOT NULL) AND ($5::text IS NULL OR u.country=$5) ORDER BY s.user_id,CASE WHEN $4 THEN s.pp END DESC NULLS LAST,CASE WHEN NOT $4 THEN s.standardised_score END DESC NULLS LAST,s.accuracy DESC,s.max_combo DESC,s.id),placed AS (SELECT *,row_number() OVER(ORDER BY CASE WHEN $4 THEN pp END DESC NULLS LAST,CASE WHEN NOT $4 THEN standardised_score END DESC NULLS LAST,accuracy DESC,max_combo DESC,id) position FROM best) SELECT to_jsonb(p)-'replay_path'-'ingestion_key'||jsonb_build_object('title',$8::text,'version',$9::text,'has_replay',replay_path IS NOT NULL,'accuracy_source',CASE WHEN client='lazer' THEN 'client_reported' ELSE 'judgements' END) FROM placed p ORDER BY position LIMIT $6 OFFSET $7")
+        .bind(beatmap_id).bind(mode).bind(variant.as_str()).bind(rx).bind(query.country).bind(size).bind(offset).bind(map.get::<String,_>("title")).bind(map.get::<String,_>("version")).fetch_all(&state.db).await?;
     let mut response = page(items, total, p, size).0;
     response["mode"] = json!(mode);
     response["score_variant"] = json!(variant);

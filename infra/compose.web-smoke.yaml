@@ -1,0 +1,122 @@
+# Only disposable-web-smoke.mjs supplies this fresh project's private environment.
+services:
+  postgres:
+    image: ${ILLYA_WEB_SMOKE_POSTGRES_IMAGE:?Use the disposable helper}
+    pull_policy: never
+    environment:
+      POSTGRES_USER: illya
+      POSTGRES_DB: illyaverse
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Use the disposable helper}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --data-checksums
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U illya -d illyaverse"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  sanctuary:
+    image: ${ILLYA_WEB_SMOKE_SANCTUARY_IMAGE:?Use the disposable helper}
+    pull_policy: never
+    init: true
+    environment:
+      DATABASE_URL: postgres://illya:${POSTGRES_PASSWORD:?Use the disposable helper}@postgres:5432/illyaverse
+      SESSION_SECRET: ${SESSION_SECRET:?Use the disposable helper}
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?Use the disposable helper}
+      PUBLIC_ORIGIN: http://localhost:${ILLYA_WEB_SMOKE_PORT:-19000}
+      COOKIE_SECURE: "false"
+      BIND_ADDRESS: 0.0.0.0:8080
+      TRUSTED_PROXY_CIDRS: ""
+      MEDIA_ROOT: /data/media
+      MAPS_ROOT: /data/maps
+      REPLAY_ROOT: /data/replays
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:?Use the disposable helper}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:?Use the disposable helper}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:?Use the disposable helper}
+    volumes: [shared_data:/data]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, --max-time, "3", http://127.0.0.1:8080/health/ready]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+  resonance:
+    image: ${ILLYA_WEB_SMOKE_RESONANCE_IMAGE:?Use the disposable helper}
+    pull_policy: never
+    init: true
+    environment:
+      DATABASE_URL: postgres://illya:${POSTGRES_PASSWORD:?Use the disposable helper}@postgres:5432/illyaverse
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?Use the disposable helper}
+      SANCTUARY_INTERNAL_URL: http://sanctuary:8080
+      PUBLIC_ORIGIN: http://localhost:${ILLYA_WEB_SMOKE_PORT:-19000}
+      RESONANCE_BIND: 0.0.0.0:8081
+      ILLYA_DOMAIN: web-smoke.illya.test
+      TRUSTED_PROXY_CIDRS: ""
+      STORAGE_PATH: /data
+    volumes: [shared_data:/data]
+    depends_on:
+      sanctuary:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, --max-time, "3", http://127.0.0.1:8081/health]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+  serendipity:
+    image: ${ILLYA_WEB_SMOKE_SERENDIPITY_IMAGE:?Use the disposable helper}
+    pull_policy: never
+    init: true
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+      ILLYA_DOCS_PATH: /illyaverse/docs
+      API_INTERNAL_URL: http://sanctuary:8080
+    depends_on:
+      sanctuary:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/',{redirect:'manual'}).then(r=>process.exit(r.status<400?0:1)).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+  caddy:
+    image: ${ILLYA_WEB_SMOKE_CADDY_IMAGE:?Use the disposable helper}
+    pull_policy: never
+    environment:
+      ILLYA_DOMAIN: web-smoke.illya.test
+    ports: ["127.0.0.1:${ILLYA_WEB_SMOKE_PORT:-19000}:80"]
+    volumes:
+      - type: bind
+        source: ./Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
+        bind:
+          create_host_path: false
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      serendipity:
+        condition: service_healthy
+      resonance:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1/healthz]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+networks:
+  default: {}
+volumes:
+  postgres_data: {}
+  shared_data: {}
+  caddy_data: {}
+  caddy_config: {}

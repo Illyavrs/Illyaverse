@@ -6,8 +6,10 @@ COPY crates ./crates
 COPY services ./services
 COPY tools/kaleidoscope ./tools/kaleidoscope
 COPY migrations ./migrations
+# Refresh this package when restored source timestamps predate the shared cache.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/illyaverse/target,sharing=locked \
+    cargo clean --release -p sanctuary && \
     cargo build --locked --release -p sanctuary && install -m 0755 target/release/sanctuary /usr/local/bin/sanctuary
 
 FROM debian:bookworm-slim AS runtime

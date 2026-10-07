@@ -49,6 +49,9 @@ jobs:
       - run: cargo test -p sanctuary account_recovery_security --locked -- --ignored
         env:
           ILLYA_TEST_DATABASE_URL: postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci
+      - run: cargo test -p sanctuary profile_media_removal_persistence_and_queued_authorization --locked -- --ignored
+        env:
+          ILLYA_TEST_DATABASE_URL: postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci
       - run: cargo test -p sanctuary durable_mail_queue_leases_retries_and_cleanup --locked -- --ignored
         env:
           ILLYA_TEST_DATABASE_URL: postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci
@@ -84,6 +87,7 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - run: npm run test:migrations
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
@@ -141,13 +145,15 @@ jobs:
       - run: docker compose -f compose.yaml -f compose.client-test.yaml config --quiet
       - run: node infra/validate-compose.mjs
       - run: node --test infra/protocol-smoke.test.mjs
+      - run: node --test infra/tests/disposable-web-smoke.test.mjs
       - run: docker compose build
       - run: docker compose up -d --wait --wait-timeout 120
       - run: curl --fail --retry 5 --retry-delay 2 http://localhost:3000/api/v1/status
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npx playwright test
-        working-directory: apps/serendipity
+      - run: node infra/disposable-web-smoke.mjs
+        env:
+          ILLYA_ALLOW_DISPOSABLE_TEST: '1'
       - run: python3 -m venv .protocol-venv
       - run: .protocol-venv/bin/python -m pip install -r services/resonance/tests/requirements.txt
       - run: node infra/protocol-smoke.mjs
