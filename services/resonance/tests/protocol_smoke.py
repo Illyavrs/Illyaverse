@@ -60,13 +60,16 @@ class Client:
         return json.loads(self.request(method, path, body, headers, expected, native)[0])
 
 
-def multipart(fields, files=()):
+def multipart(fields, files=(), *, file_disposition="form-data", name_attribute="name", filename_attribute="filename", file_content_type=True):
     boundary = "Illyaverse-" + uuid.uuid4().hex
     body = bytearray()
     for name, value in fields:
         body.extend(f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode())
     for name, filename, value in files:
-        body.extend(f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"; filename="{filename}"\r\nContent-Type: application/octet-stream\r\n\r\n'.encode())
+        body.extend(f'--{boundary}\r\nContent-Disposition: {file_disposition}; {name_attribute}="{name}"; {filename_attribute}="{filename}"\r\n'.encode())
+        if file_content_type:
+            body.extend(b"Content-Type: application/octet-stream\r\n")
+        body.extend(b"\r\n")
         body.extend(value)
         body.extend(b"\r\n")
     body.extend(f"--{boundary}--\r\n".encode())
@@ -644,13 +647,25 @@ def run():
     iv = bytes(range(32))
     cipher = RijndaelCbc(("osu!-scoreburgr---------" + version).encode(), iv, Pkcs7Padding(32), block_size=32)
     encrypt = lambda value: base64.b64encode(cipher.encrypt(value.encode())).decode()
-    frames = lzma.compress(b"1000|64|64|1,1000|256|192|1,-12345|0|0|12345,", format=lzma.FORMAT_ALONE)
+    # A genuine LZMA replay above the scalar cap exposes file-classification
+    # failures that tiny fixture replays cannot detect. Coordinates are synthetic.
+    frame_text = []
+    for index in range(8192):
+        sample = hashlib.sha256(f"illyaverse-original-replay-{index}".encode()).digest()
+        x = int.from_bytes(sample[:4], "little") * 512 / 2**32
+        y = int.from_bytes(sample[4:8], "little") * 384 / 2**32
+        frame_text.append(f"{sample[8] % 16 + 1}|{x:.6f}|{y:.6f}|{sample[9] % 4},")
+    frames = lzma.compress(("".join(frame_text) + "-12345|0|0|12345,").encode(), format=lzma.FORMAT_ALONE)
+    assert 32768 < len(frames) < 16 * 1024 * 1024
     fields = [("score", encrypt(envelope)), ("iv", base64.b64encode(iv).decode()), ("osuver", version), ("pass", digest(player_password)), ("bmk", map_hash), ("sbk", ""), ("s", encrypt(client_hash))]
     body, headers = multipart(fields, [("score", "replay.osr", frames)])
     stable = gateway.request("POST", "/web/osu-submit-modular-selector.php", body, headers)[0].decode()
     stable_id = int(re.search(r"onlineScoreId:(\d+)", stable).group(1))
-    again = gateway.request("POST", "/web/osu-submit-modular-selector.php", body, headers)[0].decode()
+    alternate_body, alternate_headers = multipart(fields, [("score", "replay.osr", frames)], name_attribute="Name", filename_attribute="FileName")
+    again = gateway.request("POST", "/web/osu-submit-modular-selector.php", alternate_body, alternate_headers)[0].decode()
     assert f"onlineScoreId:{stable_id}|" in again
+    attachment_body, attachment_headers = multipart(fields, [("score", "replay.osr", frames)], file_disposition="attachment", name_attribute="NAME", filename_attribute="FILENAME", file_content_type=False)
+    assert f"onlineScoreId:{stable_id}|" in gateway.request("POST", "/web/osu-submit-modular-selector.php", attachment_body, attachment_headers)[0].decode()
     query = urllib.parse.urlencode({"u": player_name, "h": digest(player_password), "c": stable_id, "m": 0})
     assert gateway.request("GET", "/web/osu-getreplay.php?" + query)[0] == frames
     stable_score = gateway.json("GET", f"/api/v2/scores/{stable_id}", headers=bearer)
@@ -658,8 +673,11 @@ def run():
     altered_body, altered_headers = multipart(fields, [("score", "replay.osr", lzma.compress(b"1|0|0|0,", format=lzma.FORMAT_ALONE))])
     gateway.request("POST", "/web/osu-submit-modular-selector.php", altered_body, altered_headers, expected=409)
     invalid_fields = [(name, encrypt(envelope.replace(checksum, "0" * 32)) if name == "score" else value) for name, value in fields]
-    invalid_body, invalid_headers = multipart(invalid_fields, [("score", "replay.osr", frames)])
+    invalid_body, invalid_headers = multipart(invalid_fields, [("score", "replay.osr", frames)], name_attribute="Name", filename_attribute="FileName")
     gateway.request("POST", "/web/osu-submit-modular-selector.php", invalid_body, invalid_headers, expected=400)
+    unauthorized_fields = [(name, digest("independent-invalid-password") if name == "pass" else value) for name, value in fields]
+    unauthorized_body, unauthorized_headers = multipart(unauthorized_fields, [("score", "replay.osr", frames)], file_disposition="attachment", name_attribute="Name", filename_attribute="FileName", file_content_type=False)
+    gateway.request("POST", "/web/osu-submit-modular-selector.php", unauthorized_body, unauthorized_headers, expected=401)
     leaderboard_query = urllib.parse.urlencode({"u": player_name, "h": digest(player_password), "c": map_hash, "m": 0})
     score_line = re.compile(rf"^{stable_id}\|{re.escape(player_name)}\|", re.MULTILINE)
     assert not score_line.search(gateway.request("GET", "/web/osu-osz2-getscores.php?" + leaderboard_query)[0].decode()), "Pending score leaked to ranking"
@@ -886,7 +904,8 @@ def run():
     after_logout = gateway.request("POST", "/", packet(4), player_bancho)[0]
     assert any(i == 86 for i, _ in packets(after_logout)), "Logged out stable session remained valid"
     checks = ["shared auth", "stable binary login/ping/chat/logout", "lazer OAuth/refresh", "lazer checksum/set lookup/archive/score collections", "Classic profile totals and standardized mixed-client ranking", "stable ScoreV1/ScoreV2 board partition", "RBAC", "friend/block/DM settings", "stable password room/host authority/slot identity", "stable ready/start/load/score/complete/transfer/leave", "stable spectator frame relay", "lazer score token/idempotency", "stable Rijndael256 submission/checksum", "server PP", "replay round trip", "pending rankings", "moderation", "encrypted stable RX and native solo RX", "RX metadata and unavailable common scale", "RX retry deduplication and native mod binding", "RX pending isolation and fixture moderation", "RX replay original ruleset/mod binding", "RX PP-sorted boards and best-per-map totals", "NM/RX API and gateway rank/stat isolation", "osu/taiko/catch RX partition isolation", "mania RX rejection and untrusted variant derivation"]
-    checks.extend(["native discovery service-key isolation and unavailable-vs-unknown boundary",
+    checks.extend(["stable large replay and case-insensitive attachment headers",
+                   "native discovery service-key isolation and unavailable-vs-unknown boundary",
                    "lazer HeadToHead frozen loading token lifecycle", "real room ingress and Sanctuary PP",
                    "room exact retry and changed-payload conflict", "room/solo and room/item/user scope isolation",
                    "private frozen peers and late-joiner empty history", "room index/cursors/user/leaderboard/native summaries",

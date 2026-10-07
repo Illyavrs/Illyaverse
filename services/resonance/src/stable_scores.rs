@@ -1,7 +1,7 @@
 use crate::common::{self, ApiError, AppState};
 use axum::{
     extract::{Multipart, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
 };
 use chrono::Utc;
@@ -13,37 +13,354 @@ use serde_json::{Value, json};
 use sqlx::Row;
 use std::collections::HashMap;
 
-pub async fn submit(
-    State(state): State<AppState>,
-    mut multipart: Multipart,
-) -> Result<Response, ApiError> {
+#[cfg(test)]
+#[path = "stable_upload_tests.rs"]
+mod upload_tests;
+
+const MAX_SCORE_PARAMETER_BYTES: usize = 32_768;
+const MAX_SCORE_UPLOAD_BYTES: usize = 20_971_520;
+const MAX_SCORE_DISPOSITION_BYTES: usize = 8_192;
+const MAX_SCORE_FIELD_NAME_BYTES: usize = 128;
+
+struct ScoreUpload {
+    fields: HashMap<String, String>,
+    envelope: Option<String>,
+    replay: Option<Vec<u8>>,
+}
+
+// Only literal protocol labels are eligible for diagnostics. Form field names,
+// filenames, MIME strings and payloads are untrusted and may contain credentials.
+fn upload_field_category(name: &str) -> &'static str {
+    match name {
+        "score" => "score",
+        "osuver" => "osuver",
+        "iv" => "iv",
+        "pass" => "pass",
+        "s" => "s",
+        "bmk" => "bmk",
+        "sbk" => "sbk",
+        "x" => "x",
+        "ft" => "ft",
+        "fs" => "fs",
+        "c1" => "c1",
+        "st" => "st",
+        "i" => "i",
+        _ => "unknown",
+    }
+}
+
+struct UploadPartMetadata {
+    category: &'static str,
+    name_present: bool,
+    name_length: usize,
+    filename_present: bool,
+    binary_mime: bool,
+    content_type_category: &'static str,
+    disposition: UploadDispositionMetadata,
+    index: usize,
+    limit: usize,
+}
+
+struct UploadDispositionMetadata {
+    kind: &'static str,
+    name_ci: bool,
+    filename_ci: bool,
+    name_lowercase: bool,
+    filename_lowercase: bool,
+}
+
+fn upload_disposition_metadata(headers: &HeaderMap) -> UploadDispositionMetadata {
+    let mut metadata = UploadDispositionMetadata {
+        kind: "missing",
+        name_ci: false,
+        filename_ci: false,
+        name_lowercase: false,
+        filename_lowercase: false,
+    };
+    let Some(header) = headers.get(header::CONTENT_DISPOSITION) else {
+        return metadata;
+    };
+    metadata.kind = "other";
+    let Ok(value) = header.to_str() else {
+        return metadata;
+    };
+    let kind = value.split(';').next().unwrap_or("").trim();
+    metadata.kind = if kind.eq_ignore_ascii_case("form-data") {
+        "form-data"
+    } else if kind.eq_ignore_ascii_case("attachment") {
+        "attachment"
+    } else if kind.eq_ignore_ascii_case("file") {
+        "file"
+    } else {
+        "other"
+    };
+    let mut quoted = false;
+    let mut escaped = false;
+    let mut parameter_start = None;
+    for (index, byte) in value.bytes().enumerate() {
+        if escaped {
+            escaped = false;
+        } else if quoted && byte == b'\\' {
+            escaped = true;
+        } else if byte == b'"' {
+            quoted = !quoted;
+        } else if !quoted && byte == b';' {
+            if let Some(start) = parameter_start {
+                record_upload_parameter(&mut metadata, &value[start..index]);
+            }
+            parameter_start = Some(index + 1);
+        }
+    }
+    if let Some(start) = parameter_start {
+        record_upload_parameter(&mut metadata, &value[start..]);
+    }
+    metadata
+}
+
+fn record_upload_parameter(metadata: &mut UploadDispositionMetadata, parameter: &str) {
+    let Some((name, _)) = parameter.trim().split_once('=') else {
+        return;
+    };
+    let name = name.trim();
+    metadata.name_ci |= name.eq_ignore_ascii_case("name");
+    metadata.filename_ci |= name.eq_ignore_ascii_case("filename");
+    metadata.name_lowercase |= name == "name";
+    metadata.filename_lowercase |= name == "filename";
+}
+
+struct UploadDisposition {
+    name: Option<String>,
+    filename_present: bool,
+}
+
+fn invalid_upload_disposition() -> ApiError {
+    ApiError(StatusCode::BAD_REQUEST, "invalid_score_disposition")
+}
+
+fn resolve_upload_disposition(headers: &HeaderMap) -> Result<UploadDisposition, ApiError> {
+    let mut values = headers.get_all(header::CONTENT_DISPOSITION).iter();
+    let Some(header) = values.next() else {
+        return Ok(UploadDisposition {
+            name: None,
+            filename_present: false,
+        });
+    };
+    if values.next().is_some() || header.as_bytes().len() > MAX_SCORE_DISPOSITION_BYTES {
+        return Err(invalid_upload_disposition());
+    }
+    let value = std::str::from_utf8(header.as_bytes()).map_err(|_| invalid_upload_disposition())?;
+    let mut segments = Vec::new();
+    let mut start = 0;
+    let mut quoted = false;
+    let mut escaped = false;
+    for (index, byte) in value.bytes().enumerate() {
+        if escaped {
+            escaped = false;
+        } else if quoted && byte == b'\\' {
+            escaped = true;
+        } else if byte == b'"' {
+            quoted = !quoted;
+        } else if !quoted && byte == b';' {
+            segments.push(&value[start..index]);
+            start = index + 1;
+        }
+    }
+    if quoted || escaped {
+        return Err(invalid_upload_disposition());
+    }
+    segments.push(&value[start..]);
+    if segments[0].trim().is_empty() {
+        return Err(invalid_upload_disposition());
+    }
+    let mut disposition = UploadDisposition {
+        name: None,
+        filename_present: false,
+    };
+    for parameter in segments.into_iter().skip(1) {
+        let Some((name, value)) = parameter.trim().split_once('=') else {
+            continue;
+        };
+        let name = name.trim();
+        if name.eq_ignore_ascii_case("name") {
+            if disposition.name.is_some() {
+                return Err(invalid_upload_disposition());
+            }
+            disposition.name = Some(decode_upload_parameter(value, MAX_SCORE_FIELD_NAME_BYTES)?);
+        } else if name.eq_ignore_ascii_case("filename") {
+            if disposition.filename_present {
+                return Err(invalid_upload_disposition());
+            }
+            // Validate the parameter syntax, then discard the supplied filename.
+            // Replay paths are always generated by the server after ingestion.
+            decode_upload_parameter(value, MAX_SCORE_DISPOSITION_BYTES)?;
+            disposition.filename_present = true;
+        }
+    }
+    Ok(disposition)
+}
+
+fn decode_upload_parameter(value: &str, limit: usize) -> Result<String, ApiError> {
+    let value = value.trim();
+    let mut decoded = String::with_capacity(value.len().min(limit));
+    if let Some(value) = value.strip_prefix('"') {
+        let mut characters = value.chars();
+        let mut closed = false;
+        while let Some(character) = characters.next() {
+            let character = if character == '\\' {
+                characters.next().ok_or_else(invalid_upload_disposition)?
+            } else if character == '"' {
+                if !characters.as_str().trim().is_empty() {
+                    return Err(invalid_upload_disposition());
+                }
+                closed = true;
+                break;
+            } else {
+                character
+            };
+            if character.is_control() || decoded.len() + character.len_utf8() > limit {
+                return Err(invalid_upload_disposition());
+            }
+            decoded.push(character);
+        }
+        if !closed {
+            return Err(invalid_upload_disposition());
+        }
+    } else {
+        if value.is_empty()
+            || value.len() > limit
+            || value.chars().any(|character| {
+                character.is_control() || character.is_whitespace() || character == '"'
+            })
+        {
+            return Err(invalid_upload_disposition());
+        }
+        decoded.push_str(value);
+    }
+    Ok(decoded)
+}
+
+fn reject_score_upload(
+    metadata: &UploadPartMetadata,
+    part_bytes: usize,
+    total_bytes: usize,
+    stage: &'static str,
+    error: ApiError,
+) -> ApiError {
+    tracing::warn!(
+        field_category = metadata.category,
+        name_present = metadata.name_present,
+        name_length = metadata.name_length,
+        filename_present = metadata.filename_present,
+        binary_mime = metadata.binary_mime,
+        content_type_category = metadata.content_type_category,
+        disposition_type = metadata.disposition.kind,
+        disposition_name_parameter_ci = metadata.disposition.name_ci,
+        disposition_filename_parameter_ci = metadata.disposition.filename_ci,
+        disposition_name_parameter_lowercase = metadata.disposition.name_lowercase,
+        disposition_filename_parameter_lowercase = metadata.disposition.filename_lowercase,
+        part_index = metadata.index,
+        part_bytes,
+        total_bytes,
+        part_limit = metadata.limit,
+        total_limit = MAX_SCORE_UPLOAD_BYTES,
+        rejection_stage = stage,
+        "stable score multipart rejected"
+    );
+    error
+}
+
+async fn read_score_upload(mut multipart: Multipart) -> Result<ScoreUpload, ApiError> {
     let mut fields = HashMap::new();
     let mut envelope = None;
     let mut replay = None;
     let mut total = 0usize;
-    while let Some(mut field) = multipart
-        .next_field()
-        .await
-        .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_score_multipart"))?
-    {
-        let name = field.name().unwrap_or("").to_owned();
-        let is_file = field.file_name().is_some();
+    let mut part_index = 0usize;
+    while let Some(mut field) = multipart.next_field().await.map_err(|_| {
+        reject_score_upload(
+            &UploadPartMetadata {
+                category: "unavailable",
+                name_present: false,
+                name_length: 0,
+                filename_present: false,
+                binary_mime: false,
+                content_type_category: "missing",
+                disposition: upload_disposition_metadata(&HeaderMap::new()),
+                index: part_index.saturating_add(1),
+                limit: MAX_SCORE_PARAMETER_BYTES,
+            },
+            0,
+            total,
+            "multipart_next_field",
+            ApiError(StatusCode::BAD_REQUEST, "invalid_score_multipart"),
+        )
+    })? {
+        part_index = part_index.saturating_add(1);
+        let parsed_name = field.name().unwrap_or("");
+        let parsed_filename_present = field.file_name().is_some();
         let mut bytes = Vec::new();
+        let limit = if parsed_name == "score" && parsed_filename_present {
+            resonance_protocol::replay::MAX_REPLAY_BYTES
+        } else {
+            MAX_SCORE_PARAMETER_BYTES
+        };
+        let binary_mime = field.content_type().is_some_and(|mime| {
+            mime.split(';')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .eq_ignore_ascii_case("application/octet-stream")
+        });
+        let mut metadata = UploadPartMetadata {
+            category: upload_field_category(parsed_name),
+            name_present: field.name().is_some(),
+            name_length: parsed_name.len(),
+            filename_present: parsed_filename_present,
+            binary_mime,
+            content_type_category: if binary_mime {
+                "octet-stream"
+            } else if field.content_type().is_some() {
+                "other"
+            } else {
+                "missing"
+            },
+            disposition: upload_disposition_metadata(field.headers()),
+            index: part_index,
+            limit,
+        };
+        let disposition = resolve_upload_disposition(field.headers()).map_err(|error| {
+            reject_score_upload(&metadata, 0, total, "content_disposition", error)
+        })?;
+        let name = disposition.name.unwrap_or_default();
+        let is_file = disposition.filename_present;
         let limit = if name == "score" && is_file {
             resonance_protocol::replay::MAX_REPLAY_BYTES
         } else {
-            32_768
+            MAX_SCORE_PARAMETER_BYTES
         };
-        while let Some(chunk) = field
-            .chunk()
-            .await
-            .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_score_multipart"))?
-        {
+        metadata.category = upload_field_category(&name);
+        metadata.limit = limit;
+        while let Some(chunk) = field.chunk().await.map_err(|_| {
+            reject_score_upload(
+                &metadata,
+                bytes.len(),
+                total,
+                "multipart_chunk",
+                ApiError(StatusCode::BAD_REQUEST, "invalid_score_multipart"),
+            )
+        })? {
             total = total.saturating_add(chunk.len());
-            if bytes.len() + chunk.len() > limit || total > 20_971_520 {
-                return Err(ApiError(
-                    StatusCode::PAYLOAD_TOO_LARGE,
-                    "score_upload_too_large",
+            let part_bytes = bytes.len().saturating_add(chunk.len());
+            if part_bytes > limit || total > MAX_SCORE_UPLOAD_BYTES {
+                return Err(reject_score_upload(
+                    &metadata,
+                    part_bytes,
+                    total,
+                    if part_bytes > limit {
+                        "part_limit"
+                    } else {
+                        "total_limit"
+                    },
+                    ApiError(StatusCode::PAYLOAD_TOO_LARGE, "score_upload_too_large"),
                 ));
             }
             bytes.extend(chunk);
@@ -80,6 +397,34 @@ pub async fn submit(
             ));
         }
     }
+    Ok(ScoreUpload {
+        fields,
+        envelope,
+        replay,
+    })
+}
+
+pub async fn submit(
+    State(state): State<AppState>,
+    multipart: Multipart,
+) -> Result<Response, ApiError> {
+    let result = submit_inner(state, multipart).await;
+    if let Err(error) = &result {
+        tracing::warn!(
+            error_code = error.1,
+            http_status = error.0.as_u16(),
+            "stable score submission rejected"
+        );
+    }
+    result
+}
+
+async fn submit_inner(state: AppState, multipart: Multipart) -> Result<Response, ApiError> {
+    let ScoreUpload {
+        fields,
+        envelope,
+        replay,
+    } = read_score_upload(multipart).await?;
     let required = |name: &str| {
         fields
             .get(name)
@@ -98,9 +443,12 @@ pub async fn submit(
             .ok_or(ApiError(StatusCode::BAD_REQUEST, "missing_score_envelope"))?,
         iv,
         version,
-    )?;
-    let submission = StableSubmission::parse(&decoded)?;
-    let client_hash = decrypt_score_field(required("s")?, iv, version)?;
+    )
+    .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_score_envelope_cipher"))?;
+    let submission = StableSubmission::parse(&decoded)
+        .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_score_envelope"))?;
+    let client_hash = decrypt_score_field(required("s")?, iv, version)
+        .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_score_client_hash_cipher"))?;
     let player = common::authenticate(
         &state,
         &submission.username,
@@ -145,7 +493,9 @@ pub async fn submit(
     if !storyboard.is_empty() && !wire::is_md5(storyboard) {
         return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_storyboard_hash"));
     }
-    submission.validate_checksum(version, &client_hash, storyboard)?;
+    submission
+        .validate_checksum(version, &client_hash, storyboard)
+        .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "score_checksum_mismatch"))?;
     if submission.mods & (1 << 23) != 0 {
         return Err(ApiError(
             StatusCode::NOT_IMPLEMENTED,
@@ -178,7 +528,8 @@ pub async fn submit(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "replay_validation_failed",
                 )
-            })??
+            })?
+            .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_score_replay"))?
     } else {
         0
     };

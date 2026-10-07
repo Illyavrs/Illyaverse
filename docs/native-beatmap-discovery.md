@@ -1,12 +1,18 @@
-# Stable 官方圖譜辨識
+# 原生客戶端官方圖譜辨識
 
 Stable 選擇圖譜後，登入玩家的 `/web/osu-osz2-getscores.php` 請求會先依 MD5 查詢本機圖譜。尚未收錄的 checksum 由 Resonance 交給 Sanctuary，使用營運者設定的 osu! OAuth 應用程式查詢官方 metadata，取得並驗證 `.osu` 後保存。後續請求使用本機資料；已收錄的私服圖譜與管理員指定的狀態具有優先權，不會被官方資料覆寫。
 
 設定 `OSU_CLIENT_ID`、`OSU_CLIENT_SECRET` 及兩個服務共用、至少 32 bytes 的 `INTERNAL_SERVICE_KEY`。本機原生測試使用 `.env.client-test.local`，修改後需重新建立 Sanctuary 容器。密鑰留在私有環境檔，不要放入提交、網站或遊戲客戶端。正式服務的上游固定為 `https://osu.ppy.sh`；測試用 loopback fixture 只存在於 Rust test build。
 
+Lazer 的已認證 checksum lookup、difficulty ID 查詢、以 difficulty 查詢圖譜集，以及單人成績 token 建立也使用同一 resolver。Lookup 同時帶 checksum、ID、filename 時先依 checksum 取得圖譜，並要求已提供的正整數 ID 與回傳的原生 ID 一致；filename 不會覆蓋 checksum。只有 filename 的 lookup 明確回覆 501 `filename_lookup_unavailable`。以圖譜集 ID 查詢與搜尋仍只使用本機已收錄資料，不會同步匯入整組官方 difficulties。
+
 ## 身分、快取與錯誤
 
 官方 difficulty ID 與資料庫內部 ID 是不同欄位。Stable 的 leaderboard、BeatmapInfo 和提交結果使用官方 ID；分數、replay 與網站圖譜頁使用本機資料庫 ID。`/osu/{id}` 與 BeatmapInfo 先查官方 ID，僅對沒有官方 ID 的私服圖譜使用本機 ID。BeatmapInfo 批次請求只查快取，不會同步匯入最多 100 張未知圖譜。
+
+Lazer 對外 ID 同樣使用官方 ID，私服圖譜才使用本機 ID。已匯入官方圖譜的資料庫 primary key 不接受為另一個原生 ID。圖譜集 ID 衝突時官方圖譜集優先，搜尋、計數與分頁會排除被遮蔽的私服 pseudo-set，避免搜尋私服 difficulty 卻回傳不相干的官方圖譜集。這是目前碰撞處理方式，尚未提供獨立的私服圖譜集 ID namespace。
+
+單人成績 token 先依 checksum 辨識，再綁定本機圖譜、對外 ID、ruleset 與玩家。辨識等待結束後，在寫入 token 的短交易內重新檢查 bearer session 和帳號狀態；提交與重試只使用已綁定身分，不會重新辨識或接受官方圖譜的 primary-key 別名。
 
 同一 selector 的併發請求合併，最多四個 resolver 同時處理；OAuth token、全域請求間隔、429 的 Retry-After 和短期失敗快取降低重複請求。官方 `.osu` 最多 8 MiB，metadata、檔案 checksum、ruleset 與官方 ID 均須一致。資料先寫入唯一檔案，再發布資料庫引用；競爭中的 loser 只移除自己的未使用檔案。不能確定 COMMIT 是否成功時保留檔案，避免已提交圖譜失去內容。
 

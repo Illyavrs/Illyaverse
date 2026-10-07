@@ -463,9 +463,13 @@ async fn beatmap(
     headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Json<Value>, ApiError> {
-    common::bearer(&state, &headers).await?;
+    let player = common::bearer(&state, &headers).await?;
     Ok(Json(
-        map_json(&state, crate::beatmaps::resolve(&state, id).await?).await?,
+        map_json(
+            &state,
+            crate::beatmaps::resolve(&state, player.id, id).await?,
+        )
+        .await?,
     ))
 }
 pub(crate) async fn map_json(state: &AppState, id: i64) -> Result<Value, ApiError> {
@@ -492,13 +496,23 @@ async fn create_score(
     let player = common::bearer(&state, &headers).await?;
     let input: ScoreTokenRequest = native_form(request).await?;
     input.validate()?;
+    if id <= 0 {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_beatmap_id"));
+    }
     common::rate_limit(&state, format!("score-token:{}", player.id), 60).await?;
-    let map = sqlx::query("SELECT id,md5,mode FROM beatmaps WHERE (id=$1 OR official_id=$1) AND md5=$2 ORDER BY (official_id=$1) DESC LIMIT 1")
-        .bind(id)
-        .bind(input.beatmap_hash.to_ascii_lowercase())
-        .fetch_optional(&state.pool)
+    let internal = crate::native_maps::resolve_checksum(&state, player.id, &input.beatmap_hash)
         .await?
         .ok_or(ApiError(StatusCode::NOT_FOUND, "beatmap_not_found"))?;
+    let map = sqlx::query(
+        "SELECT id,COALESCE(official_id,id) native_id,md5,mode FROM beatmaps WHERE id=$1",
+    )
+    .bind(internal)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or(ApiError(StatusCode::NOT_FOUND, "beatmap_not_found"))?;
+    if map.get::<i64, _>("native_id") != id {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "beatmap_id_mismatch"));
+    }
     if !map
         .get::<String, _>("md5")
         .eq_ignore_ascii_case(&input.beatmap_hash)
@@ -512,7 +526,12 @@ async fn create_score(
             "unsupported_ruleset_conversion",
         ));
     }
-    let token:i64=sqlx::query_scalar("INSERT INTO lazer_score_tokens(user_id,beatmap_id,ruleset_id,version_hash,expires_at,scope) VALUES($1,$2,$3,$4,$5,'solo') RETURNING id").bind(player.id).bind(map.get::<i64,_>("id")).bind(i16::from(input.ruleset_id)).bind(input.version_hash).bind(Utc::now()+Duration::hours(6)).fetch_one(&state.pool).await?;
+    // Discovery may wait on official access. Recheck and lock the active account
+    // and bearer session only for the short token write after that wait.
+    let mut tx = state.pool.begin().await?;
+    common::lazer_account_in_tx(&mut tx, &headers, player.id).await?;
+    let token:i64=sqlx::query_scalar("INSERT INTO lazer_score_tokens(user_id,beatmap_id,ruleset_id,version_hash,expires_at,scope) VALUES($1,$2,$3,$4,$5,'solo') RETURNING id").bind(player.id).bind(internal).bind(i16::from(input.ruleset_id)).bind(input.version_hash).bind(Utc::now()+Duration::hours(6)).fetch_one(&mut *tx).await?;
+    tx.commit().await?;
     Ok(Json(json!({"id":token})))
 }
 
@@ -532,6 +551,9 @@ async fn submit_score(
 ) -> Result<Json<Value>, ApiError> {
     let player = common::bearer(&state, &headers).await?;
     input.validate()?;
+    if map_id <= 0 || token_id <= 0 {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_score_token"));
+    }
     let mods = illya_domain::score_mods::ValidatedMods::parse(input.ruleset_id, &json!(input.mods))
         .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_score_mods"))?
         .legacy_bits;
@@ -542,7 +564,7 @@ async fn submit_score(
         ));
     }
     let mut tx = state.pool.begin().await?;
-    let token=sqlx::query("SELECT t.* FROM lazer_score_tokens t JOIN beatmaps b ON b.id=t.beatmap_id WHERE t.id=$1 AND t.user_id=$2 AND t.scope='solo' AND (b.id=$3 OR b.official_id=$3) AND (t.expires_at>now() OR t.score_id IS NOT NULL) FOR UPDATE OF t").bind(token_id).bind(player.id).bind(map_id).fetch_optional(&mut *tx).await?.ok_or(ApiError(StatusCode::NOT_FOUND,"invalid_score_token"))?;
+    let token=sqlx::query("SELECT t.* FROM lazer_score_tokens t JOIN beatmaps b ON b.id=t.beatmap_id WHERE t.id=$1 AND t.user_id=$2 AND t.scope='solo' AND COALESCE(b.official_id,b.id)=$3 AND (t.expires_at>now() OR t.score_id IS NOT NULL) FOR UPDATE OF t").bind(token_id).bind(player.id).bind(map_id).fetch_optional(&mut *tx).await?.ok_or(ApiError(StatusCode::NOT_FOUND,"invalid_score_token"))?;
     let map_id: i64 = token.get("beatmap_id");
     if token.get::<i16, _>("ruleset_id") != i16::from(input.ruleset_id) {
         return Err(ApiError(StatusCode::BAD_REQUEST, "score_ruleset_mismatch"));

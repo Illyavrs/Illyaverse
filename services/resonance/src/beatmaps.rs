@@ -25,41 +25,63 @@ pub fn router() -> Router<AppState> {
         .route("/api/v2/beatmaps/{id}/scores", get(scores))
 }
 
-pub async fn resolve(state: &AppState, id: i64) -> Result<i64, ApiError> {
-    sqlx::query_scalar("SELECT id FROM beatmaps WHERE official_id=$1 OR id=$1 ORDER BY (official_id=$1) DESC LIMIT 1").bind(id).fetch_optional(&state.pool).await?.ok_or(ApiError(StatusCode::NOT_FOUND,"beatmap_not_found"))
+pub async fn resolve(state: &AppState, user_id: i64, id: i64) -> Result<i64, ApiError> {
+    if id <= 0 {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_beatmap_id"));
+    }
+    crate::native_maps::resolve_id(state, user_id, id)
+        .await?
+        .ok_or(ApiError(StatusCode::NOT_FOUND, "beatmap_not_found"))
 }
 async fn lookup(
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(query): Query<HashMap<String, String>>,
 ) -> Result<Json<Value>, ApiError> {
-    common::bearer(&state, &headers).await?;
+    let player = common::bearer(&state, &headers).await?;
+    let native_id = query
+        .get("id")
+        .map(|value| {
+            value
+                .parse::<i64>()
+                .ok()
+                .filter(|id| *id > 0)
+                .ok_or(ApiError(StatusCode::BAD_REQUEST, "invalid_beatmap_id"))
+        })
+        .transpose()?;
     let id = if let Some(hash) = query.get("checksum") {
         if !resonance_protocol::stable::is_md5(hash) {
             return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_beatmap_hash"));
         }
-        sqlx::query_scalar("SELECT id FROM beatmaps WHERE md5=$1")
-            .bind(hash.to_ascii_lowercase())
-            .fetch_optional(&state.pool)
+        crate::native_maps::resolve_checksum(&state, player.id, hash)
             .await?
             .ok_or(ApiError(StatusCode::NOT_FOUND, "beatmap_not_found"))?
     } else {
-        resolve(
-            &state,
-            query
-                .get("id")
-                .and_then(|v| v.parse().ok())
-                .ok_or(ApiError(
-                    StatusCode::BAD_REQUEST,
-                    "beatmap_id_or_checksum_required",
-                ))?,
-        )
-        .await?
+        let native = native_id.ok_or(ApiError(
+            if query.contains_key("filename") {
+                StatusCode::NOT_IMPLEMENTED
+            } else {
+                StatusCode::BAD_REQUEST
+            },
+            if query.contains_key("filename") {
+                "filename_lookup_unavailable"
+            } else {
+                "beatmap_id_or_checksum_required"
+            },
+        ))?;
+        resolve(&state, player.id, native).await?
     };
-    Ok(Json(lazer::map_json(&state, id).await?))
+    let map = lazer::map_json(&state, id).await?;
+    if native_id.is_some_and(|native| map["id"].as_i64() != Some(native)) {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "beatmap_id_mismatch"));
+    }
+    Ok(Json(map))
 }
 async fn set_json(state: &AppState, id: i64) -> Result<Value, ApiError> {
-    let rows=sqlx::query("SELECT id FROM beatmaps WHERE official_set_id=$1 OR (official_set_id IS NULL AND id=$1) ORDER BY id LIMIT 256").bind(id).fetch_all(&state.pool).await?;
+    if id <= 0 {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_beatmapset_id"));
+    }
+    let rows=sqlx::query("SELECT id FROM beatmaps WHERE official_set_id=$1 OR (official_set_id IS NULL AND id=$1 AND NOT EXISTS(SELECT 1 FROM beatmaps WHERE official_set_id=$1)) ORDER BY id LIMIT 256").bind(id).fetch_all(&state.pool).await?;
     if rows.is_empty() {
         return Err(ApiError(StatusCode::NOT_FOUND, "beatmapset_not_found"));
     }
@@ -98,12 +120,13 @@ async fn set_lookup(
     headers: HeaderMap,
     Query(query): Query<HashMap<String, String>>,
 ) -> Result<Json<Value>, ApiError> {
-    common::bearer(&state, &headers).await?;
+    let player = common::bearer(&state, &headers).await?;
     let native = query
         .get("beatmap_id")
         .and_then(|v| v.parse().ok())
+        .filter(|id| *id > 0)
         .ok_or(ApiError(StatusCode::BAD_REQUEST, "invalid_beatmap_id"))?;
-    let internal = resolve(&state, native).await?;
+    let internal = resolve(&state, player.id, native).await?;
     let set: i64 =
         sqlx::query_scalar("SELECT COALESCE(official_set_id,id) FROM beatmaps WHERE id=$1")
             .bind(internal)
@@ -117,7 +140,10 @@ async fn download(
     Path(id): Path<i64>,
 ) -> Result<Response, ApiError> {
     common::bearer(&state, &headers).await?;
-    let path:String=sqlx::query_scalar("SELECT archive_path FROM beatmaps WHERE (official_set_id=$1 OR (official_set_id IS NULL AND id=$1)) AND archive_path IS NOT NULL ORDER BY id LIMIT 1").bind(id).fetch_optional(&state.pool).await?.ok_or(ApiError(StatusCode::NOT_FOUND,"archive_not_available"))?;
+    if id <= 0 {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_beatmapset_id"));
+    }
+    let path:String=sqlx::query_scalar("SELECT archive_path FROM beatmaps WHERE (official_set_id=$1 OR (official_set_id IS NULL AND id=$1 AND NOT EXISTS(SELECT 1 FROM beatmaps WHERE official_set_id=$1))) AND archive_path IS NOT NULL ORDER BY id LIMIT 1").bind(id).fetch_optional(&state.pool).await?.ok_or(ApiError(StatusCode::NOT_FOUND,"archive_not_available"))?;
     let bytes = common::stored_file(&state, &path, "maps", 104_857_600).await?;
     Ok((
         [
@@ -155,8 +181,10 @@ async fn search(
     if !(0..=1_000_000).contains(&offset) {
         return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_search_cursor"));
     }
-    let total:i64=sqlx::query_scalar("SELECT count(DISTINCT COALESCE(official_set_id,id)) FROM beatmaps WHERE concat_ws(' ',title,artist,creator,version) ILIKE '%'||$1||'%' AND ($2::smallint IS NULL OR mode=$2) AND ($3::text IS NULL OR status=$3)").bind(&q).bind(mode).bind(status).fetch_one(&state.pool).await?;
-    let ids=sqlx::query_scalar::<_,i64>("SELECT DISTINCT COALESCE(official_set_id,id) FROM beatmaps WHERE concat_ws(' ',title,artist,creator,version) ILIKE '%'||$1||'%' AND ($2::smallint IS NULL OR mode=$2) AND ($3::text IS NULL OR status=$3) ORDER BY 1 DESC LIMIT 50 OFFSET $4").bind(q).bind(mode).bind(status).bind(offset).fetch_all(&state.pool).await?;
+    // Search only the same public set membership that set_json will return.
+    // An official set hides a local pseudo-set with the same public ID.
+    let total:i64=sqlx::query_scalar("SELECT count(DISTINCT COALESCE(b.official_set_id,b.id)) FROM beatmaps b WHERE (b.official_set_id IS NOT NULL OR NOT EXISTS(SELECT 1 FROM beatmaps official WHERE official.official_set_id=b.id)) AND concat_ws(' ',b.title,b.artist,b.creator,b.version) ILIKE '%'||$1||'%' AND ($2::smallint IS NULL OR b.mode=$2) AND ($3::text IS NULL OR b.status=$3)").bind(&q).bind(mode).bind(status).fetch_one(&state.pool).await?;
+    let ids=sqlx::query_scalar::<_,i64>("SELECT DISTINCT COALESCE(b.official_set_id,b.id) FROM beatmaps b WHERE (b.official_set_id IS NOT NULL OR NOT EXISTS(SELECT 1 FROM beatmaps official WHERE official.official_set_id=b.id)) AND concat_ws(' ',b.title,b.artist,b.creator,b.version) ILIKE '%'||$1||'%' AND ($2::smallint IS NULL OR b.mode=$2) AND ($3::text IS NULL OR b.status=$3) ORDER BY 1 DESC LIMIT 50 OFFSET $4").bind(q).bind(mode).bind(status).bind(offset).fetch_all(&state.pool).await?;
     let mut sets = Vec::new();
     for id in ids {
         sets.push(set_json(&state, id).await?);
@@ -193,7 +221,6 @@ async fn scores(
         }
     }
     let user = common::bearer(&state, &headers).await?;
-    let map = resolve(&state, id).await?;
     let mode = match query.get("mode").map(String::as_str).unwrap_or("osu") {
         "osu" => 0i16,
         "taiko" => 1,
@@ -245,6 +272,7 @@ async fn scores(
     } else {
         derived_variant
     };
+    let map = resolve(&state, user.id, id).await?;
     let friends = if matches!(scope, "friend" | "friends") {
         let mut ids = common::friend_ids(&state, user.id)
             .await?
