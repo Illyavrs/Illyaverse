@@ -13,8 +13,15 @@ export type User = {
   joined_at: string;
   pp: number;
   play_count: number;
-  statistics?: { mode: number; score_variant: ScoreVariant; pp: number; rank: number | null;
-    country_rank: number | null; play_count: number; accuracy: number };
+  statistics?: {
+    mode: number;
+    score_variant: ScoreVariant;
+    pp: number;
+    rank: number | null;
+    country_rank: number | null;
+    play_count: number;
+    accuracy: number;
+  };
   email?: string;
   email_verified?: boolean;
   is_restricted?: boolean;
@@ -30,9 +37,8 @@ export type Preferences = {
   border_radius: number;
   locale?: string;
 };
-export type Beatmap = {
+export type BeatmapDifficulty = {
   id: number;
-  official_id: number | null;
   title: string;
   artist: string;
   creator: string;
@@ -41,11 +47,31 @@ export type Beatmap = {
   status: string;
   source: string;
   stars: number;
-  bpm: number;
   length_seconds: number;
+};
+export type BeatmapPackage = {
+  id: string;
+  native_set_id: number;
+  kind: 'osu' | 'osz';
+  legacy: boolean;
+  difficulty_count: number;
+  beatmap_ids: number[];
+  download_url: string;
+};
+export type Beatmap = BeatmapDifficulty & {
+  official_id: number | null;
+  bpm: number;
   max_combo: number;
   play_count: number;
   md5: string;
+  download_url: string;
+  download_kind: 'osu' | 'osz';
+  package: BeatmapPackage | null;
+};
+export type BeatmapUploadResult = {
+  items: Beatmap[];
+  package: BeatmapPackage;
+  idempotent: boolean;
 };
 export type Score = {
   id: number;

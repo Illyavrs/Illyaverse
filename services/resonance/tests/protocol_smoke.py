@@ -563,6 +563,25 @@ def run():
     assert sibling["native_id"] != map_id and sibling["native_set_id"] == set_id
     assert gateway.request("GET", f"/osu/{map_id}")[0] == fixture
 
+    # Website package reads are public, bounded and non-recursive. Verify the
+    # real HTTP DTO independently from the browser's synthetic UI fixtures.
+    anonymous = Client(admin.base)
+    public_map = anonymous.json("GET", f"/api/v1/beatmaps/{map_pk}")
+    assert public_map["download_kind"] == "osz" and public_map["package"]["kind"] == "osz"
+    package_pages = [anonymous.json("GET", f"/api/v1/beatmaps/{map_pk}/package/difficulties?page={number}&page_size=1") for number in (1, 2)]
+    assert all(page["total"] == 2 and page["page_size"] == 1 and len(page["items"]) == 1 for page in package_pages)
+    assert [page["page"] for page in package_pages] == [1, 2]
+    summaries = [page["items"][0] for page in package_pages]
+    assert [item["id"] for item in summaries] == sorted([map_pk, sibling["id"]])
+    required_summary_keys = {"id", "title", "artist", "creator", "version", "mode", "status", "source", "stars", "length_seconds"}
+    for summary in summaries:
+        assert required_summary_keys <= set(summary) <= required_summary_keys | {"bpm", "max_combo"}
+        assert summary["status"] == "pending"
+    assert public_map["download_url"] == f"/api/v1/beatmaps/{map_pk}/download"
+    assert anonymous.request("GET", public_map["download_url"])[0] == archive
+    assert anonymous.request("GET", f"/api/v1/beatmaps/{map_pk}/osu")[0] == fixture
+    anonymous.request("GET", "/api/v1/beatmaps/9223372036854775807/package/difficulties", expected=404)
+
     version = "20261007"
     client_hash = digest("fixture-path") + ":adapter:" + digest("fixture-adapter") + ":" + digest("fixture-uninstall") + ":" + digest("fixture-disk") + ":"
     def login(name, password):
@@ -962,7 +981,8 @@ def run():
     after_logout = gateway.request("POST", "/", packet(4), player_bancho)[0]
     assert any(i == 86 for i, _ in packets(after_logout)), "Logged out stable session remained valid"
     checks = ["shared auth", "stable binary login/ping/chat/logout", "lazer OAuth/refresh", "lazer checksum/set lookup/archive/score collections", "immutable multi-difficulty package/retry/native set grouping/full asset archive", "stable direct canonical difficulty/set selectors", "native signed-int bounds and reserved local misses", "Classic profile totals and standardized mixed-client ranking", "stable ScoreV1/ScoreV2 board partition", "RBAC", "friend/block/DM settings", "stable password room/host authority/slot identity", "stable ready/start/load/score/complete/transfer/leave", "stable spectator frame relay", "lazer score token/idempotency", "stable Rijndael256 submission/checksum", "server PP", "replay round trip", "pending rankings", "moderation", "encrypted stable RX and native solo RX", "RX metadata and unavailable common scale", "RX retry deduplication and native mod binding", "RX pending isolation and fixture moderation", "RX replay original ruleset/mod binding", "RX PP-sorted boards and best-per-map totals", "NM/RX API and gateway rank/stat isolation", "osu/taiko/catch RX partition isolation", "mania RX rejection and untrusted variant derivation"]
-    checks.extend(["Docker media publication and private staging routes",
+    checks.extend(["website package pagination and explicit original download formats",
+                   "Docker media publication and private staging routes",
                    "stable large replay and case-insensitive attachment headers",
                    "native discovery service-key isolation and unavailable-vs-unknown boundary",
                    "lazer HeadToHead frozen loading token lifecycle", "real room ingress and Sanctuary PP",

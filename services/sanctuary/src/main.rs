@@ -366,6 +366,10 @@ fn router(state: AppState) -> Router {
             post(maps::import).layer(DefaultBodyLimit::max(8 * 1024)),
         )
         .route("/api/v1/beatmaps/{id}", get(maps::detail))
+        .route(
+            "/api/v1/beatmaps/{id}/package/difficulties",
+            get(maps::package_difficulties),
+        )
         .route("/api/v1/beatmaps/{id}/download", get(maps::download))
         .route("/api/v1/beatmaps/{id}/osu", get(maps::osu_file))
         .route(

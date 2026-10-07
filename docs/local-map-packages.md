@@ -102,6 +102,35 @@ canonical identity. Local archive download returns the exact original complete
 `.osz`; a standalone `.osu` or official set without a retained archive cannot be
 advertised as a downloadable `.osz`.
 
+## Website reads and upload results
+
+`GET /api/v1/beatmaps/{id}/package/difficulties?page=1&page_size=24` is a public
+read of the anchor difficulty's local package. It returns the standard paginated
+`items`, `total`, `page` and `page_size` response. The default page size is 24;
+the maximum is 100. Members use stable internal-ID order and current moderation
+states. `total` counts stored member rows, rather than assuming every original
+manifest entry still has a row. An absent anchor or an official set without a
+local package returns 404.
+
+Each member summary contains only `id`, `title`, `artist`, `creator`, `version`,
+`mode`, `status`, `source`, `stars`, `length_seconds`, `bpm` and `max_combo`.
+It contains no stored path, checksum, fingerprint, owner or nested package.
+The query takes a bounded slice rather than fetching every member individually.
+
+Public map responses also expose `download_kind`: `osz` for a download whose
+retained path has the same lowercase `.osz` suffix used by the file response,
+otherwise `osu`. The website labels the actual download format, gives complete
+archives a separate single-difficulty `.osu` action, and explains that a single
+`.osu` does not include audio, images or sibling difficulties.
+
+The website keeps package browsing separate from score-board pagination,
+resets the member page when changing difficulty/package, and marks the current
+difficulty. Upload results distinguish creation from an exact same-owner retry,
+show returned difficulties with their current statuses, and link to their detail
+pages. Known ownership/overlap and official-ID errors have three-language copy.
+Failures preserve the selected file; changing the selection clears old feedback.
+The official-import action follows the account's existing import permission.
+
 ## Verification state
 
 The coordinated source check passes 179 Rust unit/CLI checks, 66 isolated
@@ -109,10 +138,18 @@ PostgreSQL integration checks and two existing native-artifact vectors. The
 populated upgrade, exact retries, ownership/conflict/cleanup, live authority,
 300-member native sets, canonical tokens, rooms and legacy processed receipts
 are covered. Rustfmt, all-target Clippy with warnings denied, and six migration
-source/checksum tests pass. Final Docker images pass 337 isolated HTTP requests
-in 40 categories, including canonical pending map/chart identities and unchanged
-ranked score/PP for pending submissions. Both local stacks run those image IDs
-and migration 0016 with retained-data fingerprints unchanged. Fresh DB/file
-backups and the complete evidence are recorded in [verification](verification.md).
+source/checksum tests pass. That native identity checkpoint passed 337 isolated
+HTTP requests in 40 categories and deployed migration 0016 to both local stacks
+with retained-data fingerprints unchanged.
+
+The later website package workflow passes 179 workspace unit/CLI checks and
+34 separately opted-in Sanctuary checks (32 PostgreSQL cases and two existing
+native-artifact vectors), plus formatting, Clippy, typecheck, full ESLint and
+production compilation. Its pinned images pass 343 HTTP requests in 41
+categories and 26 browser cases. Public member pagination, actual file formats,
+upload/retry results, localized failure recovery and shared pagination form
+behavior are covered. Eight fresh synthetic browser captures and independent
+scope review passed; these are not real-client evidence. Deployment and fresh
+DB/file backup evidence are recorded in [verification](verification.md).
 Real stable/lazer map search, download, gameplay and submission require separate
 user-operated client checks.

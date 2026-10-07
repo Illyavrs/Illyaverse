@@ -6,6 +6,7 @@
       "filename": "workflow-native-beatmap-desktop-en.png",
       "viewport_width": 1440,
       "document_width": 1440,
+      "scroll_y": 0,
       "rows": 1
     },
     {
@@ -13,6 +14,7 @@
       "filename": "workflow-native-beatmap-mobile-en.png",
       "viewport_width": 390,
       "document_width": 390,
+      "scroll_y": 0,
       "rows": 1
     }
   ]

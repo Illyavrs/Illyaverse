@@ -110,6 +110,7 @@ fn assert_public_package(value: &Value, kind: &str, count: usize, legacy: bool) 
         assert_eq!(item["native_set_id"], package["native_set_id"]);
         assert!(item.get("osu_path").is_none());
         assert!(item.get("archive_path").is_none());
+        assert_eq!(item["download_kind"], kind);
     }
 }
 
@@ -378,6 +379,108 @@ async fn local_osu_exact_retry_is_a_single_difficulty_package() {
         assert_eq!(files.len(), 1);
     })
     .await;
+    fixture.finish(result).await;
+}
+
+#[tokio::test]
+#[ignore = "requires ILLYA_TEST_DATABASE_URL; owned disposable PostgreSQL 17"]
+async fn package_difficulties_public_pagination_and_download_kinds() {
+    let fixture = MutationFixture::new("package_public_pages", "http://127.0.0.1:1".into()).await;
+    let state = fixture.state.clone();
+    let app = fixture.app.clone();
+    let result = tokio::spawn(async move {
+        let (owner, _, _, _) = actor(&state, "PackagePublicPages", &["beatmaps.upload"]).await;
+        let members = (0..125)
+            .map(|index| difficulty("Paged package", &format!("Difficulty {index:03}")))
+            .collect::<Vec<_>>();
+        let entries = members.iter().enumerate()
+            .map(|(index,bytes)|(format!("difficulty-{index}.osu"),bytes.as_slice()))
+            .collect::<Vec<_>>();
+        let payload = archive(&entries.iter().map(|(name,bytes)|(name.as_str(),*bytes)).collect::<Vec<_>>());
+        let (package, member_ids) = seed_legacy(&state, owner, "osz", &payload, &members).await;
+        let other_maps = vec![difficulty("Other package", "Easy"),difficulty("Other package", "Hard")];
+        let other_payload = archive(&[("easy.osu",&other_maps[0]),("hard.osu",&other_maps[1])]);
+        let (_,other_ids) = seed_legacy(&state, owner, "osz", &other_payload, &other_maps).await;
+        let standalone = difficulty("Standalone public package", "Single");
+        let (_,standalone_ids) = seed_legacy(&state, owner, "osu", &standalone, std::slice::from_ref(&standalone)).await;
+
+        // Count actual database members rather than the immutable upload
+        // manifest: an archived package may outlive a removed difficulty row.
+        sqlx::query("DELETE FROM beatmaps WHERE id=$1").bind(member_ids[124]).execute(&state.db).await.unwrap();
+        let expected_ids = &member_ids[..124];
+        sqlx::query("UPDATE beatmaps SET status=CASE WHEN id=$1 THEN 'ranked' WHEN id=$2 THEN 'unranked' ELSE 'loved' END WHERE local_package_id=$3")
+            .bind(expected_ids[0]).bind(expected_ids[1]).bind(package).execute(&state.db).await.unwrap();
+        let before = database_snapshot(&state).await;
+        let path = format!("/api/v1/beatmaps/{}/package/difficulties",expected_ids[61]);
+        let first = get_json(&app,&path).await;
+        assert_eq!(first["total"],124);assert_eq!(first["page"],1);assert_eq!(first["page_size"],24);
+        assert_eq!(ids(&first),expected_ids[..24]);
+        assert_eq!(first["items"][0]["status"],"ranked");assert_eq!(first["items"][1]["status"],"unranked");
+        let fields = ["id","title","artist","creator","version","mode","status","source","stars","length_seconds","bpm","max_combo"];
+        for item in first["items"].as_array().unwrap() {
+            let object = item.as_object().unwrap();
+            assert_eq!(object.len(),fields.len());
+            assert!(fields.iter().all(|field|object.contains_key(*field)));
+            for sensitive in ["osu_path","archive_path","md5","sha256","fingerprint","local_package_id","native_id","native_set_id","member_md5","package","beatmap_ids","uploaded_by"] {
+                assert!(item.get(sensitive).is_none(),"unexpected summary field {sensitive}");
+            }
+        }
+        let same = get_json(&app,&format!("/api/v1/beatmaps/{}/package/difficulties",expected_ids[0])).await;
+        assert_eq!(same,first,"anchors in one package share the same stable first page");
+        let mut all = Vec::new();
+        for p in 1..=6 {
+            let page = get_json(&app,&format!("{path}?page={p}")).await;
+            assert_eq!(page["total"],124);assert_eq!(page["page"],p);assert_eq!(page["page_size"],24);
+            let page_ids = ids(&page);
+            assert_eq!(page_ids.len(),if p==6{4}else{24});
+            assert!(page["items"].as_array().unwrap().windows(2).all(|pair|pair[0]["id"].as_i64().unwrap()<pair[1]["id"].as_i64().unwrap()));
+            all.extend(page_ids);
+        }
+        assert_eq!(all,expected_ids);
+        let outside = get_json(&app,&format!("{path}?page=7")).await;
+        assert_eq!(outside["total"],124);assert!(outside["items"].as_array().unwrap().is_empty());
+        let oversized = get_json(&app,&format!("{path}?page_size=4294967295")).await;
+        assert_eq!(oversized["page_size"],100);assert_eq!(oversized["total"],124);assert_eq!(ids(&oversized),expected_ids[..100]);
+        let minimum = get_json(&app,&format!("{path}?page=0&page_size=0")).await;
+        assert_eq!(minimum["page"],1);assert_eq!(minimum["page_size"],1);assert_eq!(ids(&minimum),expected_ids[..1]);
+        for invalid in ["page_size=-1","page_size=abc","page_size=4294967296","page=-1","page=invalid"] {
+            assert_eq!(get_bytes(&app,&format!("{path}?{invalid}")).await.0,StatusCode::BAD_REQUEST);
+        }
+        let other = get_json(&app,&format!("/api/v1/beatmaps/{}/package/difficulties",other_ids[0])).await;
+        assert_eq!(other["total"],2);assert_eq!(ids(&other),other_ids);
+        let single = get_json(&app,&format!("/api/v1/beatmaps/{}/package/difficulties",standalone_ids[0])).await;
+        assert_eq!(single["total"],1);assert_eq!(ids(&single),standalone_ids);
+        assert_eq!(database_snapshot(&state).await,before,"public pagination must not mutate rows or audit history");
+
+        sqlx::query("UPDATE beatmaps SET status='pending' WHERE id=$1").bind(expected_ids[0]).execute(&state.db).await.unwrap();
+        let current = get_json(&app,&path).await;
+        assert_eq!(current["items"][0]["status"],"pending","moderation state comes from current rows");
+        for (id,kind,original) in [(expected_ids[0],"osz",payload.as_slice()),(standalone_ids[0],"osu",standalone.as_slice())] {
+            let detail = get_json(&app,&format!("/api/v1/beatmaps/{id}")).await;
+            assert_eq!(detail["download_kind"],kind);
+            let response = app.clone().oneshot(Request::builder().uri(format!("/api/v1/beatmaps/{id}/download")).body(Body::empty()).unwrap()).await.unwrap();
+            assert_eq!(response.status(),StatusCode::OK);
+            assert_eq!(response.headers()[axum::http::header::CONTENT_DISPOSITION].to_str().unwrap(),format!("attachment; filename=\"illyaverse-{id}.{kind}\""));
+            assert_eq!(to_bytes(response.into_body(),2*1024*1024).await.unwrap().as_ref(),original);
+        }
+        // Exact suffix matching mirrors file_response, including an official
+        // archive whose retained filename happens to use uppercase letters.
+        let official_bytes = with_official_identity(difficulty("Official public metadata","Normal"),65001,65002);
+        tokio::fs::write(state.maps_root.join("official.OSZ"),&official_bytes).await.unwrap();
+        let official:i64 = sqlx::query_scalar("INSERT INTO beatmaps(official_id,official_set_id,title,artist,creator,version,mode,status,source,stars,md5,osu_path,archive_path) VALUES(65001,65002,'Official public metadata','Fixture','Illyaverse','Normal',0,'ranked','official',1,$1,'official.OSZ','official.OSZ') RETURNING id")
+            .bind(format!("{:x}",md5::compute(&official_bytes))).fetch_one(&state.db).await.unwrap();
+        let official_detail = get_json(&app,&format!("/api/v1/beatmaps/{official}")).await;
+        assert_eq!(official_detail["download_kind"],"osu");
+        assert!(official_detail["package"].is_null());
+        for anchor in [official,i64::MAX] {
+            assert_eq!(get_bytes(&app,&format!("/api/v1/beatmaps/{anchor}/package/difficulties")).await.0,StatusCode::NOT_FOUND);
+        }
+        let list = get_json(&app,"/api/v1/beatmaps?page_size=100").await;
+        for row in list["items"].as_array().unwrap() {
+            assert!(matches!(row["download_kind"].as_str(),Some("osu"|"osz")));
+            assert!(row.get("osu_path").is_none());assert!(row.get("archive_path").is_none());
+        }
+    }).await;
     fixture.finish(result).await;
 }
 

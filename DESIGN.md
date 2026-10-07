@@ -312,6 +312,14 @@ The appearance sheet is 390px wide, capped at the viewport, and scrolls vertical
 
 Avatars show player-uploaded images or a single initial. Initials use readable accent over a 15% accent mix with the background; normal avatars are 32px and large avatars 104px, reduced to 78px on small screens. Empty states use centered, bounded text and an outlined rhythm icon, with a meaningful action when available. Markdown retains semantic headings, underlined links, locally scrolling commands and intact tables.
 
+### Local map packages and upload results
+
+Map detail downloads name the actual returned file kind: a complete `.osz` package or one `.osu` difficulty. Complete-package details also expose an outline action for the single difficulty, with direct copy explaining that `.osu` does not include music, images or other difficulties. The download group stacks its shared buttons; labels wrap within a minimum 36px control height and use the full available width on small screens.
+
+Package difficulties reuse divider-led catalogue rows inside the existing glass content panel. The current difficulty has both a text badge and a light accent mix (8%) with an accessible current-page state; its version remains visible above the paged list even when its row is on another page. Difficulty/version, title, artist and creator may wrap, while mode labels and the numeric column remain intact. The package icon tile is 52px on desktop and 36px at 600px and below. Package pagination is independent of the score board's mode, category and page.
+
+Upload results remain inside the upload form, separated by the existing border role with 28px top margin and 24px top padding. A 22px result heading, shared status text, direct hints and paged difficulty rows distinguish a new upload from an exact retry that returns existing content. Each row uses its returned current moderation status. Errors use the existing alert and recovery-link styles; failed submission retains the selected file, while successful submission clears it. Traditional Chinese, English and Japanese share these semantics, with import and sign-in recovery actions reflecting the player's permission/session state. This is an Operate extension of the incumbent system; it introduces no new primitive tokens or artwork.
+
 ### Motion and keyboard treatment
 
 Motion follows state changes rather than decorating the ground: links change color over 0.18s, catalogue rows change background over 0.2s, and shadcn controls use Tailwind's 150ms standard transition easing. Loading spinners use a one-second linear rotation. Reduced-motion preference disables animations and transitions and changes smooth scrolling to immediate scrolling. Keep the global focus outline and component focus rings visible in both themes and with custom accents.

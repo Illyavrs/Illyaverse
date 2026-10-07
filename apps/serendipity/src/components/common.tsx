@@ -85,7 +85,7 @@ export function Pagination({
   const t = useTranslations('common');
   return total > pageSize ? (
     <div className="pagination">
-      <Button variant="outline" disabled={page === 1} onClick={() => onChange(page - 1)}>
+      <Button type="button" variant="outline" disabled={page === 1} onClick={() => onChange(page - 1)}>
         <ArrowLeft />
         {t('previous')}
       </Button>
@@ -93,6 +93,7 @@ export function Pagination({
         {page} / {Math.ceil(total / pageSize)}
       </span>
       <Button
+        type="button"
         variant="outline"
         disabled={page * pageSize >= total}
         onClick={() => onChange(page + 1)}

@@ -1,5 +1,5 @@
 'use client';
-import { useDeferredValue, useEffect, useState, type FormEvent } from 'react';
+import { useDeferredValue, useEffect, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -28,14 +28,169 @@ import {
   Protected,
 } from '@/components/common';
 import { useSession } from '@/components/providers';
-import { api, fetcher, hasPermission } from '@/lib/api';
-import type { Beatmap, Page, Score, ScoreVariant } from '@/lib/types';
+import { api, ApiError, fetcher, hasPermission } from '@/lib/api';
+import type {
+  Beatmap,
+  BeatmapDifficulty,
+  BeatmapUploadResult,
+  Page,
+  Score,
+  ScoreVariant,
+} from '@/lib/types';
 import { ScoreTable } from './scores';
 import { ScoreVariantControl, useScoreSelection } from '@/components/score-selection';
 
 function duration(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }
+function DifficultyRows({ items, currentId }: { items: BeatmapDifficulty[]; currentId?: number }) {
+  const t = useTranslations('maps');
+  const c = useTranslations('common');
+  return (
+    <div className="map-list package-difficulty-list">
+      {items.map((map) => (
+        <Link
+          href={`/beatmaps/${map.id}`}
+          key={map.id}
+          className="map-row package-difficulty-row"
+          aria-current={map.id === currentId ? 'page' : undefined}
+        >
+          <span className={`map-art mode-${map.mode}`} aria-hidden="true">
+            <Music2 />
+          </span>
+          <div className="map-main">
+            <strong>{map.version}</strong>
+            <span>
+              {map.title} <span className="dot">·</span> {map.artist}
+            </span>
+            <span>
+              {t('creator')} {map.creator}
+            </span>
+            <div className="map-tags">
+              <span className="package-mode">{['osu!', 'taiko', 'catch', 'mania'][map.mode]}</span>
+              <span className={`status-text status-${map.status}`}>
+                {c(
+                  ['pending', 'ranked', 'loved', 'unranked'].includes(map.status)
+                    ? map.status
+                    : 'pending',
+                )}
+              </span>
+              {map.id === currentId && <Badge variant="outline">{t('currentDifficulty')}</Badge>}
+            </div>
+          </div>
+          <div className="map-numbers">
+            <strong>
+              <Star />
+              {map.stars.toFixed(2)}
+            </strong>
+            <span>
+              <Clock />
+              {duration(map.length_seconds)}
+            </span>
+          </div>
+          <ArrowRight className="row-arrow" />
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+function MapDownloads({ map }: { map: Beatmap }) {
+  const t = useTranslations('maps');
+  const archive = map.download_kind === 'osz';
+  const downloadUrl = map.download_url || `/api/v1/beatmaps/${map.id}/download`;
+  return (
+    <div className="map-downloads">
+      <div className="actions">
+        <Button asChild>
+          <a href={archive ? (map.package?.download_url ?? downloadUrl) : downloadUrl}>
+            <Download />
+            {t(archive ? 'downloadPackage' : 'downloadDifficulty')}
+          </a>
+        </Button>
+        {archive && (
+          <Button asChild variant="outline">
+            <a href={`/api/v1/beatmaps/${map.id}/osu`}>
+              <Download />
+              {t('downloadDifficulty')}
+            </a>
+          </Button>
+        )}
+      </div>
+      <p className="hint">{t('singleFileHint')}</p>
+    </div>
+  );
+}
+
+function PackageDifficulties({ mapId, currentVersion }: { mapId: number; currentVersion: string }) {
+  const t = useTranslations('maps');
+  const c = useTranslations('common');
+  const [page, setPage] = useState(1);
+  const { data, error, isLoading, mutate } = useSWR<Page<BeatmapDifficulty>>(
+    `/beatmaps/${mapId}/package/difficulties?page=${page}&page_size=24`,
+    fetcher,
+    { keepPreviousData: false },
+  );
+  return (
+    <section
+      className="glass content-panel map-package"
+      aria-labelledby="map-package-title"
+      aria-busy={isLoading}
+    >
+      <header className="section-heading">
+        <div>
+          <h2 id="map-package-title">{t('packageTitle')}</h2>
+          <p>{data ? t('packageCount', { count: data.total }) : c('loading')}</p>
+          <p className="package-current">
+            {t('currentDifficulty')}: <strong>{currentVersion}</strong>
+          </p>
+        </div>
+      </header>
+      {error ? (
+        <LoadError retry={() => mutate()} />
+      ) : !data ? (
+        <Loading />
+      ) : data.items.length ? (
+        <DifficultyRows items={data.items} currentId={mapId} />
+      ) : (
+        <Empty title={c('empty')} />
+      )}
+      {data && !error && (
+        <Pagination page={page} total={data.total} pageSize={data.page_size} onChange={setPage} />
+      )}
+    </section>
+  );
+}
+
+function UploadResult({ result }: { result: BeatmapUploadResult }) {
+  const t = useTranslations('maps');
+  const [page, setPage] = useState(1);
+  const archive = result.package.kind === 'osz';
+  return (
+    <section className="map-upload-result" aria-labelledby="map-upload-result-title">
+      <h2 id="map-upload-result-title">{t('uploadResultTitle')}</h2>
+      <p className="form-success" role="status">
+        {t(result.idempotent ? 'uploadRetrySuccess' : 'uploadSuccess')}
+      </p>
+      <p className="hint">
+        {t('packageCount', { count: result.items.length })} · {t('resultStatusHint')}
+      </p>
+      {result.idempotent && <p className="hint">{t('uploadRetryHint')}</p>}
+      <DifficultyRows items={result.items.slice((page - 1) * 24, page * 24)} />
+      <Pagination page={page} total={result.items.length} onChange={setPage} />
+      <div className="actions">
+        <Button asChild variant="outline">
+          <a href={result.package.download_url}>
+            <Download />
+            {t(archive ? 'downloadPackage' : 'downloadDifficulty')}
+          </a>
+        </Button>
+      </div>
+      {!archive && <p className="hint">{t('singleFileHint')}</p>}
+    </section>
+  );
+}
+
 export function MapRows({ items, compact = false }: { items: Beatmap[]; compact?: boolean }) {
   const t = useTranslations('maps');
   const c = useTranslations('common');
@@ -170,7 +325,8 @@ export function BeatmapPage({ id }: { id: number }) {
   const search = useSearchParams();
   const { mode: requestedMode, select } = useScoreSelection(map?.mode ?? 0);
   const mode = map && map.mode !== 0 ? String(map.mode) : requestedMode;
-  const variant: ScoreVariant = mode !== '3' && search.get('variant') === 'relax' ? 'relax' : 'vanilla';
+  const variant: ScoreVariant =
+    mode !== '3' && search.get('variant') === 'relax' ? 'relax' : 'vanilla';
   const selection = new URLSearchParams({ mode, variant });
   useEffect(() => {
     if (!map) return;
@@ -184,7 +340,11 @@ export function BeatmapPage({ id }: { id: number }) {
     window.history.replaceState(null, '', `?${query}`);
   }, [map, mode, variant, search]);
   const [page, setPage] = useState(1);
-  const { data: scores, error: scoreError, mutate: reloadScores } = useSWR<Page<Score>>(
+  const {
+    data: scores,
+    error: scoreError,
+    mutate: reloadScores,
+  } = useSWR<Page<Score>>(
     map ? `/beatmaps/${id}/scores?${selection}&page=${page}&page_size=24` : null,
     fetcher,
   );
@@ -217,12 +377,7 @@ export function BeatmapPage({ id }: { id: number }) {
                   </Badge>
                 </div>
               </div>
-              <Button asChild>
-                <a href={`/api/v1/beatmaps/${id}/download`}>
-                  <Download />
-                  {c('download')}
-                </a>
-              </Button>
+              <MapDownloads map={map} />
             </section>
             <dl className="map-detail-stats glass">
               {[
@@ -237,21 +392,49 @@ export function BeatmapPage({ id }: { id: number }) {
                 </div>
               ))}
             </dl>
+            {map.package && (
+              <PackageDifficulties
+                key={`${map.id}:${map.package.id}`}
+                mapId={map.id}
+                currentVersion={map.version}
+              />
+            )}
             <section className="glass content-panel">
-              <header className="section-heading"><h2>{t('leaderboard')}</h2></header>
+              <header className="section-heading">
+                <h2>{t('leaderboard')}</h2>
+              </header>
               <div className="filter-bar">
-                <GameMode value={mode} allowedModes={map.mode === 0 ? undefined : [String(map.mode)]}
-                  onChange={(v) => { select(v, variant); setPage(1); }} />
-                <ScoreVariantControl mode={mode} value={variant} onChange={(v) => { select(mode, v); setPage(1); }} />
+                <GameMode
+                  value={mode}
+                  allowedModes={map.mode === 0 ? undefined : [String(map.mode)]}
+                  onChange={(v) => {
+                    select(v, variant);
+                    setPage(1);
+                  }}
+                />
+                <ScoreVariantControl
+                  mode={mode}
+                  value={variant}
+                  onChange={(v) => {
+                    select(mode, v);
+                    setPage(1);
+                  }}
+                />
               </div>
-              <p className="hint">{mode === '3' ? c('relaxUnsupported') : t(variant === 'relax' ? 'relaxBoard' : 'normalBoard')}</p>
+              <p className="hint">
+                {mode === '3'
+                  ? c('relaxUnsupported')
+                  : t(variant === 'relax' ? 'relaxBoard' : 'normalBoard')}
+              </p>
               {scoreError ? (
                 <LoadError retry={() => reloadScores()} />
               ) : !scores ? (
                 <Loading />
               ) : scores.items.length ? (
-                <><ScoreTable scores={scores.items} leaderboard />
-                  <Pagination page={page} total={scores.total} onChange={setPage} /></>
+                <>
+                  <ScoreTable scores={scores.items} leaderboard />
+                  <Pagination page={page} total={scores.total} onChange={setPage} />
+                </>
               ) : (
                 <Empty title={c('empty')} />
               )}
@@ -266,28 +449,56 @@ export function BeatmapPage({ id }: { id: number }) {
 export function MapUploadPage({ official = false }: { official?: boolean }) {
   const t = useTranslations('maps');
   const c = useTranslations('common');
+  const { user } = useSession();
+  const submitting = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
+  const [errorCode, setErrorCode] = useState('');
+  const [result, setResult] = useState<BeatmapUploadResult | null>(null);
+  const [imported, setImported] = useState<Beatmap | null>(null);
+  function clearFeedback() {
+    setError('');
+    setErrorCode('');
+    setResult(null);
+    setImported(null);
+  }
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (submitting.current) return;
+    submitting.current = true;
     const form = e.currentTarget;
     const data = new FormData(form);
     setBusy(true);
-    setError('');
-    setSuccess(false);
+    clearFeedback();
     try {
       if (official)
-        await api('/beatmaps/import', {
-          method: 'POST',
-          body: JSON.stringify({ official_id: Number(data.get('official_id')) }),
-        });
-      else await api('/beatmaps/upload', { method: 'POST', body: data });
-      setSuccess(true);
+        setImported(
+          await api<Beatmap>('/beatmaps/import', {
+            method: 'POST',
+            body: JSON.stringify({ official_id: Number(data.get('official_id')) }),
+          }),
+        );
+      else
+        setResult(
+          await api<BeatmapUploadResult>('/beatmaps/upload', { method: 'POST', body: data }),
+        );
       form.reset();
-    } catch {
-      setError(c('serviceError'));
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status >= 400 && cause.status < 500) {
+        const errorKeys = {
+          official_beatmap_requires_import: 'errorOfficialUpload',
+          map_package_conflict: 'errorPackageConflict',
+          official_namespace_conflict: 'errorOfficialNamespace',
+          official_version_conflict: 'errorOfficialVersion',
+          unauthorized: 'errorUnauthorized',
+          forbidden: 'errorForbidden',
+        } as const;
+        const key = errorKeys[cause.code as keyof typeof errorKeys];
+        setError(key ? t(key) : cause.message);
+        setErrorCode(cause.code);
+      } else setError(c('serviceError'));
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }
@@ -302,7 +513,17 @@ export function MapUploadPage({ official = false }: { official?: boolean }) {
           {official ? (
             <div className="field">
               <label htmlFor="official_id">{t('officialId')}</label>
-              <Input id="official_id" name="official_id" type="number" min={1} required />
+              <Input
+                id="official_id"
+                name="official_id"
+                type="number"
+                min={1}
+                max={1_999_999_999}
+                step={1}
+                required
+                disabled={busy}
+                onChange={clearFeedback}
+              />
             </div>
           ) : (
             <div className="field">
@@ -311,19 +532,43 @@ export function MapUploadPage({ official = false }: { official?: boolean }) {
                 <Upload />
                 <strong>{t('upload')}</strong>
                 <span>{t('fileHint')}</span>
-                <input type="file" name="file" id="mapfile" accept=".osu,.osz" required />
+                <input
+                  type="file"
+                  name="file"
+                  id="mapfile"
+                  accept=".osu,.osz"
+                  required
+                  disabled={busy}
+                  aria-describedby="map-upload-hint"
+                  onChange={clearFeedback}
+                />
               </label>
+              <p className="hint" id="map-upload-hint">
+                {t('uploadPackageHint')}
+              </p>
             </div>
           )}
           {error && (
-            <p className="form-error" role="alert">
-              {error}
-            </p>
-          )}
-          {success && (
-            <p className="form-success" role="status">
-              {t(official ? 'importSuccess' : 'uploadSuccess')}
-            </p>
+            <div className="map-upload-error">
+              <p className="form-error" role="alert">
+                {error}
+              </p>
+              {errorCode === 'official_beatmap_requires_import' &&
+                (user && hasPermission(user.permissions, 'beatmaps.import') ? (
+                  <Link href="/beatmaps/import" className="text-link">
+                    {t('import')}
+                    <ArrowRight />
+                  </Link>
+                ) : (
+                  <p className="hint">{t('officialImportPermissionHint')}</p>
+                ))}
+              {errorCode === 'unauthorized' && (
+                <Link href="/login" className="text-link">
+                  {c('signInRequired')}
+                  <ArrowRight />
+                </Link>
+              )}
+            </div>
           )}
           <div className="actions">
             <Button disabled={busy} type="submit">
@@ -334,6 +579,17 @@ export function MapUploadPage({ official = false }: { official?: boolean }) {
               <Link href="/beatmaps">{c('back')}</Link>
             </Button>
           </div>
+          {result && <UploadResult result={result} />}
+          {imported && (
+            <section className="map-upload-result" aria-labelledby="map-upload-result-title">
+              <h2 id="map-upload-result-title">{t('importResultTitle')}</h2>
+              <p className="form-success" role="status">
+                {t('importSuccess')}
+              </p>
+              <p className="hint">{t('resultStatusHint')}</p>
+              <DifficultyRows items={[imported]} />
+            </section>
+          )}
         </form>
       </Protected>
     </div>

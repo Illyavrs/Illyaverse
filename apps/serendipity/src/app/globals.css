@@ -1120,6 +1120,100 @@ svg {
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
+.map-downloads {
+  flex: 0 1 340px;
+  min-width: 0;
+}
+.map-downloads .actions {
+  align-items: stretch;
+  flex-direction: column;
+}
+.map-downloads [data-slot='button'],
+.map-upload-result [data-slot='button'] {
+  height: auto;
+  min-height: 36px;
+  white-space: normal;
+  line-height: 1.5;
+}
+.map-downloads > .hint {
+  margin-block-start: 12px;
+}
+.map-package {
+  margin-block-end: 28px;
+}
+.map-package .package-current {
+  max-width: none;
+  overflow-wrap: anywhere;
+}
+.package-difficulty-row[aria-current='page'] {
+  background: color-mix(in srgb, var(--user-accent) 8%, transparent);
+}
+.package-difficulty-row .map-art {
+  width: 52px;
+  height: 52px;
+}
+.package-difficulty-row .map-main > strong,
+.package-difficulty-row .map-main > span {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.package-difficulty-row .map-tags {
+  font-size: 12px;
+}
+.package-difficulty-row .map-tags [data-slot='badge'] {
+  max-width: none;
+  font-size: 11px;
+}
+.package-difficulty-row .map-numbers {
+  flex-shrink: 0;
+}
+.package-mode {
+  font-weight: 700;
+  white-space: nowrap;
+}
+.map-upload-result {
+  min-width: 0;
+  margin-block-start: 28px;
+  padding-block-start: 24px;
+  border-block-start: 1px solid var(--border);
+}
+.map-upload-result h2 {
+  font-size: 22px;
+}
+.map-upload-result > .hint,
+.map-upload-result > .actions {
+  margin-block-start: 12px;
+}
+.map-upload-error .form-error {
+  overflow-wrap: anywhere;
+}
+.map-upload-error > .hint,
+.map-upload-error > .text-link {
+  margin-block-end: 20px;
+}
+@media (max-width: 600px) {
+  .map-downloads {
+    flex-basis: 100%;
+    width: 100%;
+  }
+  .package-difficulty-row {
+    gap: 12px;
+  }
+  .package-difficulty-row .map-art {
+    width: 36px;
+    height: 36px;
+  }
+  .package-difficulty-row .map-art svg {
+    width: 20px;
+    height: 20px;
+  }
+  .package-difficulty-row .map-main > strong {
+    font-size: 16px;
+  }
+  .package-difficulty-row .map-main > span {
+    font-size: 12px;
+  }
+}
 .field {
   display: flex;
   flex-direction: column;

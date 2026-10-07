@@ -65,6 +65,7 @@ fn official_namespace_conflict() -> ApiError {
 const PUBLIC_MAP: &str = r#"to_jsonb(b)-'osu_path'-'archive_path' || jsonb_build_object(
     'play_count',(SELECT count(*) FROM scores s WHERE s.beatmap_id=b.id AND verification='verified'),
     'download_url','/api/v1/beatmaps/'||b.id||'/download',
+    'download_kind',CASE WHEN right(COALESCE(b.archive_path,b.osu_path),4)='.osz' THEN 'osz' ELSE 'osu' END,
     'package',(SELECT jsonb_build_object(
         'id',p.id,'native_set_id',p.native_set_id,'kind',p.kind,'legacy',p.legacy,
         'difficulty_count',cardinality(p.member_md5),
@@ -210,6 +211,39 @@ pub async fn get(state: &AppState, id: i64) -> ApiResult<Value> {
 }
 pub async fn detail(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult {
     Ok(Json(get(&state, id).await?))
+}
+
+pub async fn package_difficulties(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    Query(pagination): Query<Pagination>,
+) -> ApiResult {
+    let package: Uuid = sqlx::query_scalar(
+        "SELECT local_package_id FROM beatmaps WHERE id=$1 AND local_package_id IS NOT NULL",
+    )
+    .bind(id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(ApiError::missing)?;
+    let (p, size, offset) = pagination.bounds();
+    let total: i64 = sqlx::query_scalar("SELECT count(*) FROM beatmaps WHERE local_package_id=$1")
+        .bind(package)
+        .fetch_one(&state.db)
+        .await?;
+    // A package summary is intentionally smaller than PUBLIC_MAP. Fetch the
+    // current member rows in one slice, without nested package/member metadata.
+    let items = sqlx::query_scalar::<_, Value>(
+        "SELECT jsonb_build_object('id',id,'title',title,'artist',artist,'creator',creator,
+        'version',version,'mode',mode,'status',status,'source',source,'stars',stars,
+        'length_seconds',length_seconds,'bpm',bpm,'max_combo',max_combo)
+        FROM beatmaps WHERE local_package_id=$1 ORDER BY id ASC LIMIT $2 OFFSET $3",
+    )
+    .bind(package)
+    .bind(size)
+    .bind(offset)
+    .fetch_all(&state.db)
+    .await?;
+    Ok(page(items, total, p, size))
 }
 async fn file_response(state: &AppState, id: i64, archive: bool) -> ApiResult<Response> {
     let row = sqlx::query("SELECT osu_path,archive_path FROM beatmaps WHERE id=$1")

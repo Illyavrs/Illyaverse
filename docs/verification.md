@@ -1,6 +1,24 @@
 # Verification record
 
-Last recorded evidence: 2026-10-07. Local Docker deployments and isolated-schema tests use synthetic fixtures; they are not a production player community. The INITIAL checkpoint below predates the follow-up chat, replay, mod and connection work. Later source gates and image checks are recorded in the follow-up sections; keep the INITIAL results separate from those checkpoints.
+Last recorded evidence: 2026-10-08. Local Docker deployments and isolated-schema tests use synthetic fixtures; they are not a production player community. The INITIAL checkpoint below predates the follow-up chat, replay, mod and connection work. Later source gates and image checks are recorded in the follow-up sections; keep the INITIAL results separate from those checkpoints.
+
+## Website local package workflow checkpoint
+
+2026-10-08: Serendipity now distinguishes original complete `.osz` downloads from a single difficulty's `.osu`, browses local package members with independent pagination and a persistent current-difficulty label, and presents typed upload results with current moderation states. Exact same-owner retries explicitly return existing content. Known conflicts and official-import recovery use English, Traditional Chinese and Japanese copy; failed submissions retain the chosen input. Upload/import grants remain distinct. Sanctuary adds a public bounded member-summary route, actual stored-member totals and explicit `download_kind`, without a schema change. See [the package contract](local-map-packages.md).
+
+The source gate passes **179 Rust unit/CLI checks** and separately opts in **34 Sanctuary checks: 32 PostgreSQL cases and two existing native-artifact vectors**. Workspace formatting and all-target Clippy with warnings denied pass. The unchanged Resonance PostgreSQL suite's prior checkpoint remains separate; it was not rerun by this Sanctuary-only source gate. The new database case covers 124 stored members across six pages, maximum/minimum/invalid pagination, package isolation, exact public fields, live moderation, read-only behavior and download bytes/kinds. Frontend typecheck, full ESLint and production Docker compilation pass.
+
+Pinned images for this checkpoint:
+
+- Sanctuary: `sha256:13f03e973cdcf091f5514b2f4f5afd9ab653b66b8e109fc17a11fd78114d9ce0`.
+- Resonance: `sha256:767f2e37f8814b87c16a59af78d409c41a2ce4e232b2109d62e6013b810ce1dd` (unchanged production image).
+- Serendipity: `sha256:7d272dd617a5402fe5d2d350e49a213fa7dfd0192881afba53708469b7897f53`.
+
+Those backend images pass **343 actual HTTP requests across 41 categories** in disposable PostgreSQL 17 project `illya-smoke-cb53f2775db970e3`. The six added reads cover anonymous paged package membership, a missing anchor and exact original archive/single-difficulty downloads. The final website image passes **26 Chromium cases: 17 new package cases and nine catalogue regressions**, in `illya-web-smoke-b719ff22873ec99b`. Browser API calls are intercepted synthetic fixtures; they are separate from the real HTTP package-byte checks. All disposable containers, networks, volumes and temporary environments were removed.
+
+The first 26-case browser run omitted the capture flag and is not visual evidence. Independent review then identified pagination buttons inside the upload form lacking an explicit button type. The source fix and strengthened final-image case verify no native invalid event, additional submit/upload or focus return to the cleared file input when paging either creation or exact-retry results. The final run also produced eight fresh English desktop/mobile dark/light captures at 15:57 UTC on October 7. All layout records have document width equal to viewport width. An independent reviewer inspected all eight and returned **ship for this bounded workflow**, with no open material finding; other locales have functional rather than fresh visual evidence. See `.impeccable/review/map-packages-verdict.md`.
+
+Local preview deployment of these new Sanctuary/Serendipity images is pending at this source checkpoint. No actual player/map fixtures, game processes, hosts files or trust settings were changed by the isolated checks. The latest actual stable submission failure remains **413**; no new diagnostic client retry has been received. Neither browser nor encrypted protocol fixtures certify actual stable/lazer gameplay or score persistence.
 
 ## Local package and canonical native identity checkpoint
 
