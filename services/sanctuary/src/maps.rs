@@ -22,6 +22,17 @@ use uuid::Uuid;
 #[path = "official_archive.rs"]
 mod official_archive;
 pub use official_archive::import_archive;
+#[path = "official_set_metadata.rs"]
+mod official_set_metadata;
+pub use official_set_metadata::metadata;
+
+#[cfg(test)]
+pub(crate) async fn archive_metadata_member_count(
+    state: &AppState,
+    set_id: i64,
+) -> ApiResult<usize> {
+    official_archive::metadata_member_count(state, set_id).await
+}
 
 pub struct OfficialState {
     token: Option<String>,
@@ -29,6 +40,7 @@ pub struct OfficialState {
     next_request: Option<Instant>,
     failure: Option<CachedFailure>,
     resolutions: HashMap<MapSelector, CachedFailure>,
+    set_metadata: HashMap<i64, official_set_metadata::CachedMetadata>,
     flights: HashMap<MapSelector, Weak<Mutex<()>>>,
     slots: Arc<tokio::sync::Semaphore>,
     #[cfg(test)]
@@ -42,6 +54,7 @@ impl Default for OfficialState {
             next_request: None,
             failure: None,
             resolutions: HashMap::new(),
+            set_metadata: HashMap::new(),
             flights: HashMap::new(),
             slots: Arc::new(tokio::sync::Semaphore::new(4)),
             #[cfg(test)]
@@ -160,6 +173,7 @@ enum MapSelector {
     OfficialId(i64),
     Filename(String),
     OfficialSet(i64),
+    OfficialSetMetadata(i64),
 }
 
 #[cfg(test)]
@@ -180,6 +194,23 @@ impl OfficialState {
             .as_ref()
             .filter(|failure| failure.status == StatusCode::TOO_MANY_REQUESTS)
             .map(|failure| failure.until.saturating_duration_since(Instant::now()))
+    }
+    pub(crate) fn metadata_cache_shape(&self) -> (usize, usize, Option<Duration>) {
+        official_set_metadata::cache_shape(self)
+    }
+    pub(crate) fn expire_set_metadata(&mut self, set_id: i64) {
+        official_set_metadata::expire_metadata(self, set_id);
+    }
+    pub(crate) fn expire_set_failure(&mut self, set_id: i64) {
+        if let Some(cached) = self
+            .resolutions
+            .get_mut(&MapSelector::OfficialSetMetadata(set_id))
+        {
+            cached.until = Instant::now();
+        }
+    }
+    pub(crate) fn resolution_slots(&self) -> Arc<tokio::sync::Semaphore> {
+        self.slots.clone()
     }
 }
 #[derive(Deserialize)]
@@ -865,22 +896,27 @@ pub async fn upload(
     ))
 }
 
+fn official_request_interval(configured: Option<&str>) -> Duration {
+    Duration::from_millis(
+        configured
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(1000)
+            .max(1000),
+    )
+}
+
 async fn throttle(official: &mut OfficialState) {
     if let Some(next) = official.next_request {
         tokio::time::sleep(next.saturating_duration_since(Instant::now())).await;
     }
-    let interval = std::env::var("OSU_API_INTERVAL_MS")
-        .ok()
-        .and_then(|v| v.parse::<u64>().ok())
-        .unwrap_or(1000)
-        .max(1000);
+    let interval = official_request_interval(std::env::var("OSU_API_INTERVAL_MS").ok().as_deref());
     #[cfg(test)]
     let interval = if official.fixture.is_some() {
-        1
+        Duration::from_millis(1)
     } else {
         interval
     };
-    official.next_request = Some(Instant::now() + Duration::from_millis(interval));
+    official.next_request = Some(Instant::now() + interval);
 }
 
 fn upstream_error(code: &'static str, message: &str) -> ApiError {
@@ -1199,7 +1235,7 @@ async fn stored_map<'e>(
     let (checksum, official_id) = match selector {
         MapSelector::Checksum(checksum) => (Some(checksum.as_str()), None),
         MapSelector::OfficialId(id) => (None, Some(*id)),
-        MapSelector::OfficialSet(_) => return Ok(None),
+        MapSelector::OfficialSet(_) | MapSelector::OfficialSetMetadata(_) => return Ok(None),
         MapSelector::Filename(filename) => {
             // Bound the exact alias index lookup before joining primary keys.
             // Filename resolution must not scan the full beatmap catalogue.
@@ -1225,7 +1261,7 @@ async fn fetch_official_map(state: &AppState, selector: &MapSelector) -> ApiResu
     let path = match selector {
         MapSelector::Checksum(checksum) => format!("/api/v2/beatmaps/lookup?checksum={checksum}"),
         MapSelector::OfficialId(id) => format!("/api/v2/beatmaps/{id}"),
-        MapSelector::OfficialSet(_) => {
+        MapSelector::OfficialSet(_) | MapSelector::OfficialSetMetadata(_) => {
             return Err(ApiError::internal("set selector used for a difficulty"));
         }
         MapSelector::Filename(filename) => {

@@ -90,7 +90,14 @@ pub(crate) async fn map_json(
         .await?
         .ok_or(ApiError(StatusCode::NOT_FOUND, "beatmap_not_found"))?;
     let (id, set) = row_ids(&row)?;
-    let status: String = row.get("status");
+    // Native BeatmapOnlineStatus has Pending but no Unranked enum member.
+    // This affects the wire label only; stored moderation remains unchanged.
+    let stored_status: String = row.get("status");
+    let status = if stored_status == "unranked" {
+        "pending"
+    } else {
+        &stored_status
+    };
     let mode = row.get::<i16, _>("mode") as usize;
     let disabled = archive_path(state, set).await?.is_none();
     Ok(

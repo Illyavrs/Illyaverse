@@ -156,6 +156,20 @@ async fn ingest(
     Json(json!({"id":id,"pp":1}))
 }
 
+async fn missing_set_metadata(
+    headers: HeaderMap,
+    Json(input): Json<Value>,
+) -> (StatusCode, Json<Value>) {
+    assert_eq!(headers["x-illya-service-key"], SERVICE_KEY);
+    assert_eq!(input.as_object().unwrap().len(), 2);
+    assert!(input["user_id"].as_i64().unwrap() > 0);
+    assert!(input["official_set_id"].as_i64().unwrap() > 0);
+    (
+        StatusCode::NOT_FOUND,
+        Json(json!({"error":{"code":"beatmapset_not_found"}})),
+    )
+}
+
 struct Fixture {
     control: PgPool,
     state: common::AppState,
@@ -235,6 +249,10 @@ impl Fixture {
         let backend_url = format!("http://{}", listener.local_addr().unwrap());
         let router = Router::new()
             .route("/api/v1/internal/beatmaps/resolve", post(resolve))
+            .route(
+                "/api/v1/internal/beatmapsets/metadata",
+                post(missing_set_metadata),
+            )
             .route("/api/v1/internal/scores", post(ingest))
             .with_state(backend.clone());
         let backend_task = tokio::spawn(async move {
@@ -1079,7 +1097,7 @@ fixture_test!(
             *f.backend.calls.lock().await,
             vec![json!({"user_id":f.users[0],"official_id":imported}); 4]
         );
-        // Set-only routes are catalogue reads and never treat a set ID as a difficulty.
+        // Set metadata has its own route and never treats a set ID as a difficulty.
         assert_eq!(
             f.get(&format!("/api/v2/beatmapsets/{SET_ID}"))
                 .await

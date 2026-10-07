@@ -4,9 +4,21 @@ Stable 選擇圖譜後，登入玩家的 `/web/osu-osz2-getscores.php` 請求會
 
 設定 `OSU_CLIENT_ID`、`OSU_CLIENT_SECRET` 及兩個服務共用、至少 32 bytes 的 `INTERNAL_SERVICE_KEY`。本機原生測試使用 `.env.client-test.local`，修改後需重新建立 Sanctuary 容器。密鑰留在私有環境檔，不要放入提交、網站或遊戲客戶端。正式服務的上游固定為 `https://osu.ppy.sh`；測試用 loopback fixture 只存在於 Rust test build。
 
-Lazer 的已認證 checksum lookup、difficulty ID 查詢、以 difficulty 查詢圖譜集，以及單人成績 token 建立也使用同一 resolver。Lookup 同時帶 checksum、ID、filename 時先依 checksum 取得圖譜，並要求已提供的正整數 ID 與回傳的原生 ID 一致；filename 不會覆蓋 checksum。只有 filename 的 lookup 新增本機精確檔名對照，未命中才透過官方 filename lookup 查詢並驗證內容。以圖譜集 ID 查詢與搜尋仍只使用本機已收錄資料，不會同步匯入整組官方 difficulties。
+Lazer 的已認證 checksum lookup、difficulty ID 查詢、以 difficulty 查詢圖譜集，以及單人成績 token 建立也使用同一 resolver。Lookup 同時帶 checksum、ID、filename 時先依 checksum 取得圖譜，並要求已提供的正整數 ID 與回傳的原生 ID 一致；filename 不會覆蓋 checksum。只有 filename 的 lookup 新增本機精確檔名對照，未命中才透過官方 filename lookup 查詢並驗證內容。以官方圖譜集 ID 查詢現在可取得完整原始 difficulty 的 metadata；搜尋仍只使用本機已收錄資料。
 
 具有 `beatmaps.import` 權限的帳號也可以提供完整官方 `.osz` 與 set ID，經整組官方 metadata 核對後保存原始封包與全部 difficulties。這是網站的明確匯入動作；原生 set lookup 不會自動下載整包。匯入成功後，stable osu!direct 與 lazer set download 可下載相同的完整 bytes，網站也可瀏覽同封包難度。驗證範圍、重試與版本限制見[官方封包匯入](official-beatmap-archives.md)。
+
+## Lazer 官方圖譜集資訊
+
+`GET /api/v2/beatmapsets/{id}` 與以 difficulty 查詢 set 的路由均要求有效 bearer。未保存完整 archive 的官方 set，使用一次受限的官方 set metadata 請求，驗證完整原始 difficulties 的 ID、set、checksum、ruleset 與必要日期、難度、物件數等資料。最多 512 張，忽略 `converts` relation，拒絕 original list 內的 convert／deleted 成員及重複 ID、checksum。這個讀取不新增圖譜、檔名對照或檔案；之後查看分數或遊玩時，個別 `.osu` 仍依原有 resolver 取得並核對。
+
+回覆保留 canonical 官方 IDs，既有完全一致的 difficulty 使用本站目前的狀態與已保存資料。版本、set 或來源衝突回覆 409，不把不同內容拼成同一組。上游資料快取不含本站 moderation，管理員調整後的下次回覆重新讀取資料庫。官方 mapper 帳號 ID 不等於本站玩家 ID，因此不轉發 `user`、`owners`、`related_users` 等外服身分；保留 creator 文字，沒有身分映射時 `user_id` 為 0。`uploaded_by` 仍保存原 ingestor，不推論為 mapper 關聯。
+
+官方圖片、preview、外部網址與玩家專用欄位不轉發。只有實際保存可驗證 archive 時，nested `availability.download_disabled` 才會為 false；metadata 本身不能讓整包變成可下載。本站 local package 與已驗證完整官方 archive 直接使用本機資料。上游失敗時，已有圖譜的 set 保留本機已收錄難度的回覆；這個 fallback 不代表整組 metadata 已取得。
+
+Sanctuary 的 metadata 工作總預算 6 秒，Gateway 內部 HTTP 預算 8 秒，均包含等待；等待後重新確認有效帳號／bearer。正向 metadata 快取 5 分鐘，最多 32 組及 16 MiB，單回覆最多 2 MiB；404 快取 60 秒，暫時失敗 5 秒，429 沿用全域 Retry-After。共用既有四個 resolver slots 與至少一秒的全域請求間隔。快取或上游 metadata 尚未取得時不回傳假造的成功資料。
+
+此處回覆原生 `APIBeatmapSet`，沒有自訂 202 job 或輪詢格式。官方 [GetBeatmapSetRequest](https://github.com/ppy/osu/blob/d98369a4d17039f8abd6308f173ada1e26e22d5f/osu.Game/Online/API/Requests/GetBeatmapSetRequest.cs)、[APIBeatmapSet](https://github.com/ppy/osu/blob/d98369a4d17039f8abd6308f173ada1e26e22d5f/osu.Game/Online/API/Requests/Responses/APIBeatmapSet.cs) 與 [APIBeatmap](https://github.com/ppy/osu/blob/d98369a4d17039f8abd6308f173ada1e26e22d5f/osu.Game/Online/API/Requests/Responses/APIBeatmap.cs) 的身分及欄位契約作為參考，實作為原創。原生遊戲畫面仍需要真人驗證。
 
 ## 身分、快取與錯誤
 
@@ -21,6 +33,8 @@ Lazer 使用相同的 canonical difficulty／set ID。已匯入官方圖譜的�
 只有官方明確表示 checksum 不存在時，resolver 回覆 404 `beatmap_not_found`，stable 才得到原有的未知圖譜回應。未設定 API、授權失敗、上游服務失敗或限流分別回覆 503、502 或 429，不會假造 Ranked，也不會把這些失敗快取成永久的不存在。
 
 同一官方 ID 已有另一個 checksum 時回覆 409 `official_version_conflict`。目前一個官方 ID 僅保存一個版本；不會改寫既有 checksum、分數或 replay 的圖譜身分。官方 Qualified 狀態目前映射為 unranked，資料庫仍只有 pending、ranked、loved、unranked 四種狀態。
+
+Lazer 的 `BeatmapOnlineStatus` 沒有 `Unranked` 成員。本站資料庫的 unranked 在原生 JSON 使用 `pending`、數值 rank 0，保存狀態不變；它不會被宣告為 Ranked 或 Qualified。此 wire 標籤規則同樣用於本機 set、difficulty 與 playlist serializer。第一手 enum：[BeatmapOnlineStatus](https://github.com/ppy/osu/blob/d98369a4d17039f8abd6308f173ada1e26e22d5f/osu.Game/Beatmaps/BeatmapOnlineStatus.cs)。
 
 ## 精確檔名對照
 
@@ -47,6 +61,8 @@ Stable 的 filename-only BeatmapInfo（`Ids` 空陣列）保留原輸入的 zero
 或 `{"user_id":123,"official_id":456}`、`{"user_id":123,"filename":"Artist - Title (Mapper) [Easy].osu"}`。拒絕 null、多 selector、非正整數、錯誤 checksum／filename 與額外欄位。成功回覆 `id`、`native_id`、`native_set_id`、`official_id`、`official_set_id`、`md5`、`status`、`source`、`mode`；不回傳檔名、檔案路徑或上游 token。普通玩家的原生請求可觸發辨識，網站手動匯入仍要求 `beatmaps.import`。Gateway 在認證與相應 integrity checks 通過後才呼叫此路由，並驗證回覆與共用資料庫完全一致。
 
 手動匯入也保留已收錄資料：重複匯入不會更新狀態；官方檔案與已上傳私服檔案 checksum 相同時，回傳既有資料，不會自動把它改成官方來源或補寫官方 ID。管理員狀態調整仍使用獨立 moderation 操作。這取代先前重複匯入可能覆蓋狀態與來源的行為。
+
+`POST /api/v1/internal/beatmapsets/metadata` 使用相同 service key 與 4 KiB body 上限，僅接受 `{"user_id":123,"official_set_id":456}`。拒絕額外欄位、null 與非正整數／官方高區段 ID。回覆明確定義的共用 metadata DTO，不帶檔案路徑、上游授權或 foreign 帳號／URL。此路由是資訊讀取，不是前述圖譜內容發布路由。
 
 ## 原生驗證
 

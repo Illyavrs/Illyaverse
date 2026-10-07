@@ -77,7 +77,7 @@ async fn lookup(
     }
     Ok(Json(map))
 }
-async fn set_json(state: &AppState, id: i64) -> Result<Value, ApiError> {
+pub(crate) async fn local_set_json(state: &AppState, id: i64) -> Result<Value, ApiError> {
     if !crate::native_maps::valid_id(id) {
         return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_beatmapset_id"));
     }
@@ -115,8 +115,10 @@ async fn beatmapset(
     headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Json<Value>, ApiError> {
+    let player = common::bearer(&state, &headers).await?;
+    let result = crate::native_set_metadata::set_json(&state, player.id, id).await;
     common::bearer(&state, &headers).await?;
-    Ok(Json(set_json(&state, id).await?))
+    Ok(Json(result?))
 }
 async fn set_lookup(
     State(state): State<AppState>,
@@ -134,7 +136,9 @@ async fn set_lookup(
         .bind(internal)
         .fetch_one(&state.pool)
         .await?;
-    Ok(Json(set_json(&state, set).await?))
+    let result = crate::native_set_metadata::set_json(&state, player.id, set).await;
+    common::bearer(&state, &headers).await?;
+    Ok(Json(result?))
 }
 async fn download(
     State(state): State<AppState>,
@@ -190,7 +194,7 @@ async fn search(
     let ids=sqlx::query_scalar::<_,i64>("SELECT DISTINCT b.native_set_id FROM beatmaps b WHERE concat_ws(' ',b.title,b.artist,b.creator,b.version) ILIKE '%'||$1||'%' AND ($2::smallint IS NULL OR b.mode=$2) AND ($3::text IS NULL OR b.status=$3) ORDER BY 1 DESC LIMIT 50 OFFSET $4").bind(q).bind(mode).bind(status).bind(offset).fetch_all(&state.pool).await?;
     let mut sets = Vec::new();
     for id in ids {
-        sets.push(set_json(&state, id).await?);
+        sets.push(local_set_json(&state, id).await?);
     }
     Ok(Json(
         json!({"beatmapsets":sets,"total":total,"cursor_string":if offset+50<total{Some((offset+50).to_string())}else{None},"error":null}),

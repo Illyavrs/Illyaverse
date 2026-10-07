@@ -18,6 +18,8 @@ mod native_map_tests;
 #[cfg(test)]
 mod official_archive_tests;
 #[cfg(test)]
+mod official_set_metadata_tests;
+#[cfg(test)]
 mod profile_media_tests;
 #[cfg(test)]
 mod rbac_tests;
@@ -408,6 +410,10 @@ fn router(state: AppState) -> Router {
         .route(
             "/api/v1/internal/beatmaps/resolve",
             post(maps::resolve).layer(DefaultBodyLimit::max(4 * 1024)),
+        )
+        .route(
+            "/api/v1/internal/beatmapsets/metadata",
+            post(maps::metadata).layer(DefaultBodyLimit::max(4 * 1024)),
         )
         .route("/api/v1/leaderboard", get(scores::leaderboard))
         .route("/api/v1/channels", get(chat::channels))

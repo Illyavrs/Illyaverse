@@ -38,8 +38,9 @@ test('smoke suites select only fixed owned scripts', () => {
   assert.equal(protocolScript(undefined), 'services/resonance/tests/protocol_smoke.py');
   assert.equal(protocolScript('protocol'), 'services/resonance/tests/protocol_smoke.py');
   assert.equal(protocolScript('official-archives'), 'services/resonance/tests/official_archive_smoke.py');
-  for (const value of ['', '../external.py', 'official-archives.py', 'PROTOCOL', null])
-    assert.throws(() => protocolScript(value), /must be protocol or official-archives/);
+  assert.equal(protocolScript('official-set-metadata'), 'services/resonance/tests/official_set_metadata_smoke.py');
+  for (const value of ['', '../external.py', 'official-archives.py', 'official-set-metadata.py', 'PROTOCOL', null])
+    assert.throws(() => protocolScript(value), /must be protocol, official-archives or official-set-metadata/);
 });
 
 test('invalid suite is rejected before credential-file access', () => {
@@ -49,6 +50,6 @@ test('invalid suite is rejected before credential-file access', () => {
       ILLYA_PROTOCOL_SMOKE_SUITE: '../external.py' }, encoding: 'utf8', windowsHide: true,
   });
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /must be protocol or official-archives/);
+  assert.match(result.stderr, /must be protocol, official-archives or official-set-metadata/);
   assert.doesNotMatch(result.stderr, /environment file could not be read/);
 });

@@ -361,6 +361,13 @@ async fn fetch_members(state: &AppState, set_id: i64) -> ApiResult<HashMap<i64, 
     result
 }
 
+#[cfg(test)]
+pub(super) async fn metadata_member_count(state: &AppState, set_id: i64) -> ApiResult<usize> {
+    fetch_members(state, set_id)
+        .await
+        .map(|members| members.len())
+}
+
 fn row_matches(row: &PgRow, map: &ParsedMap) -> bool {
     row.get::<String, _>("source") == "official"
         && row.get::<Option<i64>, _>("official_id") == map.official_id

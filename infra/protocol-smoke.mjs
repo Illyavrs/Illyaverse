@@ -61,7 +61,8 @@ export function pythonRuntime(environment = process.env) {
 export function protocolScript(value) {
   if (value === undefined || value === 'protocol') return 'services/resonance/tests/protocol_smoke.py';
   if (value === 'official-archives') return 'services/resonance/tests/official_archive_smoke.py';
-  throw new Error('ILLYA_PROTOCOL_SMOKE_SUITE must be protocol or official-archives.');
+  if (value === 'official-set-metadata') return 'services/resonance/tests/official_set_metadata_smoke.py';
+  throw new Error('ILLYA_PROTOCOL_SMOKE_SUITE must be protocol, official-archives or official-set-metadata.');
 }
 
 export async function launchSmoke(environment = process.env, signal) {

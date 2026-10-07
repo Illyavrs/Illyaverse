@@ -11,6 +11,9 @@ mod multiplayer;
 #[cfg(test)]
 mod native_map_tests;
 mod native_maps;
+mod native_set_metadata;
+#[cfg(test)]
+mod native_set_metadata_tests;
 mod registration;
 #[cfg(test)]
 mod relax_tests;
