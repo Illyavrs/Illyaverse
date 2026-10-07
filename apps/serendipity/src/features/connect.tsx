@@ -25,7 +25,7 @@ export function ConnectPage() {
         <nav className="guide-sidebar" aria-label={t('guide')}>
           {['account', 'client', 'tool', 'tls', 'compatibility', 'restore'].map((id) => (
             <a href={`#${id}`} key={id}>
-              {t(`${id === 'client' ? 'stable' : id}Title`)}
+              {t(`${id}Title`)}
             </a>
           ))}
         </nav>
@@ -73,14 +73,13 @@ export function ConnectPage() {
           <section id="tool">
             <h2>{t('toolTitle')}</h2>
             <p>{t('toolText')}</p>
-            <div className="command">
-              <code>kaleidoscope plan --ip 127.0.0.1 --domain your-domain.example</code>
-            </div>
-            <div className="reference-links">
-              <Link href="/docs/connection">
+            <Button asChild>
+              <Link href="/docs/kaleidoscope">
                 {t('download')}
-                <ExternalLink className="inline size-3 ml-1" />
+                <ArrowRight />
               </Link>
+            </Button>
+            <div className="reference-links">
               <Link href="/docs/deployment">
                 {t('operator')}
                 <ExternalLink className="inline size-3 ml-1" />

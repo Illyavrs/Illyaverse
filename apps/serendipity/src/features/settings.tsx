@@ -13,6 +13,7 @@ import { PageHeading, Protected, Avatar, Loading, LoadError } from '@/components
 import { api } from '@/lib/api';
 import { isLocale } from '@/i18n/config';
 import { RelationshipList } from './social';
+import { EmailVerificationControls } from './recovery';
 
 export function AppearanceControls({ compact = false }: { compact?: boolean }) {
   const t = useTranslations('settings');
@@ -377,7 +378,7 @@ export function SettingsPage() {
     <div className="page-container">
       <PageHeading title={t('title')} description={t('subtitle')} />
       <Tabs defaultValue="appearance" className="settings-layout">
-        <TabsList>
+        <TabsList className="max-w-full flex-wrap h-auto!">
           <TabsTrigger value="appearance">{t('appearance')}</TabsTrigger>
           <TabsTrigger value="profile">{t('profile')}</TabsTrigger>
           <TabsTrigger value="account">{t('account')}</TabsTrigger>
@@ -404,6 +405,7 @@ export function SettingsPage() {
                 <span>{user.email}</span>
               </div>
             )}
+            <EmailVerificationControls key={user?.id} />
             <div className="field">
               <label htmlFor="account-locale">{t('locale')}</label>
               <select

@@ -1,12 +1,14 @@
 # 連線到 Illyaverse
 
-Illyaverse 的 stable 與 lazer 接口是兩條不同的協定路徑。切換 DNS 或 hosts 只決定連到哪個 IP；TLS、登入、譜面、成績、replay 與多人協定仍需要伺服器逐項實作並以真實客戶端驗證。目前提供 Kaleidoscope 設定工具與相容性基礎，不能把它當成 stable／lazer 全部功能已完成的承諾。
+玩家使用專用 [Kaleidoscope 啟動器](kaleidoscope-launcher.md)：先在網站註冊，選擇已安裝的 stable／lazer，再按「啟動」。stable 使用固定 `-devserver`，lazer 沿用官方安裝檔並強制載入原創 Transfiguration 外掛。原生登入、遊玩與退出清理仍待玩家驗證；隔離測試不代表全功能相容。
 
 本文範例使用 `illya.example.com` 作為營運者擁有的根網域；請換成自己的實際網域。`illya.test` 適合本機開發，沒有公開 DNS 或公開 CA 憑證。公開玩家應優先使用正常 DNS 與受信任的 HTTPS，通常不需要修改 hosts。
 
 ## 使用 stable
 
 先在網站建立 Illyaverse 帳號，關閉已啟動的 osu!，再用營運者公布的根網域啟動 stable。Kaleidoscope 可以產生啟動參數與域名清單：
+
+Illyaverse 統一在網站註冊。stable／lazer 遊戲內的註冊要求會回覆網站註冊網址，並且不建立帳號；完成網站註冊後再回遊戲登入。
 
 ```powershell
 cargo run -p kaleidoscope -- profile --client stable --domain illya.example.com
@@ -26,11 +28,17 @@ Windows PowerShell 的啟動範例：
 
 ## 使用 lazer
 
-本機已提供可重現的[獨立 lazer 測試客戶端](lazer-client-build.md)，固定官方版本並用原創 adapter 設定 Illyaverse endpoints。完整建置與離線 endpoint 驗證通過，原生登入／遊玩仍需按[本機測試文件](local-client-testing.md)操作。它與已安裝的官方客戶端分開，不把 Kaleidoscope manifest 當作官方設定檔。
+新的 [Kaleidoscope／Transfiguration 流程](kaleidoscope-launcher.md)使用已安裝的官方 lazer，不需要重編整套 client。Rust 啟動橋接器強制在遊戲 Main 之前載入外掛，確認固定 endpoints、私有資料目錄及 HTTP／WebSocket guard。必要修補、相容性或檔案驗證失敗時不執行遊戲入口；更新到未測版本後需新版小型外掛，沒有官方 fallback。
+
+獨立監護程序等待遊戲實際結束後清理自己的 DLL；GUI 關閉不會讓它提前刪除。中斷時使用持久復原紀錄，不刪其他 ruleset。私服 profile 不讀取或複製官方 token。公開 DNS／HTTPS 不需要 hosts；目前 `illya.test` 仍需[本機 DNS／CA](local-client-testing.md)。
+
+### 開發用 source build 與協定規劃
+
+先前的[獨立 lazer 測試客戶端](lazer-client-build.md)保留作為比較工具，不是玩家預設流程。以下 manifest 與 endpoint 表是開發規劃。
 
 **官方發行版 lazer 直接切換任意私服目前未驗證。** 2026-10-07 核對官方 `ppy/osu` master 的 `6359741babba4ced42da1fcda738c35370fdf3f4` 後，release 的 endpoint 設定仍指向官方 HTTPS API 與 spectator；沒有找到可以拿來保證使用的任意伺服器 `--server` 開關。[官方 production endpoint 設定](https://github.com/ppy/osu/blob/6359741babba4ced42da1fcda738c35370fdf3f4/osu.Game/Online/ProductionEndpointConfiguration.cs)、[endpoint 選擇方式](https://github.com/ppy/osu/blob/6359741babba4ced42da1fcda738c35370fdf3f4/osu.Game/OsuGameBase.cs)、[桌面啟動參數](https://github.com/ppy/osu/blob/6359741babba4ced42da1fcda738c35370fdf3f4/osu.Desktop/Program.cs)。
 
-開發與相容性測試應使用獨立的 lazer source build，設定自己的 API／OAuth／SignalR endpoints，並使用獨立資料目錄與 Illyaverse 帳號。官方 [完整伺服器堆疊測試教學](https://github.com/ppy/osu/wiki/Testing-web-server-full-stack-with-osu!) 就是以可編譯客戶端、development endpoint 設定與 OAuth 設定進行測試。
+先前的開發比較使用獨立 lazer source build、自有 API／OAuth／SignalR endpoints、獨立資料目錄與 Illyaverse 帳號。官方 [完整伺服器堆疊測試教學](https://github.com/ppy/osu/wiki/Testing-web-server-full-stack-with-osu!) 提供這種協定測試的背景。
 
 ```powershell
 cargo run -p kaleidoscope -- profile --client lazer --domain illya.example.com
@@ -60,7 +68,7 @@ cargo build --release -p kaleidoscope
 cargo test -p kaleidoscope
 ```
 
-Windows 執行檔位於 `target\release\kaleidoscope.exe`，Linux／macOS 位於 `target/release/kaleidoscope`。工具沒有第三方 Rust dependency。Windows 預設 hosts 路徑為 `%SystemRoot%\System32\drivers\etc\hosts`；Unix 預設為 `/etc/hosts`。所有命令也可以使用 `--hosts PATH` 指向測試檔。
+開發 CLI 的 Windows 執行檔位於 `target\release\kaleidoscope.exe`，Linux／macOS 位於 `target/release/kaleidoscope`。玩家圖形啟動器目前僅支援 Windows。Windows 預設 hosts 路徑為 `%SystemRoot%\System32\drivers\etc\hosts`；Unix 預設為 `/etc/hosts`。以下命令可用 `--hosts PATH` 指向測試檔。
 
 先讀取現況，再檢查明確指定域名的修改計畫：
 

@@ -1,0 +1,58 @@
+{
+  "protocol": 1,
+  "artifact": "osu.Game.Rulesets.Transfiguration.dll",
+  "endpoint": "https://illya.test",
+  "fixture": false,
+  "platform": "windows-x64",
+  "runtime": "10.0.12",
+  "ruleset_api": "2026.818.0",
+  "harmony": "2.4.2",
+  "assemblies": {
+    "osu.Game.dll": {
+      "version": "2026.1005.1.0",
+      "sha256": "AD9527E411111CB4B4045C76DF61C3474FD872A04AF73160C05D24E44A588249"
+    },
+    "osu.Framework.dll": {
+      "version": "2026.1005.0.0",
+      "sha256": "93B62F61C72539ED6FDB3C8EBA18D276A74DE8E1C094280B2531F5A76CAEA528"
+    },
+    "osu!.dll": {
+      "version": "2026.1005.1.0",
+      "sha256": "18AE9BB6BB441E9A654AC72C859F527041BDE52E5DCE4109F8D9074584FA57A4"
+    },
+    "System.Net.Http.dll": {
+      "version": "10.0.0.0",
+      "sha256": "B98ED0CB80DD54C33FC049F33AF5448710752155BBD5CC8CBCD932E01F066801"
+    },
+    "System.Net.WebSockets.Client.dll": {
+      "version": "10.0.0.0",
+      "sha256": "F308A69B9EE1AC982F53D1D94374F4972A7E3C700742901FF7C2BBFB570019D2"
+    }
+  },
+  "contracts": [
+    "OsuGameBase.CreateEndpoints",
+    "Host.GetSuitableDesktopHost",
+    "DesktopGameHost.GetDefaultGameStorage",
+    "OsuGameDesktop.GetStorageForStableInstall",
+    "RulesetStore.addRuleset",
+    "DesktopGameHost.OpenUrlExternally",
+    "OsuStorage.CustomStoragePath",
+    "OsuStorage.TryChangeToCustomStorage",
+    "OsuStorage.ChangeDataPath",
+    "OsuGameBase.MigrateUserData",
+    "SocketsHttpHandler.ctor",
+    "HttpClientHandler.ctor",
+    "SocketsHttpHandler.Send",
+    "SocketsHttpHandler.SendAsync",
+    "ClientWebSocket.ConnectAsync(Uri,CancellationToken)",
+    "ClientWebSocket.ConnectAsync(Uri,HttpMessageInvoker,CancellationToken)",
+    "TrustedDomainOnlineStore.GetLookupUrl"
+  ],
+  "verification": {
+    "native_metadata_and_endpoints": "passed",
+    "http_websocket_and_redirects": "passed",
+    "mandatory_bootstrap_before_headless_main": "passed",
+    "production_destination_policy": "passed",
+    "native_gui_and_login": "pending_human_test"
+  }
+}

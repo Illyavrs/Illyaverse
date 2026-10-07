@@ -7,7 +7,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use sqlx::{PgPool, Row};
+use sqlx::{PgConnection, PgPool, Postgres, Row, Transaction};
 use std::{
     collections::HashMap,
     net::SocketAddr,
@@ -72,8 +72,20 @@ impl Account {
 }
 
 pub async fn account(state: &AppState, id: i64) -> Result<Account, ApiError> {
-    let row = sqlx::query("SELECT id,username,country,avatar_url,joined_at,(EXISTS(SELECT 1 FROM bancho_sessions WHERE user_id=users.id AND expires_at>now()) OR EXISTS(SELECT 1 FROM lazer_sessions WHERE user_id=users.id AND access_expires_at>now() AND last_seen_at>now()-interval '3 minutes')) AS is_online FROM users WHERE id=$1 AND NOT is_restricted").bind(id).fetch_optional(&state.pool).await?.ok_or(ApiError(StatusCode::UNAUTHORIZED,"invalid_account"))?;
-    let permissions = sqlx::query_scalar::<_,String>("SELECT DISTINCT unnest(r.permissions) FROM roles r JOIN user_roles ur ON ur.role_id=r.id WHERE ur.user_id=$1").bind(id).fetch_all(&state.pool).await?;
+    let mut connection = state.pool.acquire().await?;
+    account_on_connection(&mut connection, id).await
+}
+
+pub(crate) async fn account_in_tx(
+    tx: &mut Transaction<'_, Postgres>,
+    id: i64,
+) -> Result<Account, ApiError> {
+    account_on_connection(tx, id).await
+}
+
+async fn account_on_connection(db: &mut PgConnection, id: i64) -> Result<Account, ApiError> {
+    let row = sqlx::query("SELECT id,username,country,avatar_url,joined_at,(EXISTS(SELECT 1 FROM bancho_sessions WHERE user_id=users.id AND expires_at>now()) OR EXISTS(SELECT 1 FROM lazer_sessions WHERE user_id=users.id AND access_expires_at>now() AND last_seen_at>now()-interval '3 minutes')) AS is_online FROM users WHERE id=$1 AND NOT is_restricted").bind(id).fetch_optional(&mut *db).await?.ok_or(ApiError(StatusCode::UNAUTHORIZED,"invalid_account"))?;
+    let permissions = sqlx::query_scalar::<_,String>("SELECT DISTINCT unnest(r.permissions) FROM roles r JOIN user_roles ur ON ur.role_id=r.id WHERE ur.user_id=$1").bind(id).fetch_all(&mut *db).await?;
     Ok(Account {
         id,
         username: row.get("username"),
@@ -91,6 +103,24 @@ pub async fn authenticate(
     password: &str,
     digest: bool,
 ) -> Result<Account, ApiError> {
+    let credentials = verify_credentials(state, username, password, digest).await?;
+    account(state, credentials.id).await
+}
+
+/// Proof of an Argon verification against one database snapshot. Session creation
+/// must recheck it with `lock_authenticated` in its writing transaction.
+pub(crate) struct CredentialSnapshot {
+    id: i64,
+    credential: String,
+    digest: bool,
+}
+
+pub(crate) async fn verify_credentials(
+    state: &AppState,
+    username: &str,
+    password: &str,
+    digest: bool,
+) -> Result<CredentialSnapshot, ApiError> {
     if username.len() > 64 || password.len() > 1024 {
         return Err(ApiError(StatusCode::UNAUTHORIZED, "invalid_credentials"));
     }
@@ -108,9 +138,10 @@ pub async fn authenticate(
         .await?
         .ok_or(ApiError(StatusCode::UNAUTHORIZED, "invalid_credentials"))?;
     let stored: String = row.get("credential");
+    let checked = stored.clone();
     let password = password.to_owned();
     let verified = tokio::task::spawn_blocking(move || {
-        PasswordHash::new(&stored).is_ok_and(|hash| {
+        PasswordHash::new(&checked).is_ok_and(|hash| {
             Argon2::default()
                 .verify_password(password.as_bytes(), &hash)
                 .is_ok()
@@ -121,7 +152,37 @@ pub async fn authenticate(
     if !verified {
         return Err(ApiError(StatusCode::UNAUTHORIZED, "invalid_credentials"));
     }
-    account(state, row.get("id")).await
+    Ok(CredentialSnapshot {
+        id: row.get("id"),
+        credential: stored,
+        digest,
+    })
+}
+
+/// Password reset, restriction and session creation serialize on the user row.
+/// Argon work runs before this lock; equality with the verified snapshot prevents
+/// an old password from minting a session after a concurrent password change.
+pub(crate) async fn lock_authenticated(
+    tx: &mut Transaction<'_, Postgres>,
+    credentials: &CredentialSnapshot,
+) -> Result<Account, ApiError> {
+    let field = if credentials.digest {
+        "password_md5_hash"
+    } else {
+        "password_hash"
+    };
+    let query = format!(
+        "SELECT {field} AS credential FROM users WHERE id=$1 AND NOT is_restricted FOR UPDATE"
+    );
+    let current = sqlx::query(&query)
+        .bind(credentials.id)
+        .fetch_optional(&mut **tx)
+        .await?
+        .ok_or(ApiError(StatusCode::UNAUTHORIZED, "invalid_credentials"))?;
+    if current.get::<String, _>("credential") != credentials.credential {
+        return Err(ApiError(StatusCode::UNAUTHORIZED, "invalid_credentials"));
+    }
+    account_in_tx(tx, credentials.id).await
 }
 
 pub fn secret() -> String {
@@ -222,8 +283,23 @@ pub async fn stored_file(
 }
 
 pub async fn friend_ids(state: &AppState, user_id: i64) -> Result<Vec<i32>, ApiError> {
+    let mut connection = state.pool.acquire().await?;
+    friend_ids_on_connection(&mut connection, user_id).await
+}
+
+pub(crate) async fn friend_ids_in_tx(
+    tx: &mut Transaction<'_, Postgres>,
+    user_id: i64,
+) -> Result<Vec<i32>, ApiError> {
+    friend_ids_on_connection(tx, user_id).await
+}
+
+async fn friend_ids_on_connection(
+    db: &mut PgConnection,
+    user_id: i64,
+) -> Result<Vec<i32>, ApiError> {
     let ids = sqlx::query_scalar::<_, i64>("SELECT r.target_id FROM user_relationships r JOIN users u ON u.id=r.target_id WHERE r.user_id=$1 AND r.relation_type='friend' AND NOT u.is_restricted ORDER BY r.target_id LIMIT 4096")
-        .bind(user_id).fetch_all(&state.pool).await?;
+        .bind(user_id).fetch_all(db).await?;
     ids.into_iter()
         .map(|id| {
             i32::try_from(id)

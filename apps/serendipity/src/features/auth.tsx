@@ -83,6 +83,11 @@ export function AuthPage({ register = false }: { register?: boolean }) {
               required
             />
             {register && <p className="hint">{t('passwordHint')}</p>}
+            {!register && (
+              <p className="auth-switch mt-3">
+                <Link href="/forgot-password">{t('forgotPassword')}</Link>
+              </p>
+            )}
           </div>
           {error && (
             <p className="form-error" role="alert">

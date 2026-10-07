@@ -7,6 +7,14 @@ node_modules
 **/.next
 **/.swc-cache
 target
+**/target
+apps/kaleidoscope/out
+tools/transfiguration/bin
+tools/transfiguration/obj
+tools/transfiguration/tests/bin
+tools/transfiguration/tests/obj
+tools/kaleidoscope/tests/runtime-fixtures/**/bin
+tools/kaleidoscope/tests/runtime-fixtures/**/obj
 data
 data-*
 .test-deps

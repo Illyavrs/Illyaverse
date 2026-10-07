@@ -90,8 +90,16 @@ async fn login(state: &AppState, client: &str, body: &[u8]) -> Result<Response, 
         Ok(value) => value,
         Err(_) => return Ok(failure(-1, "Invalid login request.")),
     };
-    let player = match common::authenticate(state, &login.username, &login.password_md5, true).await
-    {
+    let credentials =
+        match common::verify_credentials(state, &login.username, &login.password_md5, true).await {
+            Ok(credentials) => credentials,
+            Err(ApiError(StatusCode::UNAUTHORIZED, _)) => {
+                return Ok(failure(-1, "Incorrect credentials or restricted account."));
+            }
+            Err(error) => return Err(error),
+        };
+    let mut tx = state.pool.begin().await?;
+    let player = match common::lock_authenticated(&mut tx, &credentials).await {
         Ok(player) => player,
         Err(ApiError(StatusCode::UNAUTHORIZED, _)) => {
             return Ok(failure(-1, "Incorrect credentials or restricted account."));
@@ -99,8 +107,7 @@ async fn login(state: &AppState, client: &str, body: &[u8]) -> Result<Response, 
         Err(error) => return Err(error),
     };
     id32(player.id)?;
-    let mut tx = state.pool.begin().await?;
-    sqlx::query("DELETE FROM bancho_sessions WHERE expires_at<now() OR user_id=$1")
+    sqlx::query("DELETE FROM bancho_sessions WHERE user_id=$1")
         .bind(player.id)
         .execute(&mut *tx)
         .await?;
@@ -124,7 +131,7 @@ async fn login(state: &AppState, client: &str, body: &[u8]) -> Result<Response, 
     append(&mut output, wire::int_packet(wire::server::SILENCE_END, 0))?;
     append(
         &mut output,
-        wire::friends_list(&common::friend_ids(state, player.id).await?),
+        wire::friends_list(&common::friend_ids_in_tx(&mut tx, player.id).await?),
     )?;
     for channel in channel_rows {
         let permission: Option<String> = channel.get("required_permission");

@@ -11,6 +11,93 @@ use tower::ServiceExt;
 
 const MAP: &str = "osu file format v14\n[General]\nMode:0\n[Metadata]\nTitle:Integration fixture\nArtist:Illyaverse\nCreator:Test\nVersion:Easy\n[Difficulty]\nHPDrainRate:5\nCircleSize:4\nOverallDifficulty:5\nApproachRate:5\nSliderMultiplier:1.4\nSliderTickRate:1\n[TimingPoints]\n0,500,4,2,1,100,1,0\n[HitObjects]\n64,64,1000,1,0,0:0:0:0:\n256,192,2000,1,0,0:0:0:0:\n";
 
+#[tokio::test]
+async fn recovery_origin_body_and_capability_guards() {
+    let state = AppState {
+        db: PgPoolOptions::new()
+            .connect_lazy("postgres://fixture@127.0.0.1:1/fixture")
+            .unwrap(),
+        secret: Arc::new("fixture-session-secret-over-thirty-two-bytes".into()),
+        internal_key: Arc::new("fixture-internal-secret-over-thirty-two-bytes".into()),
+        origin: Arc::new("http://localhost:3000".into()),
+        mail: Arc::new(mail_delivery::MailConfig::disabled()),
+        secure_cookie: false,
+        media_root: std::env::temp_dir(),
+        maps_root: std::env::temp_dir(),
+        replay_root: std::env::temp_dir(),
+        client: reqwest::Client::new(),
+        official: Arc::new(Mutex::new(maps::OfficialState::default())),
+        limits: Default::default(),
+        trusted_proxies: Default::default(),
+        upload_slots: Arc::new(tokio::sync::Semaphore::new(2)),
+    };
+    let app = router(state.clone());
+    for _ in 0..6 {
+        let (code, _, value) =
+            request(&app, Method::GET, "/api/v1/auth/capabilities", None, None).await;
+        assert_eq!(code, StatusCode::OK);
+        assert_eq!(
+            value,
+            json!({"password_reset":false,"email_verification":false})
+        );
+    }
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/recovery/request")
+                .header(header::ORIGIN, "https://unrelated.example.test")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"email":"player@example.test"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let (code, _, _) = request(
+        &app,
+        Method::POST,
+        "/api/v1/auth/recovery/reset",
+        None,
+        Some(json!({"token":"a".repeat(10*1024),"password":"fixture-password"})),
+    )
+    .await;
+    assert_eq!(code, StatusCode::PAYLOAD_TOO_LARGE);
+    let (code, _, _) = request(
+        &app,
+        Method::POST,
+        "/api/v1/auth/recovery/request",
+        None,
+        Some(json!({"email":"player@example.test","unexpected":"field"})),
+    )
+    .await;
+    assert_eq!(code, StatusCode::UNPROCESSABLE_ENTITY);
+    state.limits.lock().await.clear();
+    for _ in 0..5 {
+        let (code, _, value) = request(
+            &app,
+            Method::POST,
+            "/api/v1/auth/recovery/request",
+            None,
+            Some(json!({"email":"player@example.test","locale":"zh-TW"})),
+        )
+        .await;
+        assert_eq!(code, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(value["error"]["code"], "account_recovery_unavailable");
+    }
+    let (code, headers, _) = request(
+        &app,
+        Method::POST,
+        "/api/v1/auth/email/verify",
+        None,
+        Some(json!({"token":"a".repeat(64)})),
+    )
+    .await;
+    assert_eq!(code, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(headers[header::RETRY_AFTER], "60");
+}
+
 async fn request(
     app: &Router,
     method: Method,
@@ -119,6 +206,7 @@ async fn persistence_and_permissions() {
         secret: Arc::new("test-only-session-secret-with-more-than-32-bytes".into()),
         internal_key: Arc::new("test-only-service-secret-with-more-than-32-bytes".into()),
         origin: Arc::new("http://localhost:3000".into()),
+        mail: Arc::new(mail_delivery::MailConfig::disabled()),
         secure_cookie: false,
         media_root: test_root.join("media"),
         maps_root: test_root.join("maps"),
@@ -954,6 +1042,7 @@ async fn score_scale_ingestion_recovery_and_privacy() {
         secret: Arc::new("fixture-session-secret-with-more-than-32-bytes".into()),
         internal_key: Arc::new("fixture-service-secret-with-more-than-32-bytes".into()),
         origin: Arc::new("http://localhost:3000".into()),
+        mail: Arc::new(mail_delivery::MailConfig::disabled()),
         secure_cookie: false,
         media_root: root.join("media"),
         maps_root: root.join("maps"),

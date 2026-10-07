@@ -13,3 +13,6 @@ data-*/
 .impeccable/review/*.png
 test-results/
 playwright-report/
+apps/kaleidoscope/out/
+apps/kaleidoscope/tsconfig.tsbuildinfo
+apps/kaleidoscope/src-tauri/gen/schemas/

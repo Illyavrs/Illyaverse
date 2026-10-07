@@ -89,7 +89,7 @@ pub async fn optional(state: &AppState, headers: &HeaderMap) -> ApiResult<Option
     }
 }
 pub async fn profile(state: &AppState, id: i64, private: bool) -> ApiResult<Value> {
-    let row=sqlx::query("SELECT id,username,email,country,bio,avatar_url,banner_url,accent_color,preferences,joined_at,is_restricted FROM users WHERE id=$1 AND ($2 OR NOT is_restricted)")
+    let row=sqlx::query("SELECT id,username,email,email_verified_at,country,bio,avatar_url,banner_url,accent_color,preferences,joined_at,is_restricted FROM users WHERE id=$1 AND ($2 OR NOT is_restricted)")
         .bind(id).bind(private).fetch_optional(&state.db).await?.ok_or_else(ApiError::missing)?;
     let roles=sqlx::query_scalar::<_,String>("SELECT r.name FROM roles r JOIN user_roles ur ON ur.role_id=r.id WHERE ur.user_id=$1 ORDER BY r.id").bind(id).fetch_all(&state.db).await?;
     let permissions=sqlx::query_scalar::<_,String>("SELECT DISTINCT unnest(r.permissions) FROM roles r JOIN user_roles ur ON ur.role_id=r.id WHERE ur.user_id=$1").bind(id).fetch_all(&state.db).await?;
@@ -99,13 +99,17 @@ pub async fn profile(state: &AppState, id: i64, private: bool) -> ApiResult<Valu
     let mut value = json!({"id":id,"username":row.get::<String,_>("username"),"country":row.get::<String,_>("country"),"bio":row.get::<String,_>("bio"),"avatar_url":row.get::<Option<String>,_>("avatar_url"),"banner_url":row.get::<Option<String>,_>("banner_url"),"accent_color":row.get::<String,_>("accent_color"),"roles":roles,"joined_at":row.get::<chrono::DateTime<Utc>,_>("joined_at"),"pp":stats["pp"],"play_count":stats["play_count"],"accuracy":stats["accuracy"]});
     if private {
         value["email"] = json!(row.get::<String, _>("email"));
+        value["email_verified"] = json!(
+            row.get::<Option<chrono::DateTime<Utc>>, _>("email_verified_at")
+                .is_some()
+        );
         value["permissions"] = json!(permissions);
         value["preferences"] = json!(preferences);
         value["locale"] = json!(preferences.locale);
     }
     Ok(value)
 }
-async fn hash_password(password: String) -> ApiResult<(String, String)> {
+pub(crate) async fn hash_password(password: String) -> ApiResult<(String, String)> {
     tokio::task::spawn_blocking(move || {
         let argon = Argon2::default();
         let md5 = format!("{:x}", md5::compute(password.as_bytes()));
@@ -133,15 +137,29 @@ async fn verify(password: String, hash: String) -> bool {
     .await
     .unwrap_or(false)
 }
-async fn session(state: &AppState, id: i64) -> ApiResult<Response> {
+async fn session(state: &AppState, id: i64, credential: &str) -> ApiResult<Response> {
+    let mut tx = state.db.begin().await?;
+    // Serialize issuance with credential changes, then recheck the verified
+    // snapshot. An old-password verification cannot mint a post-reset session.
+    let current = sqlx::query_scalar::<_, i64>(
+        "SELECT id FROM users WHERE id=$1 AND password_hash=$2 AND NOT is_restricted FOR UPDATE",
+    )
+    .bind(id)
+    .bind(credential)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if current.is_none() {
+        return Err(ApiError::unauthorized());
+    }
     let sid = Uuid::new_v4();
     let expiry = Utc::now() + Duration::days(7);
     sqlx::query("INSERT INTO sessions(id,user_id,expires_at) VALUES($1,$2,$3)")
         .bind(sid)
         .bind(id)
         .bind(expiry)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await?;
+    tx.commit().await?;
     let token = encode(
         &Header::default(),
         &Claims {
@@ -177,13 +195,7 @@ pub async fn register(
 ) -> ApiResult<Response> {
     validate_username(&input.username).map_err(ApiError::bad)?;
     validate_password(&input.password).map_err(ApiError::bad)?;
-    let email = input.email.trim().to_ascii_lowercase();
-    if email.len() > 254
-        || !email.contains('@')
-        || email.chars().any(|c| c.is_whitespace() || c.is_control())
-    {
-        return Err(ApiError::bad("Enter a valid email address."));
-    }
+    let email = crate::account_recovery::normalize_email(&input.email)?;
     let preferences = Preferences {
         locale: input.locale.unwrap_or_else(|| "zh-TW".into()),
         ..Preferences::default()
@@ -191,15 +203,16 @@ pub async fn register(
     preferences.validate().map_err(ApiError::bad)?;
     let (hash, legacy) = hash_password(input.password).await?;
     let mut tx = state.db.begin().await?;
-    let id:i64=sqlx::query_scalar("INSERT INTO users(username,email,password_hash,password_md5_hash,preferences) VALUES($1,$2,$3,$4,$5) RETURNING id").bind(input.username).bind(email).bind(hash).bind(legacy).bind(json!(preferences)).fetch_one(&mut *tx).await?;
+    let id:i64=sqlx::query_scalar("INSERT INTO users(username,email,password_hash,password_md5_hash,preferences) VALUES($1,$2,$3,$4,$5) RETURNING id").bind(input.username).bind(email).bind(&hash).bind(legacy).bind(json!(preferences)).fetch_one(&mut *tx).await?;
     sqlx::query(
         "INSERT INTO user_roles(user_id,role_id) SELECT $1,id FROM roles WHERE name='player'",
     )
     .bind(id)
     .execute(&mut *tx)
     .await?;
+    crate::account_recovery::enqueue_verification_in_tx(&state, &mut tx, id).await?;
     tx.commit().await?;
-    session(&state, id).await
+    session(&state, id, &hash).await
 }
 #[derive(Deserialize)]
 pub struct Login {
@@ -216,12 +229,11 @@ pub async fn login(State(state): State<AppState>, Json(input): Json<Login>) -> A
         let _=verify(input.password,"$argon2id$v=19$m=19456,t=2,p=1$MTIzNDU2Nzg5MGFiY2RlZg$HsHQAI/BTc+rAoLRycoM5qNHkmguCeOIW7+NXhszGsE".into()).await;
         return Err(ApiError::unauthorized());
     };
-    if !verify(input.password, row.get("password_hash")).await
-        || row.get::<bool, _>("is_restricted")
-    {
+    let credential: String = row.get("password_hash");
+    if !verify(input.password, credential.clone()).await || row.get::<bool, _>("is_restricted") {
         return Err(ApiError::unauthorized());
     }
-    session(&state, row.get("id")).await
+    session(&state, row.get("id"), &credential).await
 }
 pub async fn logout(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
     if let Ok(user) = require(&state, &headers).await {
@@ -429,6 +441,36 @@ pub struct PasswordChange {
     current_password: String,
     new_password: String,
 }
+/// The caller locks the user row before changing credentials or revoking sessions.
+/// Keeping one web session is only appropriate for an authenticated password change.
+pub(crate) async fn revoke_sessions(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    user_id: i64,
+    keep_web_session: Option<Uuid>,
+) -> ApiResult<()> {
+    sqlx::query("DELETE FROM sessions WHERE user_id=$1 AND ($2::uuid IS NULL OR id<>$2)")
+        .bind(user_id)
+        .bind(keep_web_session)
+        .execute(&mut **tx)
+        .await?;
+    sqlx::query("DELETE FROM bancho_sessions WHERE user_id=$1")
+        .bind(user_id)
+        .execute(&mut **tx)
+        .await?;
+    sqlx::query("DELETE FROM lazer_sessions WHERE user_id=$1")
+        .bind(user_id)
+        .execute(&mut **tx)
+        .await?;
+    sqlx::query("UPDATE account_recovery_tokens SET consumed_at=COALESCE(consumed_at,now()) WHERE user_id=$1")
+        .bind(user_id)
+        .execute(&mut **tx)
+        .await?;
+    sqlx::query("UPDATE mail_jobs SET status='canceled',encrypted_payload=NULL,lease_until=NULL,lease_id=NULL,last_error_code=NULL WHERE user_id=$1 AND status IN ('pending','sending','failed')")
+        .bind(user_id)
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
+}
 pub async fn change_password(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -459,19 +501,7 @@ pub async fn change_password(
         .bind(legacy)
         .execute(&mut *tx)
         .await?;
-    sqlx::query("DELETE FROM sessions WHERE user_id=$1 AND id<>$2")
-        .bind(user.id)
-        .bind(user.session)
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query("DELETE FROM bancho_sessions WHERE user_id=$1")
-        .bind(user.id)
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query("DELETE FROM lazer_sessions WHERE user_id=$1")
-        .bind(user.id)
-        .execute(&mut *tx)
-        .await?;
+    revoke_sessions(&mut tx, user.id, Some(user.session)).await?;
     sqlx::query("INSERT INTO audit_events(actor_id,action,target_type,target_id,details) VALUES($1,'users.password_change','user',$2,'{\"other_sessions_revoked\":true}')").bind(user.id).bind(user.id.to_string()).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(Json(json!({"ok":true})))
@@ -487,6 +517,7 @@ pub async fn bootstrap(state: &AppState) -> ApiResult<()> {
         .map_err(|_| ApiError::bad("Set BOOTSTRAP_ADMIN_PASSWORD."))?;
     let email = std::env::var("BOOTSTRAP_ADMIN_EMAIL")
         .map_err(|_| ApiError::bad("Set BOOTSTRAP_ADMIN_EMAIL."))?;
+    let email = crate::account_recovery::normalize_email(&email)?;
     validate_username(&username).map_err(ApiError::bad)?;
     validate_password(&password).map_err(ApiError::bad)?;
     let existing =

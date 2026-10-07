@@ -1,0 +1,6 @@
+{
+  "identifier": "main-window",
+  "description": "Local launcher window; no filesystem, shell or remote web IPC access.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

@@ -1,9 +1,13 @@
+mod account_recovery;
 mod admin;
 mod auth;
 mod chat;
 #[cfg(test)]
 mod integration_tests;
 mod legacy_scoring;
+mod mail_delivery;
+#[cfg(test)]
+mod mail_queue_tests;
 mod maps;
 mod score_recovery;
 mod score_scales;
@@ -39,6 +43,7 @@ pub struct AppState {
     pub secret: Arc<String>,
     pub internal_key: Arc<String>,
     pub origin: Arc<String>,
+    pub mail: Arc<mail_delivery::MailConfig>,
     pub secure_cookie: bool,
     pub media_root: PathBuf,
     pub maps_root: PathBuf,
@@ -180,19 +185,22 @@ async fn guard(State(state): State<AppState>, request: Request, next: Next) -> R
         }
     }
     let path = request.uri().path();
-    let limit = if path.starts_with("/api/v1/auth/") {
-        Some((20, 600, "auth"))
-    } else if path.ends_with("/stream") {
-        Some((20, 60, "stream"))
-    } else if mutating && path.starts_with("/api/v1/me/relationships/") {
-        Some((60, 60, "relationships"))
-    } else if mutating && path.ends_with("/messages") {
-        Some((30, 60, "chat"))
-    } else if mutating && (path.ends_with("/upload") || path.ends_with("/media")) {
-        Some((10, 600, "upload"))
-    } else {
-        None
-    };
+    let limit =
+        if path.starts_with("/api/v1/auth/recovery/") || path.starts_with("/api/v1/auth/email/") {
+            Some((5, 60, "recovery"))
+        } else if mutating && path.starts_with("/api/v1/auth/") {
+            Some((20, 600, "auth"))
+        } else if path.ends_with("/stream") {
+            Some((20, 60, "stream"))
+        } else if mutating && path.starts_with("/api/v1/me/relationships/") {
+            Some((60, 60, "relationships"))
+        } else if mutating && path.ends_with("/messages") {
+            Some((30, 60, "chat"))
+        } else if mutating && (path.ends_with("/upload") || path.ends_with("/media")) {
+            Some((10, 600, "upload"))
+        } else {
+            None
+        };
     if let Some((max, seconds, scope)) = limit {
         let peer = request
             .extensions()
@@ -283,6 +291,23 @@ fn router(state: AppState) -> Router {
         )
         .route("/health/ready", get(ready))
         .route("/api/v1/status", get(status))
+        .route("/api/v1/auth/capabilities", get(auth_capabilities))
+        .route(
+            "/api/v1/auth/recovery/request",
+            post(account_recovery::request_reset).layer(DefaultBodyLimit::max(8 * 1024)),
+        )
+        .route(
+            "/api/v1/auth/recovery/reset",
+            post(account_recovery::confirm_reset).layer(DefaultBodyLimit::max(8 * 1024)),
+        )
+        .route(
+            "/api/v1/auth/email/request",
+            post(account_recovery::request_verification).layer(DefaultBodyLimit::max(8 * 1024)),
+        )
+        .route(
+            "/api/v1/auth/email/verify",
+            post(account_recovery::confirm_verification).layer(DefaultBodyLimit::max(8 * 1024)),
+        )
         .route(
             "/api/v1/auth/register",
             post(auth::register).layer(DefaultBodyLimit::max(8 * 1024)),
@@ -383,6 +408,10 @@ async fn ready(State(state): State<AppState>) -> ApiResult {
     sqlx::query("SELECT 1").execute(&state.db).await?;
     Ok(Json(json!({"status":"ready"})))
 }
+async fn auth_capabilities(State(state): State<AppState>) -> Json<Value> {
+    let enabled = state.mail.is_enabled();
+    Json(json!({"password_reset":enabled,"email_verification":enabled}))
+}
 async fn status(State(state): State<AppState>) -> ApiResult {
     let value:Value=sqlx::query_scalar("SELECT jsonb_build_object('registered_players',(SELECT count(*) FROM users WHERE NOT is_restricted),'ranked_scores',(SELECT count(*) FROM scores s JOIN users u ON u.id=s.user_id JOIN beatmaps b ON b.id=s.beatmap_id WHERE s.verification='verified' AND s.passed AND b.status='ranked' AND NOT u.is_restricted AND s.pp_eligible),'beatmap_count',(SELECT count(*) FROM beatmaps))").fetch_one(&state.db).await?;
     let mut value = value;
@@ -421,13 +450,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .filter(|s| !s.trim().is_empty())
         .map(|s| s.trim().parse::<ipnet::IpNet>())
         .collect::<Result<Vec<_>, _>>()?;
+    let origin = env::var("PUBLIC_ORIGIN").unwrap_or_else(|_| "http://localhost:3000".into());
+    let mail = Arc::new(mail_delivery::MailConfig::from_env(&origin)?);
     let state = AppState {
         db,
         secret: Arc::new(secret),
         internal_key: Arc::new(env::var("INTERNAL_SERVICE_KEY").unwrap_or_default()),
-        origin: Arc::new(
-            env::var("PUBLIC_ORIGIN").unwrap_or_else(|_| "http://localhost:3000".into()),
-        ),
+        origin: Arc::new(origin),
+        mail,
         secure_cookie: env::var("COOKIE_SECURE").unwrap_or_else(|_| "true".into()) != "false",
         media_root,
         maps_root,
@@ -443,6 +473,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     auth::bootstrap(&state).await?;
     score_recovery::start(state.clone());
+    mail_delivery::start(state.db.clone(), state.mail.clone());
     sqlx::query("DELETE FROM sessions WHERE expires_at < now()")
         .execute(&state.db)
         .await?;

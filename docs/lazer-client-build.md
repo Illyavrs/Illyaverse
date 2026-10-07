@@ -1,5 +1,7 @@
 # 可重現的 Illyaverse lazer 測試客戶端
 
+本文件保留先前的 source build 作為開發比較工具。玩家新流程是 [Kaleidoscope／Transfiguration 啟動器](kaleidoscope-launcher.md)，沿用官方安裝檔，不必重編整套 lazer。下文的 JSON profile 仍只是開發 endpoint 規劃。
+
 實際可行的本機連線方式是**獨立編譯、固定版本的 lazer 測試客戶端**。Kaleidoscope 的 JSON profile 仍只是 endpoint 規劃；已安裝的官方 client 沒有經驗證的任意 `--server` 切換功能，修改 hosts 也不會把它的 OAuth／API 設定改成 Illyaverse。
 
 本流程固定官方 [2026.1005.1-tachyon](https://github.com/ppy/osu/tree/6cbcae7fbb764839a66c1adf564c2e1679242072)，commit `6cbcae7fbb764839a66c1adf564c2e1679242072`，與本機已安裝 DLL 的 informational version 一致。它需要 .NET SDK 10.0.100 以上且符合上游 [global.json](https://github.com/ppy/osu/blob/6cbcae7fbb764839a66c1adf564c2e1679242072/global.json) 的 SDK roll-forward 規則、Git 與 NuGet 網路存取。

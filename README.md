@@ -9,7 +9,8 @@
 | Serendipity | `apps/serendipity` | 網站、landing、排行榜、譜面、聊天、個人頁與管理介面 |
 | Sanctuary | `services/sanctuary` | 帳號、權限、偏好、媒體、譜面、分數、replay、聊天與稽核 API |
 | Resonance | `services/resonance` | stable 封包與 legacy web、lazer OAuth／API v2 相容接口 |
-| Kaleidoscope | `tools/kaleidoscope` | 可預覽、備份與還原的連線工具 |
+| Kaleidoscope | `apps/kaleidoscope`、`tools/kaleidoscope` | 固定連到 Illyaverse 的 Windows 啟動器與 Rust 程序／清理核心 |
+| Transfiguration | `tools/transfiguration` | 官方 lazer 的原創強制啟動外掛與相容性檢查 |
 | 共用領域 | `crates/illya-domain` | 型別、驗證與 pp 計算 |
 | 封包協定 | `crates/resonance-protocol` | 原創 stable wire parser／encoder |
 
@@ -42,6 +43,10 @@ docker compose up -d --build --wait
 預設深色背景為純黑色，介面有毛玻璃、light／dark 切換與圓體字。使用者可上傳自己的背景／頭像／banner，調整模糊、dim、accent、圓角與 profile；網站不附 AI 生成插畫。帳號偏好透過 API 持久化，RBAC 由伺服器驗證，前端同步隱藏不可存取的區域。
 
 官方譜面匯入需要自己的 `OSU_CLIENT_ID`／`OSU_CLIENT_SECRET`；未設定時，自訂譜面與其他功能仍可使用。匯入服務有節流與 `429` 處理。自訂譜面、score／replay 保存與查詢有獨立資料模型；客戶端提交格式與 replay frames 的驗證狀態以協定文件為準。
+
+公開註冊支援郵件驗證與忘記密碼。營運者需設定自己的 SMTP；未設定時，網站會明確顯示郵件功能尚未開放。重設密碼會撤銷網站、stable、lazer 的登入憑證；一次性連結和加密寄送佇列見 [帳號復原](docs/account-recovery.md)。
+
+帳號統一由網站註冊；stable／lazer 的遊戲內註冊入口會提示網站網址，遊戲只提供登入。
 
 ## 本機開發與貢獻
 

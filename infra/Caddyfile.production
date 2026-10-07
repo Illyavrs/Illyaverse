@@ -8,7 +8,7 @@
 	request_body {
 		max_size 66MB
 	}
-	@protocol_paths path /web/* /osu/* /d/* /oauth/* /api/v2/* /signalr/* /notification-server /notification-server/* /spectator /spectator/* /multiplayer /multiplayer/* /metadata /metadata/*
+	@protocol_paths path /users /users/ /web/* /osu/* /d/* /oauth/* /api/v2/* /signalr/* /notification-server /notification-server/* /spectator /spectator/* /multiplayer /multiplayer/* /metadata /metadata/*
 	handle @protocol_paths {
 		reverse_proxy resonance:8081
 	}

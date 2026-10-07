@@ -17,6 +17,7 @@ task_postgres=$(task_random)
 task_session=$(task_random)
 task_internal=$(task_random)
 task_admin=$(task_random)
+task_mail=$(task_random)
 (
     umask 077
     set -C
@@ -25,6 +26,7 @@ task_admin=$(task_random)
         -e "s/^SESSION_SECRET=.*/SESSION_SECRET=$task_session/" \
         -e "s/^INTERNAL_SERVICE_KEY=.*/INTERNAL_SERVICE_KEY=$task_internal/" \
         -e "s/^BOOTSTRAP_ADMIN_PASSWORD=.*/BOOTSTRAP_ADMIN_PASSWORD=$task_admin/" \
+        -e "s/^MAIL_ENCRYPTION_KEY=.*/MAIL_ENCRYPTION_KEY=$task_mail/" \
         "$task_root/.env.example" > "$task_output"
 )
 printf '%s\n' 'Created an environment file with independent random secrets. Read its initial administrator credentials locally.'

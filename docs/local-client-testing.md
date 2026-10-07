@@ -2,7 +2,7 @@
 
 可以把測試伺服器部署在目前這台電腦。單機測試使用 `illya.test` 與 `127.0.0.1`，不需要購買網域、修改公開 DNS 或開放路由器。`localhost` 代表使用者自己的電腦；若之後要讓別台電腦連線，應另用實際主機 IP／公開部署設定。
 
-此配置只準備本機 HTTPS、正確 Host 路由及獨立資料庫。**不代表 stable／lazer 已經通過原生客戶端驗證。** 實際測試仍需分別檢查登入、聊天、下載、遊玩、成績、replay、多人房間與重新連線。官方 lazer 發行版的任意私服切換尚未驗證；目前應使用設定 Illyaverse endpoints 的獨立 source build，詳見[連線文件](connection.md)。
+此配置準備本機 HTTPS、正確 Host 路由及獨立資料庫。**不代表 stable／lazer 已經通過原生客戶端驗證。** 實際測試仍需分別檢查登入、聊天、下載、遊玩、成績、replay、多人房間與重新連線。新的 [Kaleidoscope 啟動器](kaleidoscope-launcher.md)沿用官方 lazer，使用強制載入的原創外掛；隔離啟動／合約測試已通過，真實 GUI 仍待驗證。先前獨立 source build 保留為開發比較工具。
 
 ## 獨立測試環境
 
@@ -138,6 +138,8 @@ Windows 內建 curl 使用 Schannel；此本機 CA 沒有公開 CRL distribution
 Website 的 `/api/v1/*` 與 `/media/*` 送到 Sanctuary；legacy／OAuth／API v2 送到 Resonance。`/spectator`、`/multiplayer`、`/metadata` 及各自的 `/negotiate` 和 `/signalr/*` 都送到 Resonance。Caddy 的 reverse proxy 支援 WebSocket，SignalR 的 JSON SSE 也經同一條代理路徑；服務的 real-time 實作狀態見[協定相容性文件](protocol-compatibility.md)。
 
 ## 原生客戶端測試入口
+
+請先到 `https://illya.test/register` 建立獨立測試帳號。遊戲內註冊入口會提示改到這個網站；它不會建立帳號。接著才在 stable／lazer 輸入測試帳號登入。
 
 Stable 的根網域規劃與啟動參數：
 

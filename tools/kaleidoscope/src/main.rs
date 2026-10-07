@@ -5,6 +5,13 @@ use kaleidoscope::{
 use std::path::PathBuf;
 
 const HELP: &str = "Kaleidoscope — Illyaverse connection assistant\n\n\
+Fixed Illyaverse launcher:\n\
+  kaleidoscope launcher status\n\
+  kaleidoscope launcher set-client stable|lazer PATH\n\
+  kaleidoscope launcher start stable|lazer\n\
+  kaleidoscope launcher stop\n\
+  kaleidoscope launcher recover\n\n\
+Developer hosts/profile tools:\n\
 Usage:\n\
   kaleidoscope inspect [--hosts PATH]\n\
   kaleidoscope plan --ip IP --domain DOMAIN [--domain DOMAIN...] [--hosts PATH]\n\
@@ -12,7 +19,7 @@ Usage:\n\
   kaleidoscope restore [--hosts PATH] [--expect-current PATH] [--write | --dry-run]\n\
   kaleidoscope profile --client stable|lazer --domain DOMAIN\n\n\
 All commands preview by default. Only apply/restore with --write modify a file.\n\
-No certificate installation, DNS cache changes, or client launches are performed.\n\
+Hosts/profile commands do not install certificates, change DNS caches, or launch clients.\n\
 System hosts writes need administrator/root permissions. Close other hosts editors first.\n\
 --expect-current requires hosts to match an earlier byte snapshot before applying the plan.\n\
 See docs/connection.md for TLS and client compatibility requirements.";
@@ -186,10 +193,54 @@ fn run(args: Args) -> Result<()> {
 }
 
 fn main() {
-    if let Err(error) = parse_args(std::env::args().skip(1).collect()).and_then(run) {
+    let values: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(result) = kaleidoscope::launcher::runtime::handle_internal(&values) {
+        match result {
+            Ok(code) => std::process::exit(code),
+            Err(error) => {
+                eprintln!("Kaleidoscope: {error}");
+                std::process::exit(2);
+            }
+        }
+    }
+    let result = if values.first().map(String::as_str) == Some("launcher") {
+        launcher_command(&values[1..])
+    } else {
+        parse_args(values).and_then(run)
+    };
+    if let Err(error) = result {
         eprintln!("Kaleidoscope: {error}");
         std::process::exit(2);
     }
+}
+
+fn launcher_command(values: &[String]) -> Result<()> {
+    use kaleidoscope::launcher::runtime::{self, Client};
+    let client = |value: &str| match value {
+        "stable" => Ok(Client::Stable),
+        "lazer" => Ok(Client::Lazer),
+        _ => Err("Client must be stable or lazer".to_owned()),
+    };
+    let snapshot = match values
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
+        ["status"] => runtime::snapshot()?,
+        ["set-client", kind, path] => {
+            runtime::save_client_path(client(kind)?, std::path::Path::new(path))?
+        }
+        ["start", kind] => runtime::start(client(kind)?)?,
+        ["stop"] => runtime::stop()?,
+        ["recover"] => runtime::recover()?,
+        _ => return Err("Run kaleidoscope --help for fixed launcher commands".into()),
+    };
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&snapshot).map_err(|error| error.to_string())?
+    );
+    Ok(())
 }
 
 #[cfg(test)]

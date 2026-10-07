@@ -64,8 +64,15 @@ docker compose -f compose.yaml -f compose.production.yaml up -d --build --wait
 | `OSU_CLIENT_ID`／`OSU_CLIENT_SECRET` | 可選的官方譜面 metadata 匯入 |
 | `OSU_API_INTERVAL_MS` | 官方請求節流間隔，預設 1000ms；服務也限制最小值 |
 | `RUST_LOG` | 服務 log filter |
+| `SMTP_HOST`／`SMTP_FROM` | 可選的帳號復原與信箱驗證寄信服務 |
+| `SMTP_USERNAME`／`SMTP_PASSWORD` | SMTP 認證，必須成對設定 |
+| `SMTP_TLS`／`SMTP_PORT` | 預設 STARTTLS／587，可改 implicit／465 |
+| `MAIL_ENCRYPTION_KEY` | 獨立 64 位隨機 hex，加密待寄連結；需私有備份 |
+| `MAIL_ALLOW_LOCAL_DEV` | 預設 false；只供隔離 loopback 郵件測試 |
 
 不要把 `POSTGRES_PASSWORD` 換成帶 `@`、`:` 等符號的未編碼值而直接放進目前的 URL；保留 setup 的隨機 hex，或自行同步調整正確 URL escaping。變更 PostgreSQL 的 `.env` 密碼不會替既有資料庫執行 `ALTER ROLE`；需由管理員同步資料庫認證後重建服務。變更 session secret 會讓既有簽名 session 失效。
+
+公開註冊可搭配 SMTP 啟用郵件驗證與忘記密碼。未設定時，能力 API 與網站會顯示未開放；不會假稱郵件已寄出。正式網站 origin 必須使用 HTTPS，佇列會加密保管一次性連結並重試短暫失敗。設定和保留密鑰的方式見 [帳號復原](account-recovery.md)。
 
 Bridge subnet 預設是 `172.30.91.0/24`。Caddy 固定 `.10`，Serendipity 固定 `.11`，Sanctuary 只信任這兩個地址的 forwarded headers，Resonance 只信任 Caddy。如果和主機現有網路衝突，請同步修改 Compose 的 subnet、兩個 `ipv4_address` 與兩個 Rust 服務的 `TRUSTED_PROXY_CIDRS`。不應把所有外部來源都列為 trusted proxy。
 

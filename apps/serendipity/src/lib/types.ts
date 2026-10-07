@@ -13,6 +13,7 @@ export type User = {
   pp: number;
   play_count: number;
   email?: string;
+  email_verified?: boolean;
   is_restricted?: boolean;
 };
 export type Preferences = {

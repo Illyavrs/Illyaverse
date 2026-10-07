@@ -1,9 +1,12 @@
 mod assets;
 mod beatmaps;
 mod common;
+#[cfg(test)]
+mod credential_race_tests;
 mod lazer;
 mod lazer_chat;
 mod multiplayer;
+mod registration;
 mod replay_capture;
 mod score_aggregates;
 mod signalr;
@@ -84,6 +87,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/health", get(health))
         .route("/", get(index).post(stable::bancho))
         .merge(stable::router())
+        .merge(registration::router(&env::var("PUBLIC_ORIGIN").unwrap_or_else(|_| "http://localhost:3000".into()))?)
         .merge(lazer::router())
         .merge(lazer_chat::router())
         .merge(signalr::router())

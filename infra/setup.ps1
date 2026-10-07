@@ -14,7 +14,7 @@ function New-TaskSecret {
     return [System.BitConverter]::ToString($taskBytes).Replace('-', '').ToLowerInvariant()
 }
 $taskContent = [System.IO.File]::ReadAllText((Join-Path $taskRoot '.env.example'))
-foreach ($taskKey in @('POSTGRES_PASSWORD', 'SESSION_SECRET', 'INTERNAL_SERVICE_KEY', 'BOOTSTRAP_ADMIN_PASSWORD')) {
+foreach ($taskKey in @('POSTGRES_PASSWORD', 'SESSION_SECRET', 'INTERNAL_SERVICE_KEY', 'BOOTSTRAP_ADMIN_PASSWORD', 'MAIL_ENCRYPTION_KEY')) {
     $taskContent = [System.Text.RegularExpressions.Regex]::Replace($taskContent, '(?m)^' + $taskKey + '=\s*$', $taskKey + '=' + (New-TaskSecret))
 }
 $taskStream = [System.IO.File]::Open($taskOutput, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)

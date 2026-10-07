@@ -109,6 +109,24 @@ def run():
     player_name, player_password = os.environ["TEST_PLAYER_USERNAME"], os.environ["TEST_PLAYER_PASSWORD"]
     admin = Client(os.environ.get("TEST_SANCTUARY_URL", "http://127.0.0.1:18080"))
     gateway = Client(os.environ.get("TEST_RESONANCE_URL", "http://127.0.0.1:18081"))
+    player_count = admin.json("GET", "/api/v1/status")["registered_players"]
+    for path, check in [("/users", "0"), ("/users/", "1")]:
+        fields = [("user[username]", "WebsiteOnlyFixture"),
+                  ("user[user_email]", "website-only@example.test"),
+                  ("user[password]", "never-create-this-account"), ("check", check)]
+        if check == "0":
+            body = urllib.parse.urlencode(fields).encode()
+            headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        else:
+            body, headers = multipart(fields)
+        response, response_headers = gateway.request("POST", path, body, headers, expected=422)
+        guide = json.loads(response)
+        assert guide["url"] == gateway.base + "/register"
+        assert guide["form_error"]["redirect"] == guide["url"]
+        assert guide["url"] in guide["form_error"]["user"]["username"][0]
+        assert b"never-create-this-account" not in response and b"website-only@example.test" not in response
+        assert "Set-Cookie" not in response_headers
+    assert admin.json("GET", "/api/v1/status")["registered_players"] == player_count
     admin.json("POST", "/api/v1/auth/login", {"username": admin_name, "password": admin_password})
 
     fixture = ("osu file format v14\n[General]\nMode:0\n[Metadata]\nTitle:Protocol fixture " + uuid.uuid4().hex + "\nArtist:Illyaverse\nCreator:Test\nVersion:Easy\n[Difficulty]\nHPDrainRate:5\nCircleSize:4\nOverallDifficulty:5\nApproachRate:5\nSliderMultiplier:1.4\nSliderTickRate:1\n[TimingPoints]\n0,500,4,2,1,100,1,0\n[HitObjects]\n64,64,1000,1,0,0:0:0:0:\n256,192,2000,1,0,0:0:0:0:\n").encode()

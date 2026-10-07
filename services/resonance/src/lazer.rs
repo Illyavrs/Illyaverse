@@ -55,22 +55,45 @@ async fn oauth(
     grant.validate()?;
     let access = common::secret();
     let refresh = common::secret();
+    let credentials = if let OAuthGrant::Password { username, password } = &grant {
+        Some(common::verify_credentials(&state, username, password, false).await?)
+    } else {
+        None
+    };
     let mut tx = state.pool.begin().await?;
     let player = match grant {
-        OAuthGrant::Password { username, password } => {
-            common::authenticate(&state, &username, &password, false).await?
+        OAuthGrant::Password { .. } => {
+            common::lock_authenticated(
+                &mut tx,
+                credentials
+                    .as_ref()
+                    .ok_or(ApiError(StatusCode::UNAUTHORIZED, "invalid_grant"))?,
+            )
+            .await?
         }
         OAuthGrant::Refresh { refresh_token } => {
-            // Lock then rotate both secrets; concurrent refreshes cannot reuse a token.
-            let row=sqlx::query("SELECT id,user_id FROM lazer_sessions WHERE refresh_hash=$1 AND refresh_expires_at>now() FOR UPDATE").bind(common::token_hash(&refresh_token)).fetch_optional(&mut *tx).await?.ok_or(ApiError(StatusCode::UNAUTHORIZED,"invalid_grant"))?;
+            let refresh_hash = common::token_hash(&refresh_token);
+            // Discover without locking, then use the same users -> sessions lock
+            // order as password reset. Re-read the token after acquiring the user
+            // lock so a revoked token cannot rotate itself back into existence.
+            let user_id = sqlx::query_scalar::<_, i64>("SELECT user_id FROM lazer_sessions WHERE refresh_hash=$1 AND refresh_expires_at>now()")
+                .bind(&refresh_hash).fetch_optional(&mut *tx).await?
+                .ok_or(ApiError(StatusCode::UNAUTHORIZED, "invalid_grant"))?;
+            sqlx::query("SELECT id FROM users WHERE id=$1 AND NOT is_restricted FOR UPDATE")
+                .bind(user_id)
+                .fetch_optional(&mut *tx)
+                .await?
+                .ok_or(ApiError(StatusCode::UNAUTHORIZED, "invalid_grant"))?;
+            let row=sqlx::query("SELECT id FROM lazer_sessions WHERE refresh_hash=$1 AND user_id=$2 AND refresh_expires_at>now() FOR UPDATE").bind(&refresh_hash).bind(user_id).fetch_optional(&mut *tx).await?.ok_or(ApiError(StatusCode::UNAUTHORIZED,"invalid_grant"))?;
             sqlx::query("DELETE FROM lazer_sessions WHERE id=$1")
                 .bind(row.get::<uuid::Uuid, _>("id"))
                 .execute(&mut *tx)
                 .await?;
-            common::account(&state, row.get("user_id")).await?
+            common::account_in_tx(&mut tx, user_id).await?
         }
     };
-    sqlx::query("DELETE FROM lazer_sessions WHERE refresh_expires_at<now()")
+    sqlx::query("DELETE FROM lazer_sessions WHERE user_id=$1 AND refresh_expires_at<now()")
+        .bind(player.id)
         .execute(&mut *tx)
         .await?;
     sqlx::query("INSERT INTO lazer_sessions(id,user_id,access_hash,refresh_hash,access_expires_at,refresh_expires_at) VALUES($1,$2,$3,$4,$5,$6)").bind(uuid::Uuid::new_v4()).bind(player.id).bind(common::token_hash(&access)).bind(common::token_hash(&refresh)).bind(Utc::now()+Duration::hours(1)).bind(Utc::now()+Duration::days(30)).execute(&mut *tx).await?;

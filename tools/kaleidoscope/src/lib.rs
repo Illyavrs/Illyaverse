@@ -1,5 +1,7 @@
 //! Original, dependency-free connection tooling. No client or reference-server code is vendored.
 
+pub mod launcher;
+
 use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};

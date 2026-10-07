@@ -1,0 +1,100 @@
+@import 'tailwindcss';
+
+:root {
+  color-scheme: dark;
+  --page-ground: #000;
+  --foreground: #f5f1f5;
+  --muted-foreground: #b9aebf;
+  --primary: #f28eb6;
+  --primary-foreground: #111014;
+  --surface: #17141be8;
+  --background: #08080a;
+  --border: #ffffff16;
+  --input: #ffffff25;
+  --destructive: #f294a0;
+  --ranked: #93d7be;
+  --radius: 14px;
+}
+
+* { box-sizing: border-box; }
+html, body { min-height: 100%; background: var(--page-ground); }
+body { margin: 0; color: var(--foreground); font-family: 'Nunito Variable', 'Noto Sans TC', sans-serif; font-size: 14px; line-height: 1.65; }
+button, input { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+button, input { -webkit-tap-highlight-color: transparent; }
+::selection { background: #f28eb64d; color: var(--foreground); }
+input { caret-color: var(--primary); }
+* { scrollbar-color: #554555 var(--background); scrollbar-width: thin; }
+:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+h1, h2, p { margin: 0; }
+h1, h2 { text-wrap: balance; }
+.launcher-shell { width: min(100%, 720px); padding: 24px 32px 20px; margin: 0 auto; }
+.launcher-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 21px; }
+.launcher-header h1 { font-size: 28px; font-weight: 850; line-height: 1.3; letter-spacing: -.03em; }
+.launcher-header p { color: var(--muted-foreground); margin-top: 5px; font-size: 13px; }
+.brand-name { display: flex; gap: 7px; align-items: center; color: var(--muted-foreground); font-weight: 700; font-size: 12px; padding-top: 9px; }
+.preview-note { display: flex; align-items: center; gap: 8px; margin: -6px 0 16px; color: var(--muted-foreground); font-size: 11px; }
+.launcher-panel { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); backdrop-filter: blur(24px); overflow: hidden; }
+.server-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 22px; border-bottom: 1px solid var(--border); }
+.server-label { display: flex; align-items: center; gap: 9px; }
+.server-label svg { color: var(--primary); }
+.server-label strong { font-size: 14px; font-weight: 800; }
+.server-label p { font-size: 10px; color: var(--muted-foreground); }
+.server-row > span { font-size: 11px; color: var(--muted-foreground); }
+.client-row { padding: 16px 22px 14px; }
+.client-row + .client-row { border-top: 1px solid var(--border); }
+.client-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.client-heading h2 { font-size: 19px; font-weight: 800; line-height: 1.25; letter-spacing: -.02em; }
+.client-heading h2 span { font-weight: 650; }
+.client-heading p { color: var(--muted-foreground); font-size: 11px; margin-top: 5px; }
+.client-state { color: var(--muted-foreground); font-size: 10px; padding: 3px 0; white-space: nowrap; }
+.client-state.is-running { color: var(--ranked); }
+.path-row { display: flex; gap: 8px; align-items: center; }
+.path-row input { min-width: 0; flex: 1; width: 100%; height: 36px; padding: 0 11px; border-radius: 9px; border: 1px solid var(--input); color: var(--foreground); background: var(--background); font-size: 11px; text-overflow: ellipsis; }
+.path-row input::placeholder { color: var(--muted-foreground); opacity: 1; }
+.button { display: inline-flex; justify-content: center; align-items: center; gap: 7px; min-height: 36px; padding: 0 13px; border-radius: 9px; border: 1px solid transparent; font-size: 12px; font-weight: 700; white-space: nowrap; transition: background-color 140ms ease-out, border-color 140ms ease-out; }
+.button-primary { color: var(--primary-foreground); background: var(--primary); }
+.button-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--primary) 88%, white); }
+.button-outline { background: #ffffff07; border-color: var(--input); color: var(--foreground); }
+.button-outline:hover:not(:disabled), .button-quiet:hover:not(:disabled) { background: #ffffff12; }
+.button-quiet { color: var(--muted-foreground); background: transparent; }
+.button:disabled { opacity: .45; }
+.button svg { flex-shrink: 0; }
+.client-action { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
+.client-action > span { color: var(--muted-foreground); font-size: 10px; }
+.client-action > .button { min-width: 94px; }
+.lifecycle { padding: 20px 1px 0; }
+.lifecycle-main { display: flex; gap: 11px; align-items: flex-start; }
+.state-symbol { display: flex; padding-top: 2px; color: var(--ranked); }
+.lifecycle.has-error .state-symbol, .lifecycle.has-error .lifecycle-copy strong { color: var(--destructive); }
+.lifecycle-copy { flex: 1; min-width: 0; }
+.lifecycle-copy strong { font-size: 13px; font-weight: 800; }
+.lifecycle-copy p { font-size: 12px; color: var(--muted-foreground); margin-top: 3px; overflow-wrap: anywhere; }
+.lifecycle-main > .button { margin-top: -4px; }
+.cleanup-status { color: var(--muted-foreground); font-size: 11px; margin: 8px 0 0 30px; }
+.launcher-footer { color: var(--muted-foreground); font-size: 11px; padding-top: 16px; line-height: 1.8; }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 520px) {
+  .launcher-shell { padding: 26px 18px 22px; }
+  .launcher-header h1 { font-size: 25px; }
+  .brand-name { display: none; }
+  .server-row { padding: 14px 16px; }
+  .server-row > span { font-size: 10px; }
+  .client-row { padding: 19px 16px 17px; }
+  .client-heading h2 { font-size: 18px; }
+  .client-heading p { max-width: 26ch; }
+  .path-row { gap: 6px; }
+  .path-row .button { padding: 0 9px; font-size: 11px; }
+  .path-row .button svg { display: none; }
+  .client-action > span { max-width: 16ch; }
+  .client-action > .button { font-size: 11px; padding: 0 10px; }
+  .lifecycle-main { flex-wrap: wrap; }
+  .lifecycle-copy { flex-basis: calc(100% - 35px); }
+  .lifecycle-main > .button { margin: 4px 0 0 30px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

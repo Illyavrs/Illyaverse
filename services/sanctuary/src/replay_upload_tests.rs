@@ -76,6 +76,7 @@ async fn extended_replay_upload_permissions_and_idempotency() {
         secret: Arc::new("test-session-secret-with-at-least-thirty-two-bytes".into()),
         internal_key: Arc::new("test-internal-secret-with-at-least-thirty-two-bytes".into()),
         origin: Arc::new("http://localhost:3000".into()),
+        mail: Arc::new(mail_delivery::MailConfig::disabled()),
         secure_cookie: false,
         media_root: directory.join("media"),
         maps_root: directory.join("maps"),

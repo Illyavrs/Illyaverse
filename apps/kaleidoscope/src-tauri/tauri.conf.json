@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Kaleidoscope",
+  "version": "0.1.0",
+  "identifier": "community.illyaverse.kaleidoscope",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:3010",
+    "frontendDist": "../out"
+  },
+  "app": {
+    "windows": [{
+      "label": "main",
+      "title": "Kaleidoscope · Illyaverse",
+      "width": 800,
+      "height": 720,
+      "minWidth": 390,
+      "minHeight": 600,
+      "backgroundColor": "#000000"
+    }],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src 'none'; base-uri 'self'"
+    }
+  },
+  "bundle": { "active": false }
+}
