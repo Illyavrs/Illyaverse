@@ -5,7 +5,7 @@ use axum::{
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
 };
-use illya_domain::Pagination;
+use illya_domain::{Pagination, beatmap_filename::valid_beatmap_filename};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -59,6 +59,22 @@ fn official_namespace_conflict() -> ApiError {
         StatusCode::CONFLICT,
         "official_namespace_conflict",
         "This official identity overlaps the managed local beatmap namespace.".into(),
+    )
+}
+
+fn filename_ambiguous() -> ApiError {
+    ApiError(
+        StatusCode::CONFLICT,
+        "beatmap_filename_ambiguous",
+        "More than one stored beatmap has this filename.".into(),
+    )
+}
+
+fn filename_conflict() -> ApiError {
+    ApiError(
+        StatusCode::CONFLICT,
+        "beatmap_filename_conflict",
+        "The filename result conflicts with an existing beatmap identity.".into(),
     )
 }
 
@@ -132,6 +148,7 @@ impl CachedFailure {
 enum MapSelector {
     Checksum(String),
     OfficialId(i64),
+    Filename(String),
 }
 
 #[cfg(test)]
@@ -393,7 +410,7 @@ pub fn parse_map(bytes: Vec<u8>) -> ApiResult<ParsedMap> {
         bytes,
     })
 }
-pub fn unpack_archive(bytes: &[u8]) -> ApiResult<Vec<Vec<u8>>> {
+pub fn unpack_archive(bytes: &[u8]) -> ApiResult<Vec<(String, Vec<u8>)>> {
     let mut archive = zip::ZipArchive::new(Cursor::new(bytes))
         .map_err(|_| ApiError::bad("Invalid .osz archive."))?;
     if archive.len() > 512 {
@@ -406,6 +423,7 @@ pub fn unpack_archive(bytes: &[u8]) -> ApiResult<Vec<Vec<u8>>> {
         let mut entry = archive
             .by_index(index)
             .map_err(|_| ApiError::bad("Unreadable archive entry."))?;
+        // Keep the zip crate's decoded entry name; do not guess legacy encodings.
         let name = entry.name().replace('\\', "/");
         if entry.enclosed_name().is_none()
             || name.starts_with('/')
@@ -436,6 +454,12 @@ pub fn unpack_archive(bytes: &[u8]) -> ApiResult<Vec<Vec<u8>>> {
             ));
         }
         if name.to_ascii_lowercase().ends_with(".osu") {
+            let filename = name.rsplit('/').next().unwrap_or_default();
+            if !valid_beatmap_filename(filename) {
+                return Err(ApiError::bad(
+                    "Archive contains an invalid beatmap filename.",
+                ));
+            }
             if entry.size() > 8 * 1024 * 1024 {
                 return Err(ApiError::bad("Beatmap file exceeds 8 MiB."));
             }
@@ -448,7 +472,7 @@ pub fn unpack_archive(bytes: &[u8]) -> ApiResult<Vec<Vec<u8>>> {
             if buffer.len() > 8 * 1024 * 1024 {
                 return Err(ApiError::bad("Beatmap file exceeds 8 MiB."));
             }
-            maps.push(buffer);
+            maps.push((filename.to_owned(), buffer));
         }
     }
     if maps.is_empty() {
@@ -504,6 +528,32 @@ async fn lock_package_checksums(
             .await?;
     }
     Ok(())
+}
+
+async fn lock_filename_aliases(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    filenames: &[String],
+) -> ApiResult<()> {
+    // The two-int advisory namespace is separate from the package checksum's
+    // bigint namespace. Sort actual hash keys, including collisions. Every
+    // publisher takes authority, then filename locks, then checksum/row locks.
+    const NAMESPACE: i32 = 0x494c464e;
+    let keys = sqlx::query_scalar::<_, i32>(
+        "SELECT DISTINCT hashtext(filename COLLATE \"C\") AS lock_key FROM unnest($1::text[]) AS aliases(filename) ORDER BY lock_key",
+    ).bind(filenames).fetch_all(&mut **tx).await?;
+    for key in keys {
+        sqlx::query("SELECT pg_advisory_xact_lock($1,$2)")
+            .bind(NAMESPACE)
+            .bind(key)
+            .execute(&mut **tx)
+            .await?;
+    }
+    Ok(())
+}
+
+struct UploadMap {
+    filename: String,
+    map: ParsedMap,
 }
 
 struct Fingerprint<'a> {
@@ -630,9 +680,15 @@ pub async fn upload(
         if upload.is_some() {
             return Err(ApiError::bad("Attach exactly one beatmap file or archive."));
         }
-        let filename = field.file_name().unwrap_or("").to_ascii_lowercase();
-        if !filename.ends_with(".osu") && !filename.ends_with(".osz") {
+        let filename = field.file_name().unwrap_or("").to_owned();
+        let extension = filename.to_ascii_lowercase();
+        if !extension.ends_with(".osu") && !extension.ends_with(".osz") {
             return Err(ApiError::bad("Upload an .osu file or .osz archive."));
+        }
+        if extension.ends_with(".osu") && !valid_beatmap_filename(&filename) {
+            return Err(ApiError::bad(
+                "Supply a valid beatmap filename without a path.",
+            ));
         }
         let mut bytes = Vec::new();
         while let Some(chunk) = field
@@ -648,7 +704,7 @@ pub async fn upload(
         upload = Some((filename, bytes));
     }
     let (filename, bytes) = upload.ok_or_else(|| ApiError::bad("Attach a file."))?;
-    let is_archive = filename.ends_with(".osz");
+    let is_archive = filename.to_ascii_lowercase().ends_with(".osz");
     let kind = if is_archive { "osz" } else { "osu" };
     let sha256 = format!("{:x}", Sha256::digest(&bytes));
     let byte_length = bytes.len() as i64;
@@ -657,23 +713,35 @@ pub async fn upload(
     } else {
         None
     };
-    let mut parsed = tokio::task::spawn_blocking(move || -> ApiResult<Vec<ParsedMap>> {
+    let mut parsed = tokio::task::spawn_blocking(move || -> ApiResult<Vec<UploadMap>> {
         let inputs = if is_archive {
             unpack_archive(&bytes)?
         } else {
-            vec![bytes]
+            vec![(filename, bytes)]
         };
-        inputs.into_iter().map(parse_map).collect()
+        inputs
+            .into_iter()
+            .map(|(filename, bytes)| {
+                Ok(UploadMap {
+                    filename,
+                    map: parse_map(bytes)?,
+                })
+            })
+            .collect()
     })
     .await
     .map_err(ApiError::internal)??;
-    parsed.sort_unstable_by(|left, right| left.md5.cmp(&right.md5));
-    if parsed.windows(2).any(|pair| pair[0].md5 == pair[1].md5) {
+    parsed.sort_unstable_by(|left, right| left.map.md5.cmp(&right.map.md5));
+    if parsed
+        .windows(2)
+        .any(|pair| pair[0].map.md5 == pair[1].map.md5)
+    {
         return Err(ApiError::bad(
             "An archive must contain each difficulty checksum only once.",
         ));
     }
-    let manifest: Vec<String> = parsed.iter().map(|map| map.md5.clone()).collect();
+    let manifest: Vec<String> = parsed.iter().map(|input| input.map.md5.clone()).collect();
+    let filenames: Vec<String> = parsed.iter().map(|input| input.filename.clone()).collect();
     let package_id = Uuid::new_v4();
     let package = package_id.to_string();
     let directory = state.maps_root.join(&package);
@@ -689,13 +757,17 @@ pub async fn upload(
             let path = state.maps_root.join(archive_path.as_ref().unwrap());
             write_owned_map_file(path, &bytes, &mut owned_files).await?;
         }
-        for map in &parsed {
+        for input in &parsed {
+            let map = &input.map;
             let path = directory.join(format!("{}.osu", map.md5));
             write_owned_map_file(path, &map.bytes, &mut owned_files).await?;
         }
         let mut tx = state.db.begin().await?;
         let actor = auth::mutation_actor(&mut tx, &user, &[], auth::MutationScope::Permissions).await?;
         actor.require("beatmaps.upload")?;
+        let retry_candidate: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM beatmaps WHERE md5=ANY($1))")
+            .bind(&manifest).fetch_one(&mut *tx).await?;
+        if !retry_candidate { lock_filename_aliases(&mut tx, &filenames).await?; }
         lock_package_checksums(&mut tx, &manifest).await?;
         let existing = sqlx::query("SELECT id,md5,source,uploaded_by,local_package_id,archive_path,osu_path FROM beatmaps WHERE md5=ANY($1) ORDER BY md5 FOR UPDATE")
             .bind(&manifest).fetch_all(&mut *tx).await?;
@@ -706,7 +778,10 @@ pub async fn upload(
             tx.commit().await?;
             return Ok((ids, true));
         }
-        if parsed.iter().any(|map| map.official_id.is_some_and(|id| id > 0)
+        if retry_candidate {
+            return Err(package_conflict("The existing package changed while retrying. Upload its original complete file."));
+        }
+        if parsed.iter().map(|input| &input.map).any(|map| map.official_id.is_some_and(|id| id > 0)
             || map.official_set_id.is_some_and(|id| id > 0)) {
             return Err(ApiError(
                 StatusCode::BAD_REQUEST,
@@ -717,9 +792,12 @@ pub async fn upload(
         sqlx::query("INSERT INTO beatmap_packages(id,uploaded_by,kind,sha256,byte_length,member_md5,archive_path) VALUES($1,$2,$3,$4,$5,$6,$7)")
             .bind(package_id).bind(actor.id).bind(kind).bind(&sha256).bind(byte_length).bind(&manifest).bind(&archive_path).execute(&mut *tx).await.map_err(package_write_error)?;
         let mut ids = Vec::new();
-        for map in parsed {
+        for input in parsed {
+            let UploadMap { filename, map } = input;
             let path = format!("{package}/{}.osu", map.md5);
             let id:i64=sqlx::query_scalar("INSERT INTO beatmaps(uploaded_by,title,artist,creator,version,mode,stars,bpm,length_seconds,max_combo,md5,osu_path,archive_path,local_package_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id").bind(actor.id).bind(map.title).bind(map.artist).bind(map.creator).bind(map.version).bind(map.mode).bind(map.stars).bind(map.bpm).bind(map.length).bind(map.max_combo).bind(map.md5).bind(path).bind(&archive_path).bind(package_id).fetch_one(&mut *tx).await.map_err(package_write_error)?;
+            sqlx::query("INSERT INTO beatmap_filename_aliases(filename,beatmap_id) VALUES($1,$2)")
+                .bind(filename).bind(id).execute(&mut *tx).await?;
             ids.push(id);
         }
         sqlx::query("INSERT INTO audit_events(actor_id,action,target_type,target_id,details) VALUES($1,'beatmaps.upload','beatmap_package',$2,$3)")
@@ -1008,6 +1086,8 @@ pub struct Resolve {
     checksum: Option<String>,
     #[serde(default, deserialize_with = "present_selector")]
     official_id: Option<i64>,
+    #[serde(default, deserialize_with = "present_selector")]
+    filename: Option<String>,
 }
 fn present_selector<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
 where
@@ -1021,14 +1101,17 @@ impl Resolve {
         if self.user_id <= 0 {
             return Err(ApiError::bad("Supply a positive user_id."));
         }
-        match (&self.checksum, self.official_id) {
-            (Some(checksum), None) if valid_checksum(checksum) => {
+        match (&self.checksum, self.official_id, &self.filename) {
+            (Some(checksum), None, None) if valid_checksum(checksum) => {
                 Ok(MapSelector::Checksum(checksum.to_ascii_lowercase()))
             }
-            (None, Some(id)) if id > MAX_OFFICIAL_ID => Err(official_namespace_conflict()),
-            (None, Some(id)) if id > 0 => Ok(MapSelector::OfficialId(id)),
+            (None, Some(id), None) if id > MAX_OFFICIAL_ID => Err(official_namespace_conflict()),
+            (None, Some(id), None) if id > 0 => Ok(MapSelector::OfficialId(id)),
+            (None, None, Some(filename)) if valid_beatmap_filename(filename) => {
+                Ok(MapSelector::Filename(filename.clone()))
+            }
             _ => Err(ApiError::bad(
-                "Supply exactly one 32-character hexadecimal checksum or positive official_id.",
+                "Supply exactly one hexadecimal checksum, positive official_id or valid beatmap filename.",
             )),
         }
     }
@@ -1083,6 +1166,16 @@ async fn stored_map<'e>(
     let (checksum, official_id) = match selector {
         MapSelector::Checksum(checksum) => (Some(checksum.as_str()), None),
         MapSelector::OfficialId(id) => (None, Some(*id)),
+        MapSelector::Filename(filename) => {
+            // Bound the exact alias index lookup before joining primary keys.
+            // Filename resolution must not scan the full beatmap catalogue.
+            let mut values = sqlx::query_scalar("SELECT jsonb_build_object('id',b.id,'native_id',b.native_id,'native_set_id',b.native_set_id,'official_id',b.official_id,'official_set_id',b.official_set_id,'md5',b.md5,'status',b.status,'source',b.source,'mode',b.mode) FROM (SELECT beatmap_id FROM beatmap_filename_aliases WHERE filename=$1 COLLATE \"C\" ORDER BY beatmap_id LIMIT 2) aliases JOIN beatmaps b ON b.id=aliases.beatmap_id ORDER BY b.id LIMIT 2")
+                .bind(filename).fetch_all(executor).await?;
+            if values.len() > 1 {
+                return Err(filename_ambiguous());
+            }
+            return Ok(values.pop());
+        }
     };
     Ok(sqlx::query_scalar("SELECT jsonb_build_object('id',id,'native_id',native_id,'native_set_id',native_set_id,'official_id',official_id,'official_set_id',official_set_id,'md5',md5,'status',status,'source',source,'mode',mode) FROM beatmaps WHERE ($1::text IS NOT NULL AND md5=$1) OR ($2::bigint IS NOT NULL AND official_id=$2)")
         .bind(checksum).bind(official_id).fetch_optional(executor).await?)
@@ -1098,6 +1191,12 @@ async fn fetch_official_map(state: &AppState, selector: &MapSelector) -> ApiResu
     let path = match selector {
         MapSelector::Checksum(checksum) => format!("/api/v2/beatmaps/lookup?checksum={checksum}"),
         MapSelector::OfficialId(id) => format!("/api/v2/beatmaps/{id}"),
+        MapSelector::Filename(filename) => {
+            let mut url = reqwest::Url::parse("https://osu.ppy.sh/api/v2/beatmaps/lookup")
+                .map_err(ApiError::internal)?;
+            url.query_pairs_mut().append_pair("filename", filename);
+            format!("{}?{}", url.path(), url.query().unwrap_or_default())
+        }
     };
     let response = official_request(state, &path, true)
         .await
@@ -1204,6 +1303,14 @@ async fn fetch_official_map(state: &AppState, selector: &MapSelector) -> ApiResu
     })
 }
 
+fn same_official_identity(value: &Value, official: &OfficialMap) -> bool {
+    value["source"] == "official"
+        && value["official_id"].as_i64() == Some(official.id)
+        && value["official_set_id"].as_i64() == Some(official.set_id)
+        && value["md5"].as_str() == Some(official.map.md5.as_str())
+        && value["mode"].as_i64() == Some(i64::from(official.map.mode))
+}
+
 async fn insert_official_map(
     state: &AppState,
     user_id: i64,
@@ -1252,6 +1359,14 @@ async fn insert_official_map(
             if active.is_none() { return Err(ApiError::unauthorized()); }
             None
         };
+        let filename = if let MapSelector::Filename(filename) = selector {
+            lock_filename_aliases(&mut tx, std::slice::from_ref(filename)).await?;
+            if let Some(existing) = stored_map(&mut *tx, selector).await?
+                && !same_official_identity(&existing, &official) {
+                return Err(filename_conflict());
+            }
+            Some(filename)
+        } else { None };
         let map = &official.map;
         let inserted = sqlx::query_scalar::<_, i64>("INSERT INTO beatmaps(official_id,official_set_id,uploaded_by,title,artist,creator,version,mode,status,source,stars,bpm,length_seconds,max_combo,md5,osu_path) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'official',$10,$11,$12,$13,$14,$15) ON CONFLICT DO NOTHING RETURNING id")
             .bind(official.id).bind(official.set_id).bind(user_id).bind(&map.title).bind(&map.artist).bind(&map.creator).bind(&map.version).bind(map.mode).bind(official.status).bind(map.stars).bind(map.bpm).bind(map.length).bind(map.max_combo).bind(&map.md5).bind(&path).fetch_optional(&mut *tx).await?;
@@ -1263,6 +1378,12 @@ async fn insert_official_map(
         // official_id is unique in this schema. Never mutate an older checksum
         // into a new official version: existing scores/replays depend on it.
         let value = value.ok_or_else(|| ApiError(StatusCode::CONFLICT, "official_version_conflict", "A different checksum for this official beatmap is already stored.".into()))?;
+        if let Some(filename) = filename {
+            if !same_official_identity(&value, &official) { return Err(filename_conflict()); }
+            let id = value["id"].as_i64().ok_or_else(|| ApiError::internal("missing resolved map identity"))?;
+            sqlx::query("INSERT INTO beatmap_filename_aliases(filename,beatmap_id) VALUES($1,$2) ON CONFLICT DO NOTHING")
+                .bind(filename).bind(id).execute(&mut *tx).await?;
+        }
         if let Some(actor) = &actor {
             audit_manual_import(&mut tx, actor, selector, &value).await?;
             auth::ensure_mutation_actor(&mut tx, actor).await?;

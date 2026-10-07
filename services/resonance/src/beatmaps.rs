@@ -59,20 +59,17 @@ async fn lookup(
             crate::native_maps::resolve_checksum(&state, player.id, hash).await?
         };
         resolved.ok_or(ApiError(StatusCode::NOT_FOUND, "beatmap_not_found"))?
-    } else {
-        let native = native_id.ok_or(ApiError(
-            if query.contains_key("filename") {
-                StatusCode::NOT_IMPLEMENTED
-            } else {
-                StatusCode::BAD_REQUEST
-            },
-            if query.contains_key("filename") {
-                "filename_lookup_unavailable"
-            } else {
-                "beatmap_id_or_checksum_required"
-            },
-        ))?;
+    } else if let Some(native) = native_id {
         resolve(&state, player.id, native).await?
+    } else if let Some(filename) = query.get("filename") {
+        crate::native_maps::resolve_filename(&state, player.id, filename)
+            .await?
+            .ok_or(ApiError(StatusCode::NOT_FOUND, "beatmap_not_found"))?
+    } else {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "beatmap_id_or_checksum_required",
+        ));
     };
     let map = lazer::map_json(&state, id).await?;
     if native_id.is_some_and(|native| map["id"].as_i64() != Some(native)) {

@@ -544,10 +544,12 @@ def run():
 
     fixture = ("osu file format v14\n[General]\nMode:0\n[Metadata]\nTitle:Protocol fixture " + uuid.uuid4().hex + "\nArtist:Illyaverse\nCreator:Test\nVersion:Easy\n[Difficulty]\nHPDrainRate:5\nCircleSize:4\nOverallDifficulty:5\nApproachRate:5\nSliderMultiplier:1.4\nSliderTickRate:1\n[TimingPoints]\n0,500,4,2,1,100,1,0\n[HitObjects]\n64,64,1000,1,0,0:0:0:0:\n256,192,2000,1,0,0:0:0:0:\n").encode()
     sibling_fixture = fixture.replace(b"Version:Easy", b"Version:Sibling")
+    fixture_filename = "音樂 & Protocol + 100% (Test) [Easy].osu"
+    sibling_filename = "星の曲 (Test) [Sibling].OSU"
     archive = io.BytesIO()
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as package:
-        package.writestr("protocol.osu", fixture)
-        package.writestr("protocol-sibling.osu", sibling_fixture)
+        package.writestr(fixture_filename, fixture)
+        package.writestr(sibling_filename, sibling_fixture)
         package.writestr("asset.txt", b"original non-map package asset\n")
     archive = archive.getvalue()
     body, headers = multipart([], [("file", "protocol.osz", archive)])
@@ -623,6 +625,18 @@ def run():
     assert gateway.json("GET", "/api/v2/me", headers=bearer)["id"] == player_id
     lookup = gateway.json("GET", "/api/v2/beatmaps/lookup?checksum=" + map_hash, headers=bearer)
     assert lookup["id"] == map_id and lookup["checksum"] == map_hash
+    filename_path = "/api/v2/beatmaps/lookup?" + urllib.parse.urlencode({"filename": fixture_filename})
+    gateway.request("GET", filename_path, expected=401)
+    for filename, item in [(fixture_filename, beatmap), (sibling_filename, sibling)]:
+        named = gateway.json("GET", "/api/v2/beatmaps/lookup?" + urllib.parse.urlencode({"filename": filename}), headers=bearer)
+        assert named["id"] == item["native_id"] and named["checksum"] == item["md5"]
+        assert named["beatmapset_id"] == set_id and "filename" not in named and "osu_path" not in named
+    gateway.request("GET", "/api/v2/beatmaps/lookup?filename=../invalid.osu", headers=bearer, expected=400)
+    stronger = gateway.json("GET", "/api/v2/beatmaps/lookup?" + urllib.parse.urlencode({"checksum": map_hash, "filename": "Wrong.osu"}), headers=bearer)
+    assert stronger["id"] == map_id and stronger["checksum"] == map_hash
+    filename_info = gateway.request("POST", "/web/osu-getbeatmapinfo.php?" + urllib.parse.urlencode({"u": player_name, "h": digest(player_password)}),
+                                    {"Filenames": ["Uncached.osu", fixture_filename, sibling_filename], "Ids": []})[0].decode()
+    assert filename_info == f"1|{map_id}|{set_id}|{map_hash}|0|N|N|N|N\n2|{sibling['native_id']}|{set_id}|{sibling['md5']}|0|N|N|N|N"
     assert {item["checksum"] for item in gateway.json("GET", f"/api/v2/beatmapsets/lookup?beatmap_id={map_id}", headers=bearer)["beatmaps"]} == {map_hash, sibling["md5"]}
     grouped = gateway.json("GET", f"/api/v2/beatmapsets/{set_id}", headers=bearer)
     assert {item["checksum"] for item in grouped["beatmaps"]} == {map_hash, sibling["md5"]}
@@ -981,7 +995,8 @@ def run():
     after_logout = gateway.request("POST", "/", packet(4), player_bancho)[0]
     assert any(i == 86 for i, _ in packets(after_logout)), "Logged out stable session remained valid"
     checks = ["shared auth", "stable binary login/ping/chat/logout", "lazer OAuth/refresh", "lazer checksum/set lookup/archive/score collections", "immutable multi-difficulty package/retry/native set grouping/full asset archive", "stable direct canonical difficulty/set selectors", "native signed-int bounds and reserved local misses", "Classic profile totals and standardized mixed-client ranking", "stable ScoreV1/ScoreV2 board partition", "RBAC", "friend/block/DM settings", "stable password room/host authority/slot identity", "stable ready/start/load/score/complete/transfer/leave", "stable spectator frame relay", "lazer score token/idempotency", "stable Rijndael256 submission/checksum", "server PP", "replay round trip", "pending rankings", "moderation", "encrypted stable RX and native solo RX", "RX metadata and unavailable common scale", "RX retry deduplication and native mod binding", "RX pending isolation and fixture moderation", "RX replay original ruleset/mod binding", "RX PP-sorted boards and best-per-map totals", "NM/RX API and gateway rank/stat isolation", "osu/taiko/catch RX partition isolation", "mania RX rejection and untrusted variant derivation"]
-    checks.extend(["website package pagination and explicit original download formats",
+    checks.extend(["exact retained filename lookup and cached stable input positions",
+                   "website package pagination and explicit original download formats",
                    "Docker media publication and private staging routes",
                    "stable large replay and case-insensitive attachment headers",
                    "native discovery service-key isolation and unavailable-vs-unknown boundary",

@@ -522,6 +522,54 @@ async fn native_maps_reject_invalid_discovery_and_auth_before_service() {
 
 #[tokio::test]
 #[ignore = "requires ILLYA_TEST_DATABASE_URL; creates and removes an isolated schema"]
+async fn native_map_filename_info_preserves_input_positions_without_upstream_batches() {
+    let f = Fixture::new().await;
+    let result = std::panic::AssertUnwindSafe(async {
+        let filename = "音樂 & Title (Mapper) [Easy].osu";
+        let local:i64 = sqlx::query_scalar("INSERT INTO beatmaps(title,artist,creator,version,mode,status,stars,md5,osu_path) VALUES('Filename primary','Fixture','Fixture','Easy',0,'pending',1,$1,'fixture.osu') RETURNING id")
+            .bind(HASH).fetch_one(&f.state.pool).await.unwrap();
+        let other:i64 = sqlx::query_scalar("INSERT INTO beatmaps(official_id,official_set_id,title,artist,creator,version,mode,status,source,stars,md5,osu_path) VALUES($1,$2,'Filename secondary','Fixture','Fixture','Hard',0,'loved','official',1,'11111111111111111111111111111111','fixture.osu') RETURNING id")
+            .bind(OFFICIAL_ID).bind(SET_ID).fetch_one(&f.state.pool).await.unwrap();
+        let local_row = sqlx::query("SELECT native_id,native_set_id FROM beatmaps WHERE id=$1")
+            .bind(local).fetch_one(&f.state.pool).await.unwrap();
+        let native:i64 = local_row.get("native_id");
+        let set:i64 = local_row.get("native_set_id");
+        for (name,id) in [(filename,local),("Case-sensitive.OSU",other)] {
+            sqlx::query("INSERT INTO beatmap_filename_aliases(filename,beatmap_id) VALUES($1,$2)")
+                .bind(name).bind(id).execute(&f.state.pool).await.unwrap();
+        }
+        let info = f.info(json!({"Filenames":["Unknown.osu",filename,"Case-sensitive.OSU",filename],"Ids":[]})).await;
+        assert_eq!(info.status(),StatusCode::OK);
+        assert_eq!(info.text().await.unwrap(),format!("1|{native}|{set}|{HASH}|0|N|N|N|N\n2|{OFFICIAL_ID}|{SET_ID}|11111111111111111111111111111111|4|N|N|N|N\n3|{native}|{set}|{HASH}|0|N|N|N|N"));
+        assert_eq!(f.info(json!({"Filenames":["case-sensitive.OSU"]})).await.text().await.unwrap(),"");
+        for invalid in ["", ".osu", "../bad.osu", "sub\\bad.osu", "bad\n.osu", &format!("{}.osu","x".repeat(1021))] {
+            assert_eq!(f.info(json!({"Filenames":[invalid]})).await.status(),StatusCode::BAD_REQUEST);
+        }
+        let oversized = vec!["Unknown.osu";101];
+        assert_eq!(f.info(json!({"Filenames":oversized})).await.status(),StatusCode::BAD_REQUEST);
+        let hundred = vec!["Unknown.osu";100];
+        assert_eq!(f.info(json!({"Filenames":hundred})).await.text().await.unwrap(),"");
+        sqlx::query("INSERT INTO beatmap_filename_aliases(filename,beatmap_id) VALUES($1,$2)")
+            .bind(filename).bind(other).execute(&f.state.pool).await.unwrap();
+        let ambiguous = f.info(json!({"Filenames":[filename]})).await;
+        assert_eq!(ambiguous.status(),StatusCode::CONFLICT);
+        assert_eq!(ambiguous.json::<Value>().await.unwrap()["error"],"beatmap_filename_ambiguous");
+        // Mixed-array indexing remains explicitly unverified; the existing
+        // ID path is preserved rather than inventing filename offsets.
+        let mixed = f.info(json!({"Filenames":[filename],"Ids":[OFFICIAL_ID]})).await;
+        assert_eq!(mixed.text().await.unwrap(),format!("0|{OFFICIAL_ID}|{SET_ID}|11111111111111111111111111111111|4|N|N|N|N"));
+        assert!(f.backend.calls.lock().await.is_empty(),"all batch queries must remain cache-only");
+        assert!(f.backend.ingested.lock().await.is_empty());
+        assert_eq!(tokio::fs::read(f.storage.join("maps/fixture.osu")).await.unwrap(),b"original fixture map content");
+    }).catch_unwind().await;
+    f.cleanup().await;
+    if let Err(panic) = result {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires ILLYA_TEST_DATABASE_URL; creates and removes an isolated schema"]
 async fn native_map_info_prefers_official_identity_and_does_not_discover_batches() {
     let f = Fixture::new().await;
     let result = std::panic::AssertUnwindSafe(async {

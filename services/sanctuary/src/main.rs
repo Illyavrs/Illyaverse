@@ -1,6 +1,8 @@
 mod account_recovery;
 mod admin;
 mod auth;
+#[cfg(test)]
+mod beatmap_filename_tests;
 mod chat;
 #[cfg(test)]
 mod integration_tests;
@@ -395,7 +397,7 @@ fn router(state: AppState) -> Router {
         )
         .route(
             "/api/v1/internal/beatmaps/resolve",
-            post(maps::resolve).layer(DefaultBodyLimit::max(1024)),
+            post(maps::resolve).layer(DefaultBodyLimit::max(4 * 1024)),
         )
         .route("/api/v1/leaderboard", get(scores::leaderboard))
         .route("/api/v1/channels", get(chat::channels))

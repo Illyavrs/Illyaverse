@@ -2,6 +2,7 @@
 //! Known catalogue content is authoritative and never needs an upstream call.
 use crate::common::{ApiError, AppState};
 use axum::http::StatusCode;
+use illya_domain::beatmap_filename::valid_beatmap_filename;
 use resonance_protocol::stable::is_md5;
 use serde::Deserialize;
 use serde_json::json;
@@ -100,6 +101,7 @@ struct ServiceErrorCode {
 enum Selector<'a> {
     Checksum(&'a str),
     OfficialId(i64),
+    Filename(&'a str),
 }
 
 impl Identity {
@@ -127,6 +129,8 @@ impl Identity {
             && match selector {
                 Selector::Checksum(checksum) => self.md5 == *checksum,
                 Selector::OfficialId(id) => self.official_id == Some(*id),
+                // The database alias binding is checked after the response.
+                Selector::Filename(filename) => valid_beatmap_filename(filename),
             }
             && matches!(
                 self.status.as_str(),
@@ -191,6 +195,49 @@ pub async fn resolve_checksum(
     discover(state, user_id, Selector::Checksum(&checksum)).await
 }
 
+/// Exact basename aliases are indexed data, never filesystem paths. Multiple
+/// distinct difficulties with the same alias are intentionally ambiguous.
+pub(crate) async fn known_filename(
+    state: &AppState,
+    filename: &str,
+) -> Result<Option<i64>, ApiError> {
+    if !valid_beatmap_filename(filename) {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid_beatmap_filename",
+        ));
+    }
+    let ids = sqlx::query_scalar::<_, i64>(
+        "SELECT beatmap_id FROM beatmap_filename_aliases WHERE filename=$1 ORDER BY beatmap_id LIMIT 2",
+    )
+    .bind(filename)
+    .fetch_all(&state.pool)
+    .await?;
+    if ids.len() > 1 {
+        return Err(ApiError(StatusCode::CONFLICT, "beatmap_filename_ambiguous"));
+    }
+    Ok(ids.first().copied())
+}
+
+/// Only authenticated native routes may discover an absent exact filename.
+/// Checksum/ID callers continue to use their stronger immutable selectors.
+pub(crate) async fn resolve_filename(
+    state: &AppState,
+    user_id: i64,
+    filename: &str,
+) -> Result<Option<i64>, ApiError> {
+    if user_id <= 0 {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid_beatmap_identity",
+        ));
+    }
+    if let Some(id) = known_filename(state, filename).await? {
+        return Ok(Some(id));
+    }
+    discover(state, user_id, Selector::Filename(filename)).await
+}
+
 /// A supplied ID and checksum must identify the same immutable difficulty.
 /// Reserved local misses are terminal, even when a checksum is also supplied.
 pub(crate) async fn resolve_checksum_for_id(
@@ -247,6 +294,7 @@ async fn discover(
     let input = match selector {
         Selector::Checksum(checksum) => json!({"user_id":user_id,"checksum":checksum}),
         Selector::OfficialId(id) => json!({"user_id":user_id,"official_id":id}),
+        Selector::Filename(filename) => json!({"user_id":user_id,"filename":filename}),
     };
     let response = state
         .http
@@ -290,7 +338,16 @@ async fn discover(
             ));
         }
         StatusCode::CONFLICT => {
-            return Err(ApiError(StatusCode::CONFLICT, "beatmap_version_conflict"));
+            let code = match response.json::<ServiceError>().await {
+                Ok(error) if error.error.code == "beatmap_filename_ambiguous" => {
+                    "beatmap_filename_ambiguous"
+                }
+                Ok(error) if error.error.code == "beatmap_filename_conflict" => {
+                    "beatmap_filename_conflict"
+                }
+                _ => "beatmap_version_conflict",
+            };
+            return Err(ApiError(StatusCode::CONFLICT, code));
         }
         _ => return Err(ApiError(StatusCode::BAD_GATEWAY, "map_resolution_failed")),
     }
@@ -312,6 +369,14 @@ async fn discover(
     .fetch_optional(&state.pool)
     .await?;
     if stored.as_ref().map(Identity::from_row).as_ref() != Some(&identity) {
+        return Err(ApiError(
+            StatusCode::BAD_GATEWAY,
+            "invalid_map_resolution_response",
+        ));
+    }
+    if let Selector::Filename(filename) = selector
+        && known_filename(state, filename).await? != Some(identity.id)
+    {
         return Err(ApiError(
             StatusCode::BAD_GATEWAY,
             "invalid_map_resolution_response",

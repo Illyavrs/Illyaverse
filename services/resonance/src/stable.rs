@@ -995,11 +995,24 @@ async fn beatmap_info(
     if request.ids.len() + request.filenames.len() > 100 {
         return Err(ApiError(StatusCode::BAD_REQUEST, "too_many_beatmaps"));
     }
+    let mut resolved = Vec::new();
+    if request.ids.is_empty() {
+        for (index, filename) in request.filenames.iter().enumerate() {
+            if let Some(id) = crate::native_maps::known_filename(&state, filename).await? {
+                resolved.push((index, id));
+            }
+        }
+    } else {
+        // Keep the existing ID-index contract for mixed requests until native
+        // evidence establishes how their two independent arrays are indexed.
+        for (index, id) in request.ids.into_iter().enumerate() {
+            if let Some(id) = crate::native_maps::known_id(&state, id).await? {
+                resolved.push((index, id));
+            }
+        }
+    }
     let mut lines = Vec::new();
-    for (index, id) in request.ids.into_iter().enumerate() {
-        let Some(local_id) = crate::native_maps::known_id(&state, id).await? else {
-            continue;
-        };
+    for (index, local_id) in resolved {
         if let Some(row) =
             sqlx::query("SELECT id,native_id,native_set_id,md5,status FROM beatmaps WHERE id=$1")
                 .bind(local_id)
@@ -1019,6 +1032,5 @@ async fn beatmap_info(
             ));
         }
     }
-    // Filename-only lookup is ambiguous for local maps and is intentionally absent.
     Ok(lines.join("\n"))
 }

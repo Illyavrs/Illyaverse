@@ -35,6 +35,7 @@ const ACCESS: [&str; 2] = [
 ];
 const OFFICIAL_ID: i64 = 710001;
 const SET_ID: i64 = 810001;
+const FILENAME: &str = "音樂 & Fixture + 100% (Mapper) [Original].osu";
 const HASHES: [&str; 8] = [
     "0123456789abcdef0123456789abcdef",
     "11111111111111111111111111111111",
@@ -68,9 +69,12 @@ async fn resolve(
     let fields = input.as_object().unwrap();
     assert_eq!(fields.len(), 2);
     assert!(input["user_id"].as_i64().unwrap() > 0);
-    assert_ne!(
-        fields.contains_key("checksum"),
-        fields.contains_key("official_id")
+    assert_eq!(
+        ["checksum", "official_id", "filename"]
+            .iter()
+            .filter(|key| fields.contains_key(**key))
+            .count(),
+        1
     );
     state.calls.lock().await.push(input.clone());
     if state.pause.load(Ordering::SeqCst) {
@@ -84,7 +88,11 @@ async fn resolve(
         let code = if status == StatusCode::NOT_FOUND && state.invalid.load(Ordering::SeqCst) != 4 {
             "beatmap_not_found"
         } else {
-            "original_fixture_error"
+            match state.invalid.load(Ordering::SeqCst) {
+                7 => "beatmap_filename_ambiguous",
+                8 => "beatmap_filename_conflict",
+                _ => "original_fixture_error",
+            }
         };
         return (status, Json(json!({"error":{"code":code}})));
     }
@@ -92,6 +100,9 @@ async fn resolve(
         let hash = hash.as_str().unwrap();
         assert_eq!(hash, hash.to_ascii_lowercase());
         HASHES.iter().position(|value| *value == hash).unwrap()
+    } else if let Some(filename) = input.get("filename") {
+        assert_eq!(filename, FILENAME);
+        0
     } else {
         let id = input["official_id"].as_i64().unwrap();
         assert!((OFFICIAL_ID..OFFICIAL_ID + HASHES.len() as i64).contains(&id));
@@ -103,6 +114,12 @@ async fn resolve(
     let id: i64 = sqlx::query_scalar("INSERT INTO beatmaps(official_id,official_set_id,title,artist,creator,version,mode,status,source,stars,max_combo,md5,osu_path) VALUES($1,$2,'Native discovery','Fixture','Fixture','Original', $3,'ranked','official',1,2,$4,'fixture.osu') ON CONFLICT(md5) DO UPDATE SET md5=beatmaps.md5 RETURNING id")
         .bind(official_id).bind(set_id).bind(mode).bind(HASHES[index])
         .fetch_one(&state.pool).await.unwrap();
+    if let Some(filename) = input.get("filename")
+        && state.invalid.load(Ordering::SeqCst) != 5
+    {
+        sqlx::query("INSERT INTO beatmap_filename_aliases(filename,beatmap_id) VALUES($1,$2) ON CONFLICT DO NOTHING")
+            .bind(filename.as_str().unwrap()).bind(id).execute(&state.pool).await.unwrap();
+    }
     let mut body = json!({"id":id,"official_id":official_id,"official_set_id":set_id,"md5":HASHES[index],"status":"ranked","source":"official","mode":mode});
     match state.invalid.load(Ordering::SeqCst) {
         1 => body["md5"] = json!("ffffffffffffffffffffffffffffffff"),
@@ -389,6 +406,13 @@ fn submission() -> Value {
         "statistics":{"great":2},"maximum_statistics":{"great":2},"pauses":[]})
 }
 
+fn filename_lookup_path(filename: &str) -> String {
+    format!(
+        "/api/v2/beatmaps/lookup?{}",
+        serde_urlencoded::to_string([("filename", filename)]).unwrap()
+    )
+}
+
 async fn body(response: Response, status: StatusCode) -> Value {
     assert_eq!(response.status(), status);
     response.json().await.unwrap()
@@ -486,10 +510,182 @@ fixture_test!(lazer_maps_discover_by_checksum_and_id_and_cache, f, {
     assert!(ids.iter().all(|id| *id < OFFICIAL_ID));
 });
 
+fixture_test!(
+    lazer_filename_aliases_are_exact_and_ambiguity_is_not_discovery,
+    f,
+    {
+        let local = f.local_map(HASHES[0], None, None, Some("local.osz")).await;
+        let official = f
+            .local_map(HASHES[1], Some(OFFICIAL_ID + 1), Some(SET_ID + 1), None)
+            .await;
+        let (native, set) = f.public_ids(local).await;
+        for name in [FILENAME, "Café.osu"] {
+            sqlx::query("INSERT INTO beatmap_filename_aliases(filename,beatmap_id) VALUES($1,$2)")
+                .bind(name)
+                .bind(local)
+                .execute(&f.state.pool)
+                .await
+                .unwrap();
+        }
+        let value = body(f.get(&filename_lookup_path(FILENAME)).await, StatusCode::OK).await;
+        assert_eq!(value["id"], native);
+        assert_eq!(value["beatmapset_id"], set);
+        assert_eq!(value["checksum"], HASHES[0]);
+        assert_eq!(value["status"], "loved");
+        assert!(value.get("filename").is_none());
+        assert!(value.get("osu_path").is_none());
+        assert!(f.backend.calls.lock().await.is_empty());
+
+        // A weaker name cannot replace the immutable checksum/native-ID binding.
+        for query in [
+            format!("id={native}&checksum={}&filename=../ignored.osu", HASHES[0]),
+            format!("id={native}&filename=../ignored.osu"),
+        ] {
+            assert_eq!(
+                f.get(&format!("/api/v2/beatmaps/lookup?{query}"))
+                    .await
+                    .status(),
+                StatusCode::OK
+            );
+        }
+        for malformed in [
+            "",
+            ".osu",
+            "bad.osz",
+            "../map.osu",
+            "sub/map.osu",
+            "sub\\map.osu",
+            "C:map.osu",
+            "bad\n.osu",
+            "bad\u{7f}.osu",
+            &format!("{}.osu", "x".repeat(1021)),
+        ] {
+            let rejected = body(
+                f.get(&filename_lookup_path(malformed)).await,
+                StatusCode::BAD_REQUEST,
+            )
+            .await;
+            assert_eq!(rejected["error"], "invalid_beatmap_filename");
+        }
+        assert!(f.backend.calls.lock().await.is_empty());
+
+        f.backend.status.store(404, Ordering::SeqCst);
+        for absent in [
+            FILENAME.to_ascii_lowercase(),
+            "Cafe\u{301}.osu".into(),
+            "Other.osu".into(),
+        ] {
+            let missing = body(
+                f.get(&filename_lookup_path(&absent)).await,
+                StatusCode::NOT_FOUND,
+            )
+            .await;
+            assert_eq!(missing["error"], "beatmap_not_found");
+        }
+        assert_eq!(f.backend.calls.lock().await.len(), 3);
+        sqlx::query("INSERT INTO beatmap_filename_aliases(filename,beatmap_id) VALUES($1,$2)")
+            .bind(FILENAME)
+            .bind(official)
+            .execute(&f.state.pool)
+            .await
+            .unwrap();
+        let ambiguous = body(
+            f.get(&filename_lookup_path(FILENAME)).await,
+            StatusCode::CONFLICT,
+        )
+        .await;
+        assert_eq!(ambiguous["error"], "beatmap_filename_ambiguous");
+        assert_eq!(
+            f.backend.calls.lock().await.len(),
+            3,
+            "ambiguous local data must not contact discovery"
+        );
+        assert_eq!(
+            f.get(&format!("/api/v2/beatmaps/lookup?checksum={}", HASHES[0]))
+                .await
+                .status(),
+            StatusCode::OK
+        );
+
+        // Removing one member cascades its aliases; no official/local precedence
+        // was used while both distinct maps still had the same exact name.
+        sqlx::query("DELETE FROM beatmaps WHERE id=$1")
+            .bind(local)
+            .execute(&f.state.pool)
+            .await
+            .unwrap();
+        let remaining = body(f.get(&filename_lookup_path(FILENAME)).await, StatusCode::OK).await;
+        assert_eq!(remaining["id"], OFFICIAL_ID + 1);
+        assert_eq!(f.backend.calls.lock().await.len(), 3);
+        assert_eq!(
+            tokio::fs::read(f.storage.join("maps/fixture.osu"))
+                .await
+                .unwrap(),
+            b"original map content"
+        );
+    }
+);
+
+fixture_test!(
+    lazer_filename_discovery_validates_persisted_alias_and_error_boundaries,
+    f,
+    {
+        let path = filename_lookup_path(FILENAME);
+        assert_eq!(
+            f.request(Method::GET, &path, None, None).await.status(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert!(f.backend.calls.lock().await.is_empty());
+        for (status, invalid, expected) in [
+            (404, 0, "beatmap_not_found"),
+            (503, 0, "map_resolution_unavailable"),
+            (429, 0, "map_resolution_rate_limited"),
+            (502, 0, "map_resolution_failed"),
+            (409, 7, "beatmap_filename_ambiguous"),
+            (409, 8, "beatmap_filename_conflict"),
+        ] {
+            f.backend.status.store(status, Ordering::SeqCst);
+            f.backend.invalid.store(invalid, Ordering::SeqCst);
+            let value = body(f.get(&path).await, StatusCode::from_u16(status).unwrap()).await;
+            assert_eq!(value["error"], expected);
+        }
+        f.backend.status.store(200, Ordering::SeqCst);
+        for invalid in [1, 2, 3, 5] {
+            f.backend.invalid.store(invalid, Ordering::SeqCst);
+            let value = body(f.get(&path).await, StatusCode::BAD_GATEWAY).await;
+            assert_eq!(value["error"], "invalid_map_resolution_response");
+            sqlx::query("DELETE FROM beatmaps")
+                .execute(&f.state.pool)
+                .await
+                .unwrap();
+        }
+        f.backend.invalid.store(0, Ordering::SeqCst);
+        let discovered = body(f.get(&path).await, StatusCode::OK).await;
+        assert_eq!(discovered["id"], OFFICIAL_ID);
+        assert_eq!(discovered["checksum"], HASHES[0]);
+        let calls = f.backend.calls.lock().await.clone();
+        assert!(
+            calls
+                .iter()
+                .all(|input| *input == json!({"user_id":f.users[0],"filename":FILENAME}))
+        );
+        assert_eq!(f.get(&path).await.status(), StatusCode::OK);
+        assert_eq!(f.backend.calls.lock().await.len(), calls.len());
+        sqlx::query("UPDATE users SET is_restricted=true WHERE id=$1")
+            .bind(f.users[0])
+            .execute(&f.state.pool)
+            .await
+            .unwrap();
+        assert_eq!(f.get(&path).await.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(f.backend.calls.lock().await.len(), calls.len());
+    }
+);
+
 fixture_test!(lazer_maps_validate_auth_and_inputs_before_discovery, f, {
     for path in [
         format!("/api/v2/beatmaps/{OFFICIAL_ID}"),
         format!("/api/v2/beatmaps/lookup?checksum={}", HASHES[0]),
+        "/api/v2/beatmaps/lookup?filename=Original.osu".to_owned(),
         format!("/api/v2/beatmapsets/lookup?beatmap_id={OFFICIAL_ID}"),
         format!("/api/v2/beatmaps/{OFFICIAL_ID}/scores"),
     ] {
@@ -500,6 +696,7 @@ fixture_test!(lazer_maps_validate_auth_and_inputs_before_discovery, f, {
     }
     for path in [
         "/api/v2/beatmaps/lookup?checksum=invalid".to_owned(),
+        "/api/v2/beatmaps/lookup?filename=../Original.osu".to_owned(),
         format!("/api/v2/beatmaps/lookup?id=-1&checksum={}", HASHES[0]),
         "/api/v2/beatmaps/0".to_owned(),
         "/api/v2/beatmapsets/lookup?beatmap_id=-1".to_owned(),
@@ -515,12 +712,6 @@ fixture_test!(lazer_maps_validate_auth_and_inputs_before_discovery, f, {
             "{path}"
         );
     }
-    let filename = body(
-        f.get("/api/v2/beatmaps/lookup?filename=Original.osu").await,
-        StatusCode::NOT_IMPLEMENTED,
-    )
-    .await;
-    assert_eq!(filename["error"], "filename_lookup_unavailable");
     for (map, hash, ruleset, version) in [
         (OFFICIAL_ID, "invalid", 0, "original-version"),
         (OFFICIAL_ID, HASHES[0], 4, "original-version"),

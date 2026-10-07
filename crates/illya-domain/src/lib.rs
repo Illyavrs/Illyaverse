@@ -1,4 +1,5 @@
 //! Shared, transport-independent rules for Illyaverse.
+pub mod beatmap_filename;
 pub mod score_math;
 pub mod score_mods;
 pub mod score_variant;

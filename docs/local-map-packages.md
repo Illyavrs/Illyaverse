@@ -131,6 +131,23 @@ pages. Known ownership/overlap and official-ID errors have three-language copy.
 Failures preserve the selected file; changing the selection clears old feedback.
 The official-import action follows the account's existing import permission.
 
+## Retained native filenames
+
+Migration 0017 adds a separate exact filename-to-difficulty table. New standalone
+uploads retain the original basename; new archives bind each decoded entry's
+basename to the corresponding difficulty through checksum sorting. The names
+and map rows are published together under the original transaction authority.
+Exact package retry does not use a changed standalone filename to add aliases.
+Names are bounded lookup identities, not storage paths or public package fields.
+
+Two distinct difficulties can retain the same filename. Filename-only lookup
+then fails with an explicit ambiguity instead of choosing one owner, source or
+status. Strong checksum/native-ID selectors retain their original behavior.
+The migration does not infer names from metadata or hashed storage paths, rewrite
+bytes or backfill legacy archives during lookup. Legacy filename recovery and
+ZIP character-encoding differences are explicit remaining work. See the
+[native discovery contract](native-beatmap-discovery.md).
+
 ## Verification state
 
 The coordinated source check passes 179 Rust unit/CLI checks, 66 isolated

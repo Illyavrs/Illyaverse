@@ -185,6 +185,20 @@ async fn native_map_resolution_request_guards() {
         json!({"user_id":1,"official_id":null,"checksum":"a".repeat(32)}),
         json!({"user_id":1.5,"official_id":100}),
         json!({"user_id":1,"official_id":100.5}),
+        json!({"user_id":1,"filename":null}),
+        json!({"user_id":1,"filename":42}),
+        json!({"user_id":1,"filename":""}),
+        json!({"user_id":1,"filename":".osu"}),
+        json!({"user_id":1,"filename":"../map.osu"}),
+        json!({"user_id":1,"filename":"map\\name.osu"}),
+        json!({"user_id":1,"filename":"C:map.osu"}),
+        json!({"user_id":1,"filename":"map\u{0}.osu"}),
+        json!({"user_id":1,"filename":"map.osu "}),
+        json!({"user_id":1,"filename":format!("{}.osu","x".repeat(1021))}),
+        json!({"user_id":1,"filename":"map.osu","checksum":"a".repeat(32)}),
+        json!({"user_id":1,"filename":"map.osu","official_id":100}),
+        json!({"user_id":1,"filename":"map.osu","checksum":null}),
+        json!({"user_id":1,"filename":"map.osu","official_id":null}),
     ] {
         let (status, value) =
             tokio::time::timeout(Duration::from_secs(1), resolve(&app, body.clone()))
@@ -198,18 +212,29 @@ async fn native_map_resolution_request_guards() {
             "{body}: {status} {value}"
         );
     }
+    for body in [
+        r#"{"user_id":1,"official_id":100,"official_id":101}"#,
+        r#"{"user_id":1,"filename":"a.osu","filename":"b.osu"}"#,
+    ] {
+        let (status, value) = tokio::time::timeout(
+            Duration::from_secs(1),
+            raw_request(&app, Some(SERVICE_KEY), body.into()),
+        )
+        .await
+        .expect("duplicate selectors must not query the database");
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{value}");
+    }
+    let mut boundary_body = json!({"user_id":0,"filename":"a.osu"}).to_string();
+    boundary_body.extend(std::iter::repeat_n(' ', 4 * 1024 - boundary_body.len()));
     let (status, value) = tokio::time::timeout(
         Duration::from_secs(1),
-        raw_request(
-            &app,
-            Some(SERVICE_KEY),
-            r#"{"user_id":1,"official_id":100,"official_id":101}"#.into(),
-        ),
+        raw_request(&app, Some(SERVICE_KEY), boundary_body.clone()),
     )
     .await
-    .expect("duplicate selectors must not query the database");
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{value}");
-    let (status, _) = raw_request(&app, Some(SERVICE_KEY), " ".repeat(9 * 1024)).await;
+    .expect("a 4 KiB body must pass to input validation without DB access");
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{value}");
+    boundary_body.push(' ');
+    let (status, _) = raw_request(&app, Some(SERVICE_KEY), boundary_body).await;
     assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
 }
 
@@ -233,6 +258,17 @@ impl OfficialMap {
     pub(crate) fn checksum(&self) -> String {
         self.metadata["checksum"].as_str().unwrap().into()
     }
+    pub(crate) fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+    pub(crate) fn with_metadata(mut self, metadata: Value) -> Self {
+        self.metadata = metadata;
+        self
+    }
+    pub(crate) fn with_bytes(mut self, bytes: Vec<u8>) -> Self {
+        self.bytes = bytes;
+        self
+    }
 }
 
 #[derive(Default)]
@@ -250,6 +286,8 @@ impl Counters {
 struct FixtureData {
     maps: HashMap<i64, OfficialMap>,
     lookup_routes: HashMap<String, i64>,
+    filename_routes: HashMap<String, i64>,
+    lookup_filenames: Vec<String>,
     oauth_status: Option<StatusCode>,
     lookup_status: Option<StatusCode>,
     lookup_rate_limits: usize,
@@ -261,6 +299,8 @@ impl Default for FixtureData {
         Self {
             maps: Default::default(),
             lookup_routes: Default::default(),
+            filename_routes: Default::default(),
+            lookup_filenames: Default::default(),
             oauth_status: None,
             lookup_status: None,
             lookup_rate_limits: 0,
@@ -270,9 +310,19 @@ impl Default for FixtureData {
     }
 }
 #[derive(Default)]
-struct LookupPause {
+pub(crate) struct LookupPause {
     entered: tokio::sync::Notify,
     release: tokio::sync::Notify,
+}
+impl LookupPause {
+    pub(crate) async fn wait_entered(&self) {
+        tokio::time::timeout(Duration::from_secs(5), self.entered.notified())
+            .await
+            .expect("upstream filename lookup must reach the fixture pause");
+    }
+    pub(crate) fn release(&self) {
+        self.release.notify_one();
+    }
 }
 #[derive(Clone, Default)]
 struct FixtureState {
@@ -307,6 +357,21 @@ impl OfficialServer {
         let id = map.metadata["id"].as_i64().unwrap();
         data.lookup_routes.insert(map.checksum(), id);
         data.maps.insert(id, map);
+    }
+    pub(crate) async fn add_filename(&self, filename: &str, map: OfficialMap) {
+        let mut data = self.state.data.lock().await;
+        let id = map.metadata["id"].as_i64().unwrap();
+        data.filename_routes.insert(filename.to_owned(), id);
+        data.lookup_routes.insert(map.checksum(), id);
+        data.maps.insert(id, map);
+    }
+    pub(crate) async fn lookup_filenames(&self) -> Vec<String> {
+        self.state.data.lock().await.lookup_filenames.clone()
+    }
+    pub(crate) async fn pause_next_lookup(&self) -> Arc<LookupPause> {
+        let pause = Arc::new(LookupPause::default());
+        self.state.data.lock().await.lookup_pause = Some(pause.clone());
+        pause
     }
     pub(crate) fn counters(&self) -> [usize; 4] {
         self.state.counters.snapshot()
@@ -348,9 +413,23 @@ async fn fixture_lookup(
     state.counters.lookup.fetch_add(1, Ordering::SeqCst);
     check_bearer(&headers);
     assert_eq!(query.len(), 1);
-    let checksum = query.get("checksum").expect("lookup requires checksum");
-    assert_eq!(checksum, &checksum.to_ascii_lowercase());
-    let pause = state.data.lock().await.lookup_pause.clone();
+    let checksum = query.get("checksum");
+    let filename = query.get("filename");
+    assert_ne!(
+        checksum.is_some(),
+        filename.is_some(),
+        "lookup requires exactly one selector"
+    );
+    if let Some(checksum) = checksum {
+        assert_eq!(checksum, &checksum.to_ascii_lowercase());
+    }
+    let pause = {
+        let mut data = state.data.lock().await;
+        if let Some(filename) = filename {
+            data.lookup_filenames.push(filename.clone());
+        }
+        data.lookup_pause.take()
+    };
     if let Some(pause) = pause {
         pause.entered.notify_one();
         pause.release.notified().await;
@@ -367,11 +446,12 @@ async fn fixture_lookup(
     if let Some(status) = data.lookup_status {
         return status.into_response();
     }
-    match data
-        .lookup_routes
-        .get(checksum)
-        .and_then(|id| data.maps.get(id))
-    {
+    let map_id = match (checksum, filename) {
+        (Some(checksum), None) => data.lookup_routes.get(checksum),
+        (None, Some(filename)) => data.filename_routes.get(filename),
+        _ => unreachable!("selector shape is checked above"),
+    };
+    match map_id.and_then(|id| data.maps.get(id)) {
         Some(map) => Json(map.metadata.clone()).into_response(),
         None => StatusCode::NOT_FOUND.into_response(),
     }
