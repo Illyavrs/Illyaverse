@@ -18,8 +18,10 @@ const documents: Record<string, string> = {
   deployment: 'deployment.md',
   'account-recovery': 'account-recovery.md',
   architecture: 'architecture.md',
+  permissions: 'permissions.md',
   protocol: 'protocol-compatibility.md',
   realtime: 'signalr-compatibility.md',
+  'room-scores': 'lazer-room-scores-plan.md',
   verification: 'verification.md',
 };
 const documentLink = (href?: string) => {

@@ -87,16 +87,26 @@ export type Message = {
   content: string;
   created_at: string;
 };
-export type Role = { id: number; name: string; permissions: string[]; description: string };
+export type Role = {
+  id: number;
+  name: string;
+  permissions: string[];
+  description: string;
+  membership_count: number;
+  is_builtin: boolean;
+};
 export type AdminUser = {
   id: number;
   username: string;
-  email: string;
+  email?: string;
   country: string;
   avatar_url: string | null;
   is_restricted: boolean;
   joined_at: string;
   roles: { id: number; name: string }[];
+  can_manage_roles: boolean;
+  can_moderate: boolean;
+  can_revoke_sessions: boolean;
 };
 export type Leader = {
   id: number;

@@ -1,12 +1,12 @@
 # Illyaverse 架構
 
-Illyaverse 將玩家網站、社群 API、遊戲協定與連線設定分成獨立服務。命名以伊莉雅的世界觀延伸：Serendipity 展示、Sanctuary 提供資料與權限、Resonance 接合客戶端協定、Kaleidoscope 管理世界之間的連線設定。這個 monorepo 保留共用型別與共同 migration，讓 Docker 部署保持一致。
+Illyaverse 將玩家網站、社群 API、遊戲協定與遊戲啟動分成獨立服務。命名以伊莉雅的世界觀延伸：Serendipity 展示、Sanctuary 提供資料與權限、Resonance 接合客戶端協定、Kaleidoscope 管理固定伺服器的遊戲啟動與清理。這個 monorepo 保留共用型別與共同 migration，讓 Docker 部署保持一致。
 
 ```mermaid
 flowchart LR
     Browser[玩家瀏覽器] --> Caddy[反向代理／TLS]
     Stable[osu! stable] --> Caddy
-    Lazer[lazer 開發客戶端] --> Caddy
+    Lazer[官方 lazer 安裝與原創 Transfiguration 橋接] --> Caddy
     Caddy --> Serendipity[Serendipity Next.js]
     Caddy --> Sanctuary[Sanctuary Rust API]
     Caddy --> Resonance[Resonance 協定服務]
@@ -34,6 +34,8 @@ Sanctuary 啟動時先連線 PostgreSQL、執行 migration，再處理可選的�
 
 網站權限由角色的 permission 字串授予。Sanctuary 會在 API 邊界核對 session、帳號限制與所需 permission；UI 的管理區域只是一層呈現。管理操作留下 audit events，角色／帳號／譜面／成績的敏感更動需對應權限。API 不應信任前端自行宣告的角色。
 
+管理操作在交易取得鎖後重新驗證操作者登入與權限，避免排隊的舊請求在權限被撤銷後寫入。角色管理與登入撤銷只能操作其權限涵蓋的帳號；email 僅提供給持有帳號審核權限的人。角色刪除、最後管理員保護與管理 API 見 [權限文件](permissions.md)。
+
 瀏覽器 cookie 以 `PUBLIC_ORIGIN` 驗證 mutating request；正式 Compose 強制 HTTPS 與 secure cookie。Sanctuary 信任的代理 CIDR 預設只涵蓋容器網路中 Caddy 與 Serendipity 的固定地址，避免直接客戶端透過任意 forwarded header 偽造來源。
 
 Sanctuary 保存 `/data/media`、`/data/maps`、`/data/replays`。Resonance 把同一個 volume 掛載到同一個 `/data` 路徑，這樣資料庫中的檔案位置可由兩個服務讀取。兩個 Rust runtime 都使用 UID／GID `10001`，新 volume 的所有權一致；不把 volume 掛成公開靜態目錄，只有 API 指定的媒體與下載路由可讀取。
@@ -42,7 +44,7 @@ Sanctuary 保存 `/data/media`、`/data/maps`、`/data/replays`。Resonance 把�
 
 Caddy 將 `/api/v1/*` 與 `/media/*` 交給 Sanctuary，`/web/*`、`/osu/*`、`/d/*`、`/oauth/*`、`/api/v2/*` 與 `/signalr/*` 交給 Resonance，其餘網站請求交給 Serendipity。`c`／`ce`／`c4` 與 `spectator` 等協定 Host 直接交給 Resonance，避免遊戲請求落進 HTML 網站。Serendipity 的內部 rewrite 在 Docker build 時固定為 `http://sanctuary:8080`；SSR 的帳號語言讀取也使用 runtime `API_INTERNAL_URL`，由 Docker bridge DNS 解析服務名稱。
 
-Resonance 與網站 Sanctuary 共用帳號／譜面／score 資料，並不代表每種客戶端協定都已完成。stable 的 encrypted submission、多人的生命週期與 spectator，以及 lazer 的 SignalR／score token／replay frames 各有獨立的實作與驗證狀態，必須逐項用真實客戶端確認。當前狀態以 [協定相容性文件](protocol-compatibility.md) 為準。Kaleidoscope 僅處理 DNS／hosts 規劃；[連線文件](connection.md) 說明官方 lazer 的 endpoint 限制。
+Resonance 與網站 Sanctuary 共用帳號／譜面／score 資料，並不代表每種客戶端協定都已完成。stable 的 encrypted submission、多人的生命週期與 spectator，以及 lazer 的 SignalR／score token／replay frames 各有獨立的實作與驗證狀態，必須逐項用真實客戶端確認。當前狀態以 [協定相容性文件](protocol-compatibility.md) 為準。玩家使用 [Kaleidoscope 啟動器](kaleidoscope-launcher.md)：stable 帶入固定 `-devserver`；lazer 在遊戲入口前載入原創 Transfiguration 橋接，使用獨立私服資料目錄，並由監護程序在退出後清理本次 DLL。相容性或必要修補失敗時不啟動，也沒有官方 fallback。啟動器不修改 hosts／CA；本機 DNS／CA 和營運者 CLI 的規劃方式見[連線文件](connection.md)。
 
 ## 設計來源
 

@@ -691,6 +691,8 @@ pub async fn recalculate_relax(
     }
     let _permit = state.upload_permit()?;
     let mut tx = state.db.begin().await?;
+    let operator = crate::admin::lock_actor(&mut tx, &operator, None).await?;
+    operator.require("scores.moderate")?;
     let mut results = Vec::with_capacity(ids.len());
     for id in ids {
         let row=sqlx::query("SELECT s.*,b.osu_path FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id JOIN users u ON u.id=s.user_id WHERE s.id=$1 AND NOT u.is_restricted FOR UPDATE OF s")

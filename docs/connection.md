@@ -28,7 +28,7 @@ Windows PowerShell 的啟動範例：
 
 ## 使用 lazer
 
-新的 [Kaleidoscope／Transfiguration 流程](kaleidoscope-launcher.md)使用已安裝的官方 lazer，不需要重編整套 client。Rust 啟動橋接器強制在遊戲 Main 之前載入外掛，確認固定 endpoints、私有資料目錄及 HTTP／WebSocket guard。必要修補、相容性或檔案驗證失敗時不執行遊戲入口；更新到未測版本後需新版小型外掛，沒有官方 fallback。
+新的 [Kaleidoscope／Transfiguration 流程](kaleidoscope-launcher.md)使用已安裝的官方 lazer，不需要重編整套 client。Rust 啟動橋接器強制在遊戲 Main 之前載入外掛，確認固定 endpoints、私有資料目錄及 HTTP／WebSocket guard。必要修補、相容性或檔案驗證失敗時不執行遊戲入口；更新到未測版本後需更新相容的啟動器與橋接配套，沒有官方 fallback。
 
 獨立監護程序等待遊戲實際結束後清理自己的 DLL；GUI 關閉不會讓它提前刪除。中斷時使用持久復原紀錄，不刪其他 ruleset。私服 profile 不讀取或複製官方 token。公開 DNS／HTTPS 不需要 hosts；目前 `illya.test` 仍需[本機 DNS／CA](local-client-testing.md)。
 

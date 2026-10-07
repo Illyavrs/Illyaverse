@@ -12,6 +12,7 @@ pub const PERMISSIONS: &[&str] = &[
     "beatmaps.import",
     "beatmaps.moderate",
     "users.moderate",
+    "users.sessions.revoke",
     "roles.manage",
     "audit.read",
     "scores.moderate",

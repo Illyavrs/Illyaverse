@@ -58,6 +58,12 @@ jobs:
       - run: cargo test -p resonance credential_race_tests --locked -- --ignored
         env:
           ILLYA_TEST_DATABASE_URL: postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci
+      - run: cargo test -p resonance social_session_tests --locked -- --ignored
+        env:
+          ILLYA_TEST_DATABASE_URL: postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci
+      - run: cargo test -p sanctuary rbac_tests --locked -- --ignored
+        env:
+          ILLYA_RBAC_TEST_DATABASE_URL: postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci
       - run: cargo test -p sanctuary relax_tests --locked -- --ignored
         env:
           ILLYA_TEST_DATABASE_URL: postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci

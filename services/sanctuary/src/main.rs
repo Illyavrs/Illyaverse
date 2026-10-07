@@ -10,6 +10,8 @@ mod mail_delivery;
 mod mail_queue_tests;
 mod maps;
 #[cfg(test)]
+mod rbac_tests;
+#[cfg(test)]
 mod relax_tests;
 mod score_recovery;
 mod score_scales;
@@ -391,10 +393,17 @@ fn router(state: AppState) -> Router {
         .route("/api/v1/admin/users", get(admin::users))
         .route("/api/v1/admin/users/{id}", patch(admin::update_user))
         .route(
+            "/api/v1/admin/users/{id}/sessions/revoke",
+            post(admin::revoke_user_sessions),
+        )
+        .route(
             "/api/v1/admin/roles",
             get(admin::roles).post(admin::create_role),
         )
-        .route("/api/v1/admin/roles/{id}", patch(admin::update_role))
+        .route(
+            "/api/v1/admin/roles/{id}",
+            patch(admin::update_role).delete(admin::delete_role),
+        )
         .route("/api/v1/admin/beatmaps", get(maps::admin_list))
         .route("/api/v1/admin/beatmaps/{id}", patch(admin::update_map))
         .route("/api/v1/admin/scores/{id}", patch(admin::update_score))
