@@ -46,13 +46,23 @@
     "SocketsHttpHandler.SendAsync",
     "ClientWebSocket.ConnectAsync(Uri,CancellationToken)",
     "ClientWebSocket.ConnectAsync(Uri,HttpMessageInvoker,CancellationToken)",
-    "TrustedDomainOnlineStore.GetLookupUrl"
+    "TrustedDomainOnlineStore.GetLookupUrl",
+    "APIAccess.ctor(OsuGameBase,OsuConfigManager,EndpointConfiguration,string)",
+    "APIRequest.ctor",
+    "APIRequest.Uri",
+    "GetScoresRequest.ctor",
+    "GetScoresRequest.Equals(GetScoresRequest)",
+    "LocalUserStatisticsProvider.ctor",
+    "LocalUserStatisticsProvider.GetStatisticsFor",
+    "LocalUserStatisticsProvider.RefetchStatistics"
   ],
   "verification": {
     "native_metadata_and_endpoints": "passed",
     "http_websocket_and_redirects": "passed",
     "mandatory_bootstrap_before_headless_main": "passed",
     "production_destination_policy": "passed",
+    "rx_native_request_context": "passed_headless",
+    "rx_statistics_generation_cache": "passed_headless",
     "native_gui_and_login": "pending_human_test"
   }
 }

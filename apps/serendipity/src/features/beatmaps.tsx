@@ -30,6 +30,7 @@ import { useSession } from '@/components/providers';
 import { api, fetcher, hasPermission } from '@/lib/api';
 import type { Beatmap, Page, Score } from '@/lib/types';
 import { ScoreTable } from './scores';
+import { ScoreVariantControl, useScoreSelection } from '@/components/score-selection';
 
 function duration(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
@@ -165,8 +166,10 @@ export function BeatmapPage({ id }: { id: number }) {
   const t = useTranslations('maps');
   const c = useTranslations('common');
   const { data: map, error, isLoading, mutate } = useSWR<Beatmap>(`/beatmaps/${id}`, fetcher);
-  const { data: scores, error: scoreError } = useSWR<Page<Score>>(
-    map ? `/scores?beatmap_id=${id}` : null,
+  const { mode, variant, select, selection } = useScoreSelection(map?.mode ?? 0);
+  const [page, setPage] = useState(1);
+  const { data: scores, error: scoreError, mutate: reloadScores } = useSWR<Page<Score>>(
+    map ? `/beatmaps/${id}/scores?${selection}&page=${page}&page_size=24` : null,
     fetcher,
   );
   return (
@@ -219,13 +222,19 @@ export function BeatmapPage({ id }: { id: number }) {
               ))}
             </dl>
             <section className="glass content-panel">
-              <h2>{t('scores')}</h2>
+              <header className="section-heading"><h2>{t('leaderboard')}</h2></header>
+              <div className="filter-bar">
+                <GameMode value={mode} onChange={(v) => { select(v, variant); setPage(1); }} />
+                <ScoreVariantControl mode={mode} value={variant} onChange={(v) => { select(mode, v); setPage(1); }} />
+              </div>
+              <p className="hint">{mode === '3' ? c('relaxUnsupported') : t(variant === 'relax' ? 'relaxBoard' : 'normalBoard')}</p>
               {scoreError ? (
-                <LoadError />
+                <LoadError retry={() => reloadScores()} />
               ) : !scores ? (
                 <Loading />
               ) : scores.items.length ? (
-                <ScoreTable scores={scores.items} />
+                <><ScoreTable scores={scores.items} leaderboard />
+                  <Pagination page={page} total={scores.total} onChange={setPage} /></>
               ) : (
                 <Empty title={c('empty')} />
               )}

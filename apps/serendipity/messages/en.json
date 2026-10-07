@@ -114,7 +114,11 @@
       "scroll_speed": "Scroll speed",
       "only_fade_approach_circles": "Fade approach circles only",
       "no_slider_head_accuracy": "Ignore slider head accuracy"
-    }
+    },
+    "scoreVariant": "Score category",
+    "vanilla": "Normal",
+    "relax": "Relax (RX)",
+    "relaxUnsupported": "RX is unavailable for mania."
   },
   "auth": {
     "loginTitle": "Welcome back.",
@@ -195,7 +199,10 @@
     "importSuccess": "Beatmap imported",
     "source": "Source",
     "difficulty": "Difficulty",
-    "back": "Back to beatmaps"
+    "back": "Back to beatmaps",
+    "leaderboard": "Beatmap leaderboard",
+    "relaxBoard": "RX ranks by pp, with one best score per player.",
+    "normalBoard": "Ranks by available standardised score, with one best score per player."
   },
   "rankings": {
     "title": "Rankings",
@@ -208,7 +215,7 @@
     "playCount": "Play count",
     "emptyTitle": "The first chapter is yours.",
     "emptyDescription": "Verified ranked scores will build the leaderboard. Play, improve, and leave your mark.",
-    "modeNotice": "Rankings include approved scores only."
+    "modeNotice": "PP, ranks and statistics are separate for each ruleset and Normal/RX category."
   },
   "profile": {
     "scoreReplayIncomplete": "Replay capture was interrupted and may be missing frames.",
@@ -235,7 +242,8 @@
     "scoreNativeReported": "Reported by lazer. Classic display conversion uses the judgment count calculated from the beatmap by the server.",
     "scoreLegacyEstimated": "Estimated from a stable score summary. The order of judgments cannot be recovered, so this is not an exact lazer gameplay score.",
     "scoreLegacyScoreV2": "Preserves the stable ScoreV2 score and converts its Classic display value.",
-    "scoreScaleUnavailable": "This result has insufficient conversion context and is excluded from cross-client score comparisons."
+    "scoreScaleUnavailable": "This result has insufficient conversion context and is excluded from cross-client score comparisons.",
+    "globalRank": "Global rank"
   },
   "settings": {
     "title": "Make it yours.",
@@ -336,7 +344,7 @@
     "tlsTitle": "Check DNS and HTTPS",
     "tlsText": "Local testing currently uses illya.test and requires local DNS or hosts routing plus a trusted test certificate, configured by the operator using the local testing guide. With public DNS and valid HTTPS in a production deployment, players do not need to edit hosts.",
     "lazerTitle": "Use your installed official lazer client",
-    "lazerText": "Kaleidoscope temporarily loads the small Transfiguration connection bridge into a supported official lazer client, without rebuilding the whole client. If an official update exceeds the supported version, the launcher stops until the matching bridge update is available.",
+    "lazerText": "Kaleidoscope temporarily loads the small Transfiguration connection bridge into a supported official lazer client, without rebuilding the whole client. If an official update exceeds the supported version, the launcher stops; wait for and update the compatible launcher and bridge package together.",
     "compatibilityTitle": "Current compatibility",
     "compatibilityText": "The launcher core, connection bridge and server protocols have automated tests. Launching the actual game interface, full stable/lazer gameplay, multiplayer and replays still need native client validation. This remains an experimental test.",
     "restoreTitle": "Return to official play",

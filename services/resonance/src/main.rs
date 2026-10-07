@@ -7,6 +7,8 @@ mod lazer;
 mod lazer_chat;
 mod multiplayer;
 mod registration;
+#[cfg(test)]
+mod relax_tests;
 mod replay_capture;
 mod score_aggregates;
 mod signalr;
@@ -110,7 +112,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn index() -> Json<serde_json::Value> {
     Json(
-        json!({"service":"Resonance", "project":"Illyaverse", "stable":"login, presence, chat, friends, encrypted score submission, map/replay downloads, multiplayer and spectating", "lazer":"OAuth, map lookup/download, structured-mod solo scores, durable replay exports, native notification chat, friends and SignalR hub subsets", "unsupported":["unsupported lazer mod settings and customized Flashlight parameters", "deterministic replay gameplay verification", "announcement and group chat channels", "non-chat notification types", "cross-client multiplayer rooms", "native multiplayer room score aggregation", "combined legacy/lazer score normalization and native profile display-score conversion", "stable target-practice submission", "tournament interfaces"], "compatibility":"experimental; live protocol tests do not replace actual native client validation", "score_policy":"submitted scores await moderator review before entering rankings"}),
+        json!({"service":"Resonance", "project":"Illyaverse", "stable":"login, presence, chat, friends, encrypted score submission, map/replay downloads, multiplayer and spectating", "lazer":"OAuth, map lookup/download, structured-mod solo scores, durable replay exports, native notification chat, friends and SignalR hub subsets", "unsupported":["unsupported lazer mod settings and customized Flashlight parameters", "deterministic replay gameplay verification", "announcement and group chat channels", "non-chat notification types", "cross-client multiplayer rooms", "native multiplayer room score aggregation", "stable target-practice submission", "tournament interfaces"], "compatibility":"experimental; live protocol tests do not replace actual native client validation", "score_policy":"submitted scores await moderator review before entering rankings; RX has separate ruleset-specific PP, ranks and statistics", "score_scales":"supported vanilla stable/lazer contexts use versioned common scales; RX and unavailable contexts are excluded from common-score comparison"}),
     )
 }
 async fn health(

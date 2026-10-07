@@ -24,12 +24,36 @@ pwsh -File tools/transfiguration/test.ps1 -NativeHost target/debug/examples/runt
 assemblies 與 proof runtime 不可放進正式 package。
 
 測試使用獨立的 compile-time loopback fixture（127.0.0.1:18376）與自己的測試
-資料夾，沒有執行 osu! `Main`、GameHost、UI、Realm 或 APIAccess 建構子，也沒有
+資料夾，沒有執行 osu! `Main`、GameHost、UI、Realm database 或 APIAccess 建構子，也沒有
 讀取帳號快取。它驗證 stock assemblies 的實際 endpoint/storage 方法、同版
 .NET 10.0.12 transport、foreign redirect 阻擋、官方 HTTP/WS 在連線前拒絕、
 五種啟動參數拒絕，以及必要 native bootstrap 在測試 `Main` 前完成。正式 DLL
 另有沒有網路操作的固定 policy proof。完整 stdout 留在 `proof-output/contract-proof.txt`。
 遊戲 UI、登入與完整協定仍需玩家實機驗證。
+
+## RX 讀取 context
+
+橋接在 `APIAccess` 建構子開始時取得 stock `SelectedMods` bindable。每個指定
+API request 在建立時固定 vanilla/relax snapshot；只有 `GetMeRequest`、
+`GetUserRequest`、`GetScoresRequest`、performance `GetUserRankingsRequest`、
+best/recent `GetUserScoresRequest` 的 URI 加上 `variant=vanilla|relax`。
+osu/taiko/catch 選到 RX 時讀取 relax，mania 永遠 vanilla。wire ruleset ID 仍為
+0/1/2/3，沒有新增可玩的 ruleset 或 server selector。OAuth、聊天、提交、replay、
+hub 與外部網址不加這個 query。Mapboard 的 RX/NM 讀取 filter 會配合所選
+partition 正規化，request equality 也區分 partition；提交成績的 mods 不受影響。
+
+RX 切換立即令 `LocalUserStatisticsProvider` 舊 cache 不可見，在 API update
+scheduler 上清除、通知空的新 context 並 refetch 已使用的 rulesets。重新取得
+資料前 PP 為未提供狀態；舊 generation、舊帳號或較早 refetch 的 response
+不會覆寫新 statistics。測試只使用 fake API provider、記憶體中的 native DTO /
+request / component 和未建構的 Game shell，沒有建立 `APIAccess` 或開啟 Realm
+database。測試 double 的 internal-interface access metadata 只存在測試程式，
+不在正式 bridge DLL。
+
+目前 headless 已驗證 URI、filter、cache 與 scheduler 行為。切換 RX 後，已開啟
+的其他玩家 profile／ranking overlay 是否由 stock UI 重新建立 request 仍待實機
+確認；開啟新頁面時會使用當前 context。此 bridge 不重播登入 GetMe 或接管所有
+API success callbacks。
 
 ## 啟動器契約
 

@@ -50,6 +50,7 @@ export function ScorePage({ id }: { id: number }) {
       </div>
     );
   if (!score) return null;
+  const selection = `mode=${score.mode}&variant=${score.score_variant ?? 'vanilla'}`;
   const mods = score.api_mods
     ? score.api_mods.map((mod) => mod.acronym)
     : legacyMods
@@ -66,18 +67,18 @@ export function ScorePage({ id }: { id: number }) {
   );
   return (
     <div className="page-container">
-      <Link className="back-link" href={`/players/${score.user_id}`}>
+      <Link className="back-link" href={`/players/${score.user_id}?${selection}`}>
         {c('back')}
       </Link>
       <header className="score-detail-header glass">
         <div>
-          <Link href={`/beatmaps/${score.beatmap_id}`}>
+          <Link href={`/beatmaps/${score.beatmap_id}?${selection}`}>
             <h1>{score.title}</h1>
           </Link>
           <p>
             {score.version} · {score.beatmap.artist}
           </p>
-          <Link href={`/players/${score.user_id}`} className="player-cell">
+          <Link href={`/players/${score.user_id}?${selection}`} className="player-cell">
             <Avatar name={score.username} url={score.user.avatar_url} />
             {score.username}
           </Link>
@@ -87,6 +88,7 @@ export function ScorePage({ id }: { id: number }) {
             {score.pp.toFixed(2)} <span>pp</span>
           </strong>
           <Badge variant="secondary">{score.verification}</Badge>
+          {score.score_variant === 'relax' && <Badge variant="secondary">{c('relax')}</Badge>}
           {score.has_replay && (
             <Button asChild>
               <a href={`/api/v1/scores/${id}/replay`}>

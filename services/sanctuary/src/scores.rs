@@ -5,7 +5,10 @@ use axum::{
     http::{HeaderMap, header},
     response::{IntoResponse, Response},
 };
-use illya_domain::{HitCounts, Pagination, has_permission, score_mods::ValidatedMods};
+use illya_domain::{
+    HitCounts, Pagination, ScoreVariant, has_permission, score_mods::ValidatedMods,
+    score_variant::legacy_pp_eligible,
+};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sqlx::Row;
@@ -18,6 +21,7 @@ pub struct ScoreQuery {
     user_id: Option<i64>,
     beatmap_id: Option<i64>,
     mode: Option<i16>,
+    variant: Option<ScoreVariant>,
     verification: Option<String>,
 }
 pub async fn list(
@@ -25,6 +29,23 @@ pub async fn list(
     headers: HeaderMap,
     Query(query): Query<ScoreQuery>,
 ) -> ApiResult {
+    let scoped = query.user_id.is_some()
+        || query.beatmap_id.is_some()
+        || query.mode.is_some()
+        || query.variant.is_some();
+    let mode = if scoped {
+        Some(query.mode.unwrap_or(0))
+    } else {
+        None
+    };
+    let variant = if scoped {
+        Some(query.variant.unwrap_or_default())
+    } else {
+        None
+    };
+    if let (Some(mode), Some(variant)) = (mode, variant) {
+        validate_partition(mode, variant)?;
+    }
     let user = auth::optional(&state, &headers).await?;
     let moderator = user
         .as_ref()
@@ -39,11 +60,14 @@ pub async fn list(
     .bounds();
     let own_id = user.map(|u| u.id);
     let all = moderator;
-    let total:i64=sqlx::query_scalar("SELECT count(*) FROM scores s JOIN users u ON u.id=s.user_id WHERE ($1::bigint IS NULL OR user_id=$1) AND ($2::bigint IS NULL OR beatmap_id=$2) AND ($3::smallint IS NULL OR mode=$3) AND ($4::text IS NULL OR verification=$4) AND (verification='verified' OR user_id=$5 OR $6) AND (NOT u.is_restricted OR $6)")
-        .bind(query.user_id).bind(query.beatmap_id).bind(query.mode).bind(&query.verification).bind(own_id).bind(all).fetch_one(&state.db).await?;
-    let items=sqlx::query_scalar::<_,Value>("SELECT to_jsonb(s)-'replay_path' || jsonb_build_object('username',u.username,'title',b.title,'version',b.version,'has_replay',s.replay_path IS NOT NULL,'accuracy_source',CASE WHEN s.client='lazer' THEN 'client_reported' ELSE 'judgements' END) FROM scores s JOIN users u ON u.id=s.user_id JOIN beatmaps b ON b.id=s.beatmap_id WHERE ($1::bigint IS NULL OR user_id=$1) AND ($2::bigint IS NULL OR beatmap_id=$2) AND ($3::smallint IS NULL OR s.mode=$3) AND ($4::text IS NULL OR verification=$4) AND (verification='verified' OR user_id=$5 OR $6) AND (NOT u.is_restricted OR $6) ORDER BY s.created_at DESC,s.id DESC LIMIT $7 OFFSET $8")
-        .bind(query.user_id).bind(query.beatmap_id).bind(query.mode).bind(query.verification).bind(own_id).bind(all).bind(size).bind(offset).fetch_all(&state.db).await?;
-    Ok(page(items, total, p, size))
+    let total:i64=sqlx::query_scalar("SELECT count(*) FROM scores s JOIN users u ON u.id=s.user_id WHERE ($1::bigint IS NULL OR user_id=$1) AND ($2::bigint IS NULL OR beatmap_id=$2) AND ($3::smallint IS NULL OR mode=$3) AND ($4::text IS NULL OR verification=$4) AND (verification='verified' OR user_id=$5 OR $6) AND (NOT u.is_restricted OR $6) AND ($7::text IS NULL OR s.score_variant=$7)")
+        .bind(query.user_id).bind(query.beatmap_id).bind(mode).bind(&query.verification).bind(own_id).bind(all).bind(variant.map(ScoreVariant::as_str)).fetch_one(&state.db).await?;
+    let items=sqlx::query_scalar::<_,Value>("SELECT to_jsonb(s)-'replay_path'-'ingestion_key' || jsonb_build_object('username',u.username,'title',b.title,'version',b.version,'has_replay',s.replay_path IS NOT NULL,'accuracy_source',CASE WHEN s.client='lazer' THEN 'client_reported' ELSE 'judgements' END) FROM scores s JOIN users u ON u.id=s.user_id JOIN beatmaps b ON b.id=s.beatmap_id WHERE ($1::bigint IS NULL OR user_id=$1) AND ($2::bigint IS NULL OR beatmap_id=$2) AND ($3::smallint IS NULL OR s.mode=$3) AND ($4::text IS NULL OR verification=$4) AND (verification='verified' OR user_id=$5 OR $6) AND (NOT u.is_restricted OR $6) AND ($9::text IS NULL OR s.score_variant=$9) ORDER BY s.created_at DESC,s.id DESC LIMIT $7 OFFSET $8")
+        .bind(query.user_id).bind(query.beatmap_id).bind(mode).bind(query.verification).bind(own_id).bind(all).bind(size).bind(offset).bind(variant.map(ScoreVariant::as_str)).fetch_all(&state.db).await?;
+    let mut response = page(items, total, p, size).0;
+    response["mode"] = json!(mode);
+    response["score_variant"] = json!(variant);
+    Ok(Json(response))
 }
 pub async fn detail(
     State(state): State<AppState>,
@@ -63,15 +87,17 @@ pub struct LeaderboardQuery {
     page: Option<u32>,
     page_size: Option<u32>,
     mode: Option<i16>,
+    variant: Option<ScoreVariant>,
     country: Option<String>,
 }
 pub async fn leaderboard(
     State(state): State<AppState>,
     Query(query): Query<LeaderboardQuery>,
 ) -> ApiResult {
-    if query.mode.is_some_and(|m| !(0..=3).contains(&m)) {
-        return Err(ApiError::bad("Unsupported mode."));
-    }
+    let mode = query.mode.unwrap_or(0);
+    let variant = query.variant.unwrap_or_default();
+    validate_partition(mode, variant)?;
+    validate_country(query.country.as_deref())?;
     let (p, size, offset) = Pagination {
         page: query.page,
         page_size: query.page_size,
@@ -83,9 +109,156 @@ pub async fn leaderboard(
     .bind(&query.country)
     .fetch_one(&state.db)
     .await?;
-    let items=sqlx::query_scalar::<_,Value>("WITH best AS (SELECT s.user_id,s.beatmap_id,max(s.pp) pp FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id WHERE s.verification='verified' AND s.passed AND b.status='ranked' AND s.pp_eligible AND ($1::smallint IS NULL OR s.mode=$1) GROUP BY s.user_id,s.beatmap_id),weighted AS (SELECT user_id,pp,row_number() OVER(PARTITION BY user_id ORDER BY pp DESC) n FROM best),totals AS (SELECT user_id,sum(pp*power(0.95,n-1)) pp FROM weighted GROUP BY user_id),ranked AS (SELECT u.id,u.username,u.country,u.avatar_url,COALESCE(t.pp,0) pp,row_number() OVER(ORDER BY COALESCE(t.pp,0) DESC,u.id) rank,(SELECT count(*) FROM scores s WHERE s.user_id=u.id AND verification='verified' AND ($1::smallint IS NULL OR s.mode=$1)) play_count,COALESCE((SELECT avg(accuracy) FROM scores s WHERE s.user_id=u.id AND verification='verified' AND ($1::smallint IS NULL OR s.mode=$1)),0) accuracy FROM users u LEFT JOIN totals t ON t.user_id=u.id WHERE NOT u.is_restricted) SELECT to_jsonb(r) FROM ranked r WHERE ($2::text IS NULL OR country=$2) ORDER BY rank LIMIT $3 OFFSET $4")
-        .bind(query.mode).bind(query.country).bind(size).bind(offset).fetch_all(&state.db).await?;
-    Ok(page(items, total, p, size))
+    let sql = format!(
+        "{RANKING_CTE} SELECT to_jsonb(r)||jsonb_build_object('mode',$1,'score_variant',$2,'total_score',CASE WHEN $2='vanilla' THEN r.total_score END,'ranked_score',CASE WHEN $2='vanilla' THEN r.ranked_score END,'score_totals_complete',$2='vanilla' AND r.play_count=r.scaled_plays) FROM ranked r WHERE ($3::text IS NULL OR country=$3) ORDER BY rank LIMIT $4 OFFSET $5"
+    );
+    let items = sqlx::query_scalar::<_, Value>(&sql)
+        .bind(mode)
+        .bind(variant.as_str())
+        .bind(query.country)
+        .bind(size)
+        .bind(offset)
+        .fetch_all(&state.db)
+        .await?;
+    let mut response = page(items, total, p, size).0;
+    response["mode"] = json!(mode);
+    response["score_variant"] = json!(variant);
+    Ok(Json(response))
+}
+
+pub(crate) fn validate_partition(mode: i16, variant: ScoreVariant) -> ApiResult<()> {
+    if !(0..=3).contains(&mode) {
+        return Err(ApiError::bad("Unsupported mode."));
+    }
+    ScoreVariant::from_legacy(
+        mode as u8,
+        if variant == ScoreVariant::Relax {
+            128
+        } else {
+            0
+        },
+    )
+    .map_err(ApiError::bad)?;
+    Ok(())
+}
+
+fn validate_country(country: Option<&str>) -> ApiResult<()> {
+    if country.is_some_and(|value| {
+        value.len() != 2 || !value.bytes().all(|byte| byte.is_ascii_uppercase())
+    }) {
+        return Err(ApiError::bad(
+            "Country must be a two-letter uppercase country code.",
+        ));
+    }
+    Ok(())
+}
+
+const RANKING_CTE: &str = "WITH eligible AS (
+    SELECT s.* FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id
+    WHERE s.mode=$1 AND s.score_variant=$2 AND s.verification='verified' AND s.passed AND b.status='ranked' AND s.pp_eligible
+),best AS (
+    SELECT user_id,beatmap_id,max(pp) pp FROM eligible GROUP BY user_id,beatmap_id
+),weighted AS (
+    SELECT user_id,pp,row_number() OVER(PARTITION BY user_id ORDER BY pp DESC,beatmap_id) n FROM best
+),totals AS (
+    SELECT user_id,sum(pp*power(0.95,n-1)) pp FROM weighted GROUP BY user_id
+),best_score AS (
+    SELECT DISTINCT ON(user_id,beatmap_id) user_id,beatmap_id,classic_score
+    FROM eligible WHERE standardised_score IS NOT NULL AND classic_score IS NOT NULL
+    ORDER BY user_id,beatmap_id,standardised_score DESC,id
+),score_totals AS (
+    SELECT user_id,LEAST(sum(classic_score),9223372036854775807)::bigint ranked_score FROM best_score GROUP BY user_id
+),lifetime AS (
+    SELECT user_id,count(*)::bigint play_count,COALESCE(avg(accuracy),0)::float8 accuracy,
+    LEAST(COALESCE(sum(CASE WHEN client='stable' AND (mods & 536870912)=0 THEN score WHEN client IN ('stable','lazer') THEN classic_score END),0),9223372036854775807)::bigint total_score,
+    count(*) FILTER(WHERE (client='stable' AND (mods & 536870912)=0) OR (client IN ('stable','lazer') AND classic_score IS NOT NULL))::bigint scaled_plays,
+    COALESCE(max(max_combo),0)::integer maximum_combo,
+    COALESCE(sum(COALESCE((hit_counts->>'n300')::bigint,0)+COALESCE((hit_counts->>'n100')::bigint,0)+COALESCE((hit_counts->>'misses')::bigint,0)+CASE WHEN mode<>1 THEN COALESCE((hit_counts->>'n50')::bigint,0) ELSE 0 END+CASE WHEN mode=3 THEN COALESCE((hit_counts->>'geki')::bigint,0) ELSE 0 END+CASE WHEN mode IN(2,3) THEN COALESCE((hit_counts->>'katu')::bigint,0) ELSE 0 END),0)::bigint total_hits
+    FROM scores WHERE mode=$1 AND score_variant=$2 AND verification='verified' GROUP BY user_id
+),ranked AS (
+    SELECT u.id,u.username,u.country,u.avatar_url,COALESCE(t.pp,0)::float8 pp,
+    row_number() OVER(ORDER BY COALESCE(t.pp,0) DESC,u.id) rank,
+    row_number() OVER(PARTITION BY u.country ORDER BY COALESCE(t.pp,0) DESC,u.id) country_rank,
+    COALESCE(l.play_count,0)::bigint play_count,COALESCE(l.accuracy,0)::float8 accuracy,
+    COALESCE(l.total_score,0)::bigint total_score,COALESCE(l.scaled_plays,0)::bigint scaled_plays,
+    COALESCE(l.maximum_combo,0)::integer maximum_combo,COALESCE(l.total_hits,0)::bigint total_hits,
+    COALESCE(st.ranked_score,0)::bigint ranked_score
+    FROM users u LEFT JOIN totals t ON t.user_id=u.id LEFT JOIN lifetime l ON l.user_id=u.id LEFT JOIN score_totals st ON st.user_id=u.id
+    WHERE NOT u.is_restricted
+)";
+
+pub(crate) async fn statistics(
+    state: &AppState,
+    user_id: i64,
+    mode: i16,
+    variant: ScoreVariant,
+) -> ApiResult<Value> {
+    validate_partition(mode, variant)?;
+    let sql = format!("{RANKING_CTE} SELECT * FROM ranked WHERE id=$3");
+    let stats = sqlx::query(&sql)
+        .bind(mode)
+        .bind(variant.as_str())
+        .bind(user_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(ApiError::missing)?;
+    let grades:Value=sqlx::query_scalar("WITH played AS (SELECT CASE WHEN NOT s.passed THEN 'F' ELSE COALESCE(s.native_submission->>'rank',t.submission->>'rank',a.details->>'rank',CASE WHEN s.accuracy=100 THEN CASE WHEN (s.mods & 1032)=0 THEN 'X' ELSE 'XH' END END) END grade FROM scores s LEFT JOIN LATERAL(SELECT submission FROM lazer_score_tokens WHERE score_id=s.id ORDER BY id DESC LIMIT 1)t ON true LEFT JOIN LATERAL(SELECT details FROM audit_events WHERE action='scores.stable_ingest' AND target_id=s.id::text ORDER BY id DESC LIMIT 1)a ON true WHERE s.user_id=$1 AND s.mode=$2 AND s.score_variant=$3 AND s.verification='verified') SELECT jsonb_build_object('ss',count(*) FILTER(WHERE grade='X'),'ssh',count(*) FILTER(WHERE grade='XH'),'s',count(*) FILTER(WHERE grade='S'),'sh',count(*) FILTER(WHERE grade='SH'),'a',count(*) FILTER(WHERE grade='A'),'b',count(*) FILTER(WHERE grade='B'),'c',count(*) FILTER(WHERE grade='C'),'d',count(*) FILTER(WHERE grade='D'),'f',count(*) FILTER(WHERE grade='F')) FROM played")
+        .bind(user_id).bind(mode).bind(variant.as_str()).fetch_one(&state.db).await?;
+    let pp = stats.get::<f64, _>("pp");
+    let plays = stats.get::<i64, _>("play_count");
+    let totals_available = variant == ScoreVariant::Vanilla;
+    let rank = if pp > 0.0 {
+        Some(stats.get::<i64, _>("rank"))
+    } else {
+        None
+    };
+    Ok(
+        json!({"mode":mode,"score_variant":variant,"pp":pp,"rank":rank,"global_rank":rank,"country_rank":if pp>0.0{Some(stats.get::<i64,_>("country_rank"))}else{None},"play_count":plays,"accuracy":stats.get::<f64,_>("accuracy"),"maximum_combo":stats.get::<i32,_>("maximum_combo"),"total_hits":stats.get::<i64,_>("total_hits"),"total_score":if totals_available{Some(stats.get::<i64,_>("total_score"))}else{None},"ranked_score":if totals_available{Some(stats.get::<i64,_>("ranked_score"))}else{None},"score_totals_complete":totals_available&&plays==stats.get::<i64,_>("scaled_plays"),"score_scale":if totals_available{"classic_display"}else{"unavailable_for_relax"},"grade_counts":grades}),
+    )
+}
+
+#[derive(Deserialize)]
+pub struct BeatmapLeaderboardQuery {
+    page: Option<u32>,
+    page_size: Option<u32>,
+    mode: Option<i16>,
+    variant: Option<ScoreVariant>,
+    country: Option<String>,
+}
+pub async fn beatmap_leaderboard(
+    State(state): State<AppState>,
+    Path(beatmap_id): Path<i64>,
+    Query(query): Query<BeatmapLeaderboardQuery>,
+) -> ApiResult {
+    let mode = query.mode.unwrap_or(0);
+    let variant = query.variant.unwrap_or_default();
+    validate_partition(mode, variant)?;
+    validate_country(query.country.as_deref())?;
+    let source: i16 = sqlx::query_scalar("SELECT mode FROM beatmaps WHERE id=$1")
+        .bind(beatmap_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(ApiError::missing)?;
+    if source != 0 && source != mode {
+        return Err(ApiError::bad(
+            "This beatmap does not support the requested ruleset.",
+        ));
+    }
+    let (p, size, offset) = Pagination {
+        page: query.page,
+        page_size: query.page_size,
+    }
+    .bounds();
+    let rx = variant == ScoreVariant::Relax;
+    let total:i64=sqlx::query_scalar("SELECT count(DISTINCT s.user_id) FROM scores s JOIN users u ON u.id=s.user_id WHERE s.beatmap_id=$1 AND s.mode=$2 AND s.score_variant=$3 AND s.verification='verified' AND s.passed AND s.pp_eligible AND NOT u.is_restricted AND ($4 OR s.standardised_score IS NOT NULL) AND ($5::text IS NULL OR u.country=$5)")
+        .bind(beatmap_id).bind(mode).bind(variant.as_str()).bind(rx).bind(&query.country).fetch_one(&state.db).await?;
+    let items=sqlx::query_scalar::<_,Value>("WITH best AS (SELECT DISTINCT ON(s.user_id) s.*,u.username,u.country,u.avatar_url FROM scores s JOIN users u ON u.id=s.user_id WHERE s.beatmap_id=$1 AND s.mode=$2 AND s.score_variant=$3 AND s.verification='verified' AND s.passed AND s.pp_eligible AND NOT u.is_restricted AND ($4 OR s.standardised_score IS NOT NULL) AND ($5::text IS NULL OR u.country=$5) ORDER BY s.user_id,CASE WHEN $4 THEN s.pp END DESC NULLS LAST,CASE WHEN NOT $4 THEN s.standardised_score END DESC NULLS LAST,s.accuracy DESC,s.max_combo DESC,s.id),placed AS (SELECT *,row_number() OVER(ORDER BY CASE WHEN $4 THEN pp END DESC NULLS LAST,CASE WHEN NOT $4 THEN standardised_score END DESC NULLS LAST,accuracy DESC,max_combo DESC,id) position FROM best) SELECT to_jsonb(p)-'replay_path'-'ingestion_key'||jsonb_build_object('has_replay',replay_path IS NOT NULL,'accuracy_source',CASE WHEN client='lazer' THEN 'client_reported' ELSE 'judgements' END) FROM placed p ORDER BY position LIMIT $6 OFFSET $7")
+        .bind(beatmap_id).bind(mode).bind(variant.as_str()).bind(rx).bind(query.country).bind(size).bind(offset).fetch_all(&state.db).await?;
+    let mut response = page(items, total, p, size).0;
+    response["mode"] = json!(mode);
+    response["score_variant"] = json!(variant);
+    response["ordered_by"] = json!(if rx { "pp" } else { "standardised_score" });
+    Ok(Json(response))
 }
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -156,30 +329,15 @@ async fn ingest(
         ));
     }
     score_scales::validate_native_binding(&input)?;
+    let (variant, pp_eligible) = mod_partition(&input, client)?;
     if let Some(ref key) = input.ingestion_key {
         if key.len() > 128 || key.is_empty() {
             return Err(ApiError::bad("Invalid ingestion key."));
         }
         if let Some(existing)=sqlx::query_scalar::<_,Value>("SELECT to_jsonb(s)-'replay_path'||jsonb_build_object('accuracy_source',CASE WHEN s.client='lazer' THEN 'client_reported' ELSE 'judgements' END) FROM scores s WHERE ingestion_key=$1").bind(key).fetch_optional(&state.db).await?{
-            if existing["user_id"].as_i64()!=Some(user_id)||existing["beatmap_id"].as_i64()!=Some(input.beatmap_id){return Err(ApiError(axum::http::StatusCode::CONFLICT,"ingestion_conflict","The ingestion key belongs to another score.".into()));}return Ok(existing);
+            if existing["user_id"].as_i64()!=Some(user_id)||existing["beatmap_id"].as_i64()!=Some(input.beatmap_id)||existing["mode"].as_i64()!=Some(i64::from(input.mode))||existing["score_variant"].as_str()!=Some(variant.as_str()){return Err(ApiError(axum::http::StatusCode::CONFLICT,"ingestion_conflict","The ingestion key belongs to another score partition.".into()));}return Ok(existing);
         }
     }
-    let pp_eligible = if let Some(ref native) = input.api_mods {
-        if client != "lazer" {
-            return Err(ApiError::bad(
-                "Structured mods require native lazer ingestion.",
-            ));
-        }
-        let validated = ValidatedMods::parse(input.mode as u8, native).map_err(ApiError::bad)?;
-        if validated.legacy_bits != input.mods {
-            return Err(ApiError::bad(
-                "Legacy mod projection does not match native mods.",
-            ));
-        }
-        validated.pp_eligible
-    } else {
-        input.mods & 10368 == 0
-    };
     let counts = &input.hit_counts;
     if [
         counts.n300,
@@ -238,14 +396,39 @@ async fn ingest(
         .await
         .map_err(ApiError::internal)??;
     let scales = calculated.scales;
-    let mut value:Value=sqlx::query_scalar("INSERT INTO scores(user_id,beatmap_id,mode,score,accuracy,max_combo,mods,pp,passed,hit_counts,client,ingestion_key,api_mods,pp_eligible,standardised_score,standardised_without_mods,classic_score,native_submission,native_basic_maximum,score_scale_status,score_scale_version,score_scale_reason,legacy_attributes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) ON CONFLICT(ingestion_key) DO UPDATE SET ingestion_key=scores.ingestion_key WHERE scores.user_id=excluded.user_id AND scores.beatmap_id=excluded.beatmap_id RETURNING to_jsonb(scores)-'replay_path'")
-        .bind(user_id).bind(input.beatmap_id).bind(input.mode).bind(input.score).bind(accuracy).bind(input.max_combo as i32).bind(i64::from(input.mods)).bind(calculated.pp).bind(input.passed).bind(json!(input.hit_counts)).bind(client).bind(input.ingestion_key).bind(input.api_mods).bind(pp_eligible).bind(scales.standardised_score).bind(scales.standardised_without_mods).bind(scales.classic_score).bind(scales.native_submission).bind(scales.native_basic_maximum).bind(scales.status).bind(scales.version).bind(scales.reason).bind(scales.legacy_attributes).fetch_optional(&state.db).await?.ok_or_else(||ApiError(axum::http::StatusCode::CONFLICT,"ingestion_conflict","The ingestion key belongs to another score.".into()))?;
+    let mut value:Value=sqlx::query_scalar("INSERT INTO scores(user_id,beatmap_id,mode,score,accuracy,max_combo,mods,pp,passed,hit_counts,client,ingestion_key,api_mods,pp_eligible,standardised_score,standardised_without_mods,classic_score,native_submission,native_basic_maximum,score_scale_status,score_scale_version,score_scale_reason,legacy_attributes,score_variant,pp_calculation_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,'rosu_pp4.v1') ON CONFLICT(ingestion_key) DO UPDATE SET ingestion_key=scores.ingestion_key WHERE scores.user_id=excluded.user_id AND scores.beatmap_id=excluded.beatmap_id AND scores.mode=excluded.mode AND scores.score_variant=excluded.score_variant RETURNING to_jsonb(scores)-'replay_path'")
+        .bind(user_id).bind(input.beatmap_id).bind(input.mode).bind(input.score).bind(accuracy).bind(input.max_combo as i32).bind(i64::from(input.mods)).bind(calculated.pp).bind(input.passed).bind(json!(input.hit_counts)).bind(client).bind(input.ingestion_key).bind(input.api_mods).bind(pp_eligible).bind(scales.standardised_score).bind(scales.standardised_without_mods).bind(scales.classic_score).bind(scales.native_submission).bind(scales.native_basic_maximum).bind(scales.status).bind(scales.version).bind(scales.reason).bind(scales.legacy_attributes).bind(variant.as_str()).fetch_optional(&state.db).await?.ok_or_else(||ApiError(axum::http::StatusCode::CONFLICT,"ingestion_conflict","The ingestion key belongs to another score.".into()))?;
     value["accuracy_source"] = json!(if client == "lazer" {
         "client_reported"
     } else {
         "judgements"
     });
     Ok(value)
+}
+
+fn mod_partition(score: &Submission, client: &str) -> ApiResult<(ScoreVariant, bool)> {
+    if !(0..=3).contains(&score.mode) {
+        return Err(ApiError::bad("Unsupported ruleset."));
+    }
+    if let Some(ref native) = score.api_mods {
+        if client != "lazer" {
+            return Err(ApiError::bad(
+                "Structured mods require native lazer ingestion.",
+            ));
+        }
+        let validated = ValidatedMods::parse(score.mode as u8, native).map_err(ApiError::bad)?;
+        if validated.legacy_bits != score.mods {
+            return Err(ApiError::bad(
+                "Legacy mod projection does not match native mods.",
+            ));
+        }
+        Ok((validated.score_variant, validated.pp_eligible))
+    } else {
+        Ok((
+            ScoreVariant::from_legacy(score.mode as u8, score.mods).map_err(ApiError::bad)?,
+            legacy_pp_eligible(score.mode as u8, score.mods).map_err(ApiError::bad)?,
+        ))
+    }
 }
 pub(crate) struct CalculatedScore {
     pub pp: f64,
@@ -317,6 +500,7 @@ pub(crate) fn calculate_score(
     score: &Submission,
     lazer: bool,
 ) -> ApiResult<CalculatedScore> {
+    let (variant, _) = mod_partition(score, if lazer { "lazer" } else { "stable" })?;
     let map =
         rosu_pp::Beatmap::from_bytes(bytes).map_err(|_| ApiError::bad("Stored map is invalid."))?;
     let mode = match score.mode {
@@ -356,7 +540,7 @@ pub(crate) fn calculate_score(
             "Combo exceeds this ruleset's beatmap maximum.",
         ));
     }
-    let scales = if lazer {
+    let mut scales = if lazer {
         score_scales::native_scales(score, &attrs)?
     } else {
         if score.native_submission.is_some() {
@@ -370,6 +554,18 @@ pub(crate) fn calculate_score(
             score_scales::NativeScales::unavailable("unsupported_score_source")
         }
     };
+    if variant == ScoreVariant::Relax {
+        // RX's legacy source multiplier is zero, so the summary does not define
+        // a common display scale. Preserve native/replay context and map checks,
+        // while keeping PP and raw scores independent of display conversion.
+        scales.standardised_score = None;
+        scales.standardised_without_mods = None;
+        scales.classic_score = None;
+        scales.status = "unavailable";
+        scales.version = Some("relax_score_scale.unavailable.v1".into());
+        scales.reason =
+            Some("Relax has no supported common score display scale; rankings use PP.".into());
+    }
     if lazer && score.mode == 3 {
         let h = &score.hit_counts;
         let actual = [h.geki, h.n300, h.katu, h.n100, h.n50, h.misses]
@@ -466,6 +662,80 @@ pub async fn internal_submit(
         return Err(ApiError::bad("Unsupported internal client."));
     }
     Ok(Json(ingest(&state, user_id, input, &client).await?))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RelaxRecalculation {
+    score_ids: Vec<i64>,
+}
+pub async fn recalculate_relax(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<RelaxRecalculation>,
+) -> ApiResult {
+    let operator = auth::require(&state, &headers).await?;
+    operator.require("scores.moderate")?;
+    if input.score_ids.is_empty()
+        || input.score_ids.len() > 16
+        || input.score_ids.iter().any(|&id| id <= 0)
+    {
+        return Err(ApiError::bad(
+            "Choose between one and sixteen positive score IDs.",
+        ));
+    }
+    let mut ids = input.score_ids;
+    ids.sort_unstable();
+    if ids.windows(2).any(|pair| pair[0] == pair[1]) {
+        return Err(ApiError::bad("Score IDs must be unique."));
+    }
+    let _permit = state.upload_permit()?;
+    let mut tx = state.db.begin().await?;
+    let mut results = Vec::with_capacity(ids.len());
+    for id in ids {
+        let row=sqlx::query("SELECT s.*,b.osu_path FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id JOIN users u ON u.id=s.user_id WHERE s.id=$1 AND NOT u.is_restricted FOR UPDATE OF s")
+            .bind(id).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::missing)?;
+        if row.get::<String, _>("score_variant") != "relax"
+            || row.get::<i16, _>("mode") == 3
+            || !matches!(
+                row.get::<String, _>("verification").as_str(),
+                "pending" | "verified"
+            )
+        {
+            return Err(ApiError::bad(
+                "Only pending or verified Relax scores in osu!, taiko or catch can be recalculated.",
+            ));
+        }
+        let submission = from_stored_row(&row)?;
+        let client = row.get::<String, _>("client");
+        let (variant, eligible) = mod_partition(&submission, &client)?;
+        if variant != ScoreVariant::Relax || !eligible {
+            return Err(ApiError::bad(
+                "These modifiers are not eligible for Relax PP.",
+            ));
+        }
+        score_scales::validate_native_binding(&submission)?;
+        let path: String = row.get("osu_path");
+        if std::path::Path::new(&path).is_absolute() || path.contains("..") {
+            return Err(ApiError::internal("unsafe stored map path"));
+        }
+        let bytes = tokio::fs::read(state.maps_root.join(path)).await?;
+        let lazer = client == "lazer";
+        let calculated =
+            tokio::task::spawn_blocking(move || calculate_score(&bytes, &submission, lazer))
+                .await
+                .map_err(ApiError::internal)??;
+        let previous = row.get::<f64, _>("pp");
+        let previous_eligible = row.get::<bool, _>("pp_eligible");
+        sqlx::query("UPDATE scores SET pp=$2,pp_eligible=true,pp_calculation_version='rosu_pp4.relax.v1' WHERE id=$1")
+            .bind(id).bind(calculated.pp).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO audit_events(actor_id,action,target_type,target_id,details) VALUES($1,'scores.relax_recalculate','score',$2,$3)")
+            .bind(operator.id).bind(id.to_string()).bind(json!({"previous_pp":previous,"pp":calculated.pp,"previous_pp_eligible":previous_eligible,"pp_eligible":true,"mode":row.get::<i16,_>("mode"),"score_variant":"relax","calculation_version":"rosu_pp4.relax.v1","verification_unchanged":true}))
+            .execute(&mut *tx).await?;
+        results.push(json!({"id":id,"pp":calculated.pp,"pp_eligible":true,"score_variant":"relax","pp_calculation_version":"rosu_pp4.relax.v1","verification":row.get::<String,_>("verification")}));
+    }
+    tx.commit().await?;
+    Ok(Json(json!({"items":results,"count":results.len()})))
 }
 pub async fn upload_replay(
     State(state): State<AppState>,

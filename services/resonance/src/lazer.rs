@@ -8,13 +8,17 @@ use axum::{
     routing::{get, post, put},
 };
 use chrono::{Duration, Utc};
+use illya_domain::ScoreVariant;
 use resonance_protocol::lazer::{
     ApiMod, OAuthGrant, OAuthToken, ScoreTokenRequest, SoloScoreSubmission,
 };
 use serde::{Deserialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use sqlx::Row;
-use std::{collections::HashSet, net::SocketAddr};
+use std::{
+    collections::{HashMap, HashSet},
+    net::SocketAddr,
+};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -23,6 +27,8 @@ pub fn router() -> Router<AppState> {
         .route("/api/v2/me/{ruleset}", get(me_mode))
         .route("/api/v2/users/{id}", get(user))
         .route("/api/v2/users/{id}/{ruleset}", get(user_mode))
+        .route("/api/v2/users/{id}/scores/{kind}", get(user_scores))
+        .route("/api/v2/rankings/{ruleset}/performance", get(rankings))
         .route("/api/v2/beatmaps/{id}", get(beatmap))
         .route("/api/v2/beatmaps/{id}/solo/scores", post(create_score))
         .route(
@@ -191,10 +197,13 @@ async fn user_response(
     state: &AppState,
     player: Account,
     mode: u8,
+    variant: ScoreVariant,
 ) -> Result<Json<Value>, ApiError> {
-    let row = crate::score_aggregates::lifetime(&state.pool, player.id, i16::from(mode)).await?;
-    let ranking = crate::score_aggregates::ranking(&state.pool, player.id, i16::from(mode)).await?;
-    let grades=sqlx::query("SELECT count(*) FILTER(WHERE s.passed AND s.accuracy=100 AND (s.mods & 1032)=0)::bigint ss,count(*) FILTER(WHERE s.passed AND s.accuracy=100 AND (s.mods & 1032)<>0)::bigint ssh,count(*) FILTER(WHERE COALESCE(s.native_submission->>'rank',t.submission->>'rank',a.details->>'rank')='S')::bigint s,count(*) FILTER(WHERE COALESCE(s.native_submission->>'rank',t.submission->>'rank',a.details->>'rank')='SH')::bigint sh,count(*) FILTER(WHERE COALESCE(s.native_submission->>'rank',t.submission->>'rank',a.details->>'rank')='A')::bigint a FROM scores s LEFT JOIN lazer_score_tokens t ON t.score_id=s.id LEFT JOIN LATERAL(SELECT details FROM audit_events WHERE action='scores.stable_ingest' AND target_id=s.id::text ORDER BY id DESC LIMIT 1)a ON true WHERE s.user_id=$1 AND s.mode=$2 AND s.verification='verified'").bind(player.id).bind(i16::from(mode)).fetch_one(&state.pool).await?;
+    let row =
+        crate::score_aggregates::lifetime(&state.pool, player.id, i16::from(mode), variant).await?;
+    let ranking =
+        crate::score_aggregates::ranking(&state.pool, player.id, i16::from(mode), variant).await?;
+    let grades=sqlx::query("SELECT count(*) FILTER(WHERE s.passed AND s.accuracy=100 AND (s.mods & 1032)=0)::bigint ss,count(*) FILTER(WHERE s.passed AND s.accuracy=100 AND (s.mods & 1032)<>0)::bigint ssh,count(*) FILTER(WHERE s.passed AND COALESCE(s.native_submission->>'rank',t.submission->>'rank',a.details->>'rank')='S')::bigint s,count(*) FILTER(WHERE s.passed AND COALESCE(s.native_submission->>'rank',t.submission->>'rank',a.details->>'rank')='SH')::bigint sh,count(*) FILTER(WHERE s.passed AND COALESCE(s.native_submission->>'rank',t.submission->>'rank',a.details->>'rank')='A')::bigint a FROM scores s LEFT JOIN lazer_score_tokens t ON t.score_id=s.id LEFT JOIN LATERAL(SELECT details FROM audit_events WHERE action='scores.stable_ingest' AND target_id=s.id::text ORDER BY id DESC LIMIT 1)a ON true WHERE s.user_id=$1 AND s.mode=$2 AND s.score_variant=$3 AND s.verification='verified'").bind(player.id).bind(i16::from(mode)).bind(variant.as_str()).fetch_one(&state.pool).await?;
     let mut value = user_json(&player);
     let total = row.get::<i64, _>("total");
     let pp = ranking.get::<f64, _>("pp");
@@ -202,6 +211,7 @@ async fn user_response(
     value["statistics"] = json!({"level":level(total),"global_rank":if is_ranked{Some(ranking.get::<i64,_>("global_rank"))}else{None},"country_rank":if is_ranked{Some(ranking.get::<i64,_>("country_rank"))}else{None},"pp":pp,"ranked_score":ranking.get::<i64,_>("ranked_score"),"hit_accuracy":row.get::<f64,_>("accuracy"),"play_count":row.get::<i64,_>("plays"),"total_score":total,"total_hits":row.get::<i64,_>("hits"),"maximum_combo":row.get::<i32,_>("combo"),"is_ranked":is_ranked,"grade_counts":{"ss":grades.get::<i64,_>("ss"),"ssh":grades.get::<i64,_>("ssh"),"s":grades.get::<i64,_>("s"),"sh":grades.get::<i64,_>("sh"),"a":grades.get::<i64,_>("a")}});
     value["score_scale_coverage"] = json!({"total_plays":row.get::<i64,_>("plays"),"included_plays":row.get::<i64,_>("scaled_plays"),"display":"classic_with_legacy_history"});
     value["playmode"] = json!(["osu", "taiko", "fruits", "mania"][mode as usize]);
+    value["score_variant"] = json!(variant);
     Ok(Json(value))
 }
 fn level(total: i64) -> Value {
@@ -234,18 +244,30 @@ fn mode(value: &str) -> Result<u8, ApiError> {
         _ => Err(ApiError(StatusCode::BAD_REQUEST, "unsupported_ruleset")),
     }
 }
-async fn me(State(state): State<AppState>, headers: HeaderMap) -> Result<Json<Value>, ApiError> {
-    user_response(&state, common::bearer(&state, &headers).await?, 0).await
+async fn me(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<HashMap<String, String>>,
+) -> Result<Json<Value>, ApiError> {
+    user_response(
+        &state,
+        common::bearer(&state, &headers).await?,
+        0,
+        requested_variant(0, query.get("variant").map(String::as_str))?,
+    )
+    .await
 }
 async fn me_mode(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(ruleset): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
 ) -> Result<Json<Value>, ApiError> {
     user_response(
         &state,
         common::bearer(&state, &headers).await?,
         mode(&ruleset)?,
+        requested_variant(mode(&ruleset)?, query.get("variant").map(String::as_str))?,
     )
     .await
 }
@@ -265,17 +287,175 @@ async fn user(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
 ) -> Result<Json<Value>, ApiError> {
     common::bearer(&state, &headers).await?;
-    user_response(&state, find_user(&state, &id).await?, 0).await
+    user_response(
+        &state,
+        find_user(&state, &id).await?,
+        0,
+        requested_variant(0, query.get("variant").map(String::as_str))?,
+    )
+    .await
 }
 async fn user_mode(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path((id, ruleset)): Path<(String, String)>,
+    Query(query): Query<HashMap<String, String>>,
 ) -> Result<Json<Value>, ApiError> {
     common::bearer(&state, &headers).await?;
-    user_response(&state, find_user(&state, &id).await?, mode(&ruleset)?).await
+    user_response(
+        &state,
+        find_user(&state, &id).await?,
+        mode(&ruleset)?,
+        requested_variant(mode(&ruleset)?, query.get("variant").map(String::as_str))?,
+    )
+    .await
+}
+
+pub(crate) fn requested_variant(
+    ruleset: u8,
+    value: Option<&str>,
+) -> Result<ScoreVariant, ApiError> {
+    let mods = match value.unwrap_or("vanilla") {
+        "vanilla" => 0,
+        "relax" => 128,
+        _ => return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_score_variant")),
+    };
+    ScoreVariant::from_legacy(ruleset, mods)
+        .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_score_variant"))
+}
+
+async fn user_scores(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((id, kind)): Path<(String, String)>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Result<Json<Value>, ApiError> {
+    let viewer = common::bearer(&state, &headers).await?;
+    let owner = find_user(&state, &id).await?;
+    let ruleset = mode(query.get("mode").map(String::as_str).unwrap_or("osu"))?;
+    let variant = requested_variant(ruleset, query.get("variant").map(String::as_str))?;
+    let limit = query
+        .get("limit")
+        .map(|value| value.parse::<i64>())
+        .transpose()
+        .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_score_limit"))?
+        .unwrap_or(50);
+    let offset = query
+        .get("offset")
+        .map(|value| value.parse::<i64>())
+        .transpose()
+        .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_score_offset"))?
+        .unwrap_or(0);
+    if !(1..=100).contains(&limit) || !(0..=10000).contains(&offset) {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid_score_pagination",
+        ));
+    }
+    let ids = match kind.as_str() {
+        "best" => sqlx::query_scalar::<_,i64>("WITH best AS (SELECT DISTINCT ON(s.beatmap_id) s.id,s.pp FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id WHERE s.user_id=$1 AND s.mode=$2 AND s.score_variant=$3 AND s.verification='verified' AND s.passed AND s.pp_eligible AND b.status='ranked' ORDER BY s.beatmap_id,s.pp DESC,s.id) SELECT id FROM best ORDER BY pp DESC,id LIMIT $4 OFFSET $5")
+            .bind(owner.id).bind(i16::from(ruleset)).bind(variant.as_str()).bind(limit).bind(offset).fetch_all(&state.pool).await?,
+        "recent" => {
+            let include_fails = match query.get("include_fails").map(String::as_str).unwrap_or("0") {
+                "0" => false, "1" => true,
+                _ => return Err(ApiError(StatusCode::BAD_REQUEST,"invalid_include_fails")),
+            };
+            sqlx::query_scalar::<_,i64>("SELECT id FROM scores WHERE user_id=$1 AND mode=$2 AND score_variant=$3 AND (verification='verified' OR user_id=$4) AND ($5 OR passed) ORDER BY id DESC LIMIT $6 OFFSET $7")
+                .bind(owner.id).bind(i16::from(ruleset)).bind(variant.as_str()).bind(viewer.id).bind(include_fails).bind(limit).bind(offset).fetch_all(&state.pool).await?
+        },
+        _ => return Err(ApiError(StatusCode::BAD_REQUEST,"unsupported_score_list")),
+    };
+    let mut scores = Vec::with_capacity(ids.len());
+    for score in ids {
+        scores.push(score_json(&state, score, &viewer).await?);
+    }
+    Ok(Json(json!(scores)))
+}
+
+async fn rankings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(ruleset): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Result<Json<Value>, ApiError> {
+    let viewer = common::bearer(&state, &headers).await?;
+    let ruleset = mode(&ruleset)?;
+    let variant = requested_variant(ruleset, query.get("variant").map(String::as_str))?;
+    let page = query
+        .get("page")
+        .map(|value| value.parse::<i64>())
+        .transpose()
+        .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_ranking_page"))?
+        .unwrap_or(1);
+    if !(1..=201).contains(&page) {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_ranking_page"));
+    }
+    let country = query.get("country").map(|value| value.to_ascii_uppercase());
+    if country.as_ref().is_some_and(|value| {
+        value.len() != 2 || !value.bytes().all(|byte| byte.is_ascii_uppercase())
+    }) {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_ranking_country"));
+    }
+    let friends = match query.get("filter").map(String::as_str).unwrap_or("all") {
+        "all" => None,
+        "friends" => {
+            let mut friends = common::friend_ids(&state, viewer.id)
+                .await?
+                .into_iter()
+                .map(i64::from)
+                .collect::<Vec<_>>();
+            friends.push(viewer.id);
+            Some(friends)
+        }
+        _ => return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_ranking_filter")),
+    };
+    let rows = crate::score_aggregates::ranking_page(
+        &state.pool,
+        i16::from(ruleset),
+        variant,
+        country.as_deref(),
+        friends.clone(),
+        (page - 1) * 50,
+        50,
+    )
+    .await?;
+    let total = if let Some(row) = rows.first() {
+        row.get::<i64, _>("total")
+    } else {
+        // The rankings include every unrestricted user, including zero-PP
+        // accounts. An empty page still needs that filtered population count;
+        // ruleset and variant determine placement, not membership.
+        sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM users WHERE NOT is_restricted
+             AND ($1::text IS NULL OR country=$1)
+             AND ($2::bigint[] IS NULL OR id=ANY($2))",
+        )
+        .bind(country.as_deref())
+        .bind(friends)
+        .fetch_one(&state.pool)
+        .await?
+    };
+    let mut ranking = Vec::with_capacity(rows.len());
+    for row in rows {
+        let profile = user_response(
+            &state,
+            common::account(&state, row.get("id")).await?,
+            ruleset,
+            variant,
+        )
+        .await?
+        .0;
+        let mut statistics = profile["statistics"].clone();
+        statistics["user"] = profile;
+        statistics["score_variant"] = json!(variant);
+        ranking.push(statistics);
+    }
+    Ok(Json(
+        json!({"ranking":ranking,"total":total,"score_variant":variant,"ruleset_id":ruleset}),
+    ))
 }
 
 async fn beatmap(
@@ -460,6 +640,7 @@ pub(crate) async fn score_json(
     };
     let mut output = json!({"id":id,"user_id":owner.id,"user":user_json(&owner),"ruleset_id":row.get::<i16,_>("mode"),"beatmap_id":row.get::<i64,_>("native_map_id"),"total_score":row.get::<Option<i64>,_>("standardised_score").unwrap_or_else(||if stable{0}else{row.get::<i64,_>("score")}),"accuracy":row.get::<f64,_>("accuracy")/100.0,"max_combo":row.get::<i32,_>("max_combo"),"passed":row.get::<bool,_>("passed"),"pp":row.get::<f64,_>("pp"),"mods":submission.get("mods").cloned().unwrap_or(json!(legacy_mods)),"statistics":submission.get("statistics").cloned().unwrap_or(stats),"maximum_statistics":submission.get("maximum_statistics").cloned().unwrap_or(json!({})),"ended_at":audit.get("ended_at").cloned().unwrap_or(json!(row.get::<chrono::DateTime<Utc>,_>("created_at"))),"has_replay":row.get::<Option<String>,_>("replay_path").is_some(),"ranked":verified&&row.get::<String,_>("map_status")=="ranked"&&row.get::<bool,_>("pp_eligible"),"processed":true,"position":null,"scores_around":null,"verification":row.get::<String,_>("verification")});
     output["replay_complete"] = json!(row.get::<Option<bool>, _>("replay_complete"));
+    output["score_variant"] = json!(row.get::<String, _>("score_variant"));
     if let Some(grade) = grade {
         output["rank"] = grade.clone();
     }

@@ -1135,6 +1135,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "rosu-mods",
+ "rosu-pp",
  "serde",
  "serde_json",
  "uuid",

@@ -1,14 +1,14 @@
-use crate::{ApiError, ApiResult, AppState};
+use crate::{ApiError, ApiResult, AppState, scores};
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier, password_hash::SaltString};
 use axum::{
     Json,
-    extract::{Multipart, Path, State},
+    extract::{Multipart, Path, Query, State},
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
 };
 use chrono::{Duration, Utc};
 use illya_domain::{
-    Preferences, has_permission, validate_color, validate_password, validate_username,
+    Preferences, ScoreVariant, has_permission, validate_color, validate_password, validate_username,
 };
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use rand_core::OsRng;
@@ -89,14 +89,24 @@ pub async fn optional(state: &AppState, headers: &HeaderMap) -> ApiResult<Option
     }
 }
 pub async fn profile(state: &AppState, id: i64, private: bool) -> ApiResult<Value> {
+    profile_in_variant(state, id, private, 0, ScoreVariant::Vanilla).await
+}
+pub(crate) async fn profile_in_variant(
+    state: &AppState,
+    id: i64,
+    private: bool,
+    mode: i16,
+    variant: ScoreVariant,
+) -> ApiResult<Value> {
+    scores::validate_partition(mode, variant)?;
     let row=sqlx::query("SELECT id,username,email,email_verified_at,country,bio,avatar_url,banner_url,accent_color,preferences,joined_at,is_restricted FROM users WHERE id=$1 AND ($2 OR NOT is_restricted)")
         .bind(id).bind(private).fetch_optional(&state.db).await?.ok_or_else(ApiError::missing)?;
     let roles=sqlx::query_scalar::<_,String>("SELECT r.name FROM roles r JOIN user_roles ur ON ur.role_id=r.id WHERE ur.user_id=$1 ORDER BY r.id").bind(id).fetch_all(&state.db).await?;
     let permissions=sqlx::query_scalar::<_,String>("SELECT DISTINCT unnest(r.permissions) FROM roles r JOIN user_roles ur ON ur.role_id=r.id WHERE ur.user_id=$1").bind(id).fetch_all(&state.db).await?;
-    let stats:Value=sqlx::query_scalar("WITH best AS (SELECT beatmap_id,max(s.pp) pp FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id WHERE user_id=$1 AND verification='verified' AND passed AND b.status='ranked' AND s.pp_eligible GROUP BY beatmap_id),weighted AS (SELECT pp,row_number() OVER(ORDER BY pp DESC) n FROM best) SELECT jsonb_build_object('pp',COALESCE((SELECT sum(pp*power(0.95,n-1)) FROM weighted),0),'play_count',(SELECT count(*) FROM scores WHERE user_id=$1 AND verification='verified'),'accuracy',COALESCE((SELECT avg(accuracy) FROM scores WHERE user_id=$1 AND verification='verified'),0))").bind(id).fetch_one(&state.db).await?;
+    let stats = scores::statistics(state, id, mode, variant).await?;
     let preferences: Preferences =
         serde_json::from_value(row.get::<Value, _>("preferences")).unwrap_or_default();
-    let mut value = json!({"id":id,"username":row.get::<String,_>("username"),"country":row.get::<String,_>("country"),"bio":row.get::<String,_>("bio"),"avatar_url":row.get::<Option<String>,_>("avatar_url"),"banner_url":row.get::<Option<String>,_>("banner_url"),"accent_color":row.get::<String,_>("accent_color"),"roles":roles,"joined_at":row.get::<chrono::DateTime<Utc>,_>("joined_at"),"pp":stats["pp"],"play_count":stats["play_count"],"accuracy":stats["accuracy"]});
+    let mut value = json!({"id":id,"username":row.get::<String,_>("username"),"country":row.get::<String,_>("country"),"bio":row.get::<String,_>("bio"),"avatar_url":row.get::<Option<String>,_>("avatar_url"),"banner_url":row.get::<Option<String>,_>("banner_url"),"accent_color":row.get::<String,_>("accent_color"),"roles":roles,"joined_at":row.get::<chrono::DateTime<Utc>,_>("joined_at"),"pp":stats["pp"],"play_count":stats["play_count"],"accuracy":stats["accuracy"],"statistics":stats});
     if private {
         value["email"] = json!(row.get::<String, _>("email"));
         value["email_verified"] = json!(
@@ -252,8 +262,26 @@ pub async fn me(State(state): State<AppState>, headers: HeaderMap) -> ApiResult 
     let user = require(&state, &headers).await?;
     Ok(Json(profile(&state, user.id, true).await?))
 }
-pub async fn user_profile(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult {
-    Ok(Json(profile(&state, id, false).await?))
+#[derive(Deserialize)]
+pub struct StatisticsQuery {
+    mode: Option<i16>,
+    variant: Option<ScoreVariant>,
+}
+pub async fn user_profile(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    Query(query): Query<StatisticsQuery>,
+) -> ApiResult {
+    Ok(Json(
+        profile_in_variant(
+            &state,
+            id,
+            false,
+            query.mode.unwrap_or(0),
+            query.variant.unwrap_or_default(),
+        )
+        .await?,
+    ))
 }
 pub async fn preferences(State(state): State<AppState>, headers: HeaderMap) -> ApiResult {
     let user = require(&state, &headers).await?;

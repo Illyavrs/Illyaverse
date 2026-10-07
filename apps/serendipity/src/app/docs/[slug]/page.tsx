@@ -12,6 +12,7 @@ const documents: Record<string, string> = {
   'lazer-client': 'lazer-client-build.md',
   'native-chat': 'native-chat.md',
   'native-mods': 'native-mods.md',
+  relax: 'relax.md',
   'score-normalization': 'score-normalization.md',
   replays: 'lazer-replays.md',
   deployment: 'deployment.md',

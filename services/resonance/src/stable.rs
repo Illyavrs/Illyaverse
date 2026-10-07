@@ -8,6 +8,7 @@ use axum::{
     routing::{get, post},
 };
 use chrono::{Duration, Utc};
+use illya_domain::ScoreVariant;
 use resonance_protocol::stable::{
     self as wire, ChatMessage, LoginRequest, Presence, Reader, UserAction, UserStats,
 };
@@ -222,8 +223,10 @@ async fn stats(
     action: UserAction,
 ) -> Result<UserStats, ApiError> {
     let mode = i16::from(action.mode);
-    let row = crate::score_aggregates::lifetime(&state.pool, player.id, mode).await?;
-    let ranking = crate::score_aggregates::ranking(&state.pool, player.id, mode).await?;
+    let variant = ScoreVariant::from_legacy(action.mode, action.mods)
+        .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_score_variant"))?;
+    let row = crate::score_aggregates::lifetime(&state.pool, player.id, mode, variant).await?;
+    let ranking = crate::score_aggregates::ranking(&state.pool, player.id, mode, variant).await?;
     let pp: f64 = ranking.get("pp");
     Ok(UserStats {
         user_id: id32(player.id)?,
@@ -594,7 +597,7 @@ async fn replay(
         .and_then(|s| s.parse().ok())
         .filter(|m| (0..=3).contains(m))
         .ok_or(ApiError(StatusCode::BAD_REQUEST, "invalid_mode"))?;
-    let path = sqlx::query_scalar::<_,Option<String>>("SELECT replay_path FROM scores WHERE id=$1 AND mode=$2 AND (verification='verified' OR user_id=$3)").bind(id).bind(mode).bind(player.id).fetch_optional(&state.pool).await?.flatten().ok_or(ApiError(StatusCode::NOT_FOUND,"replay_not_found"))?;
+    let path = sqlx::query_scalar::<_,Option<String>>("SELECT s.replay_path FROM scores s JOIN users u ON u.id=s.user_id WHERE s.id=$1 AND s.mode=$2 AND NOT u.is_restricted AND (s.verification='verified' OR s.user_id=$3)").bind(id).bind(mode).bind(player.id).fetch_optional(&state.pool).await?.flatten().ok_or(ApiError(StatusCode::NOT_FOUND,"replay_not_found"))?;
     let bytes = common::stored_file(&state, &path, "replays", 16_777_216).await?;
     // Sanctuary stores .osr containers; stable's web endpoint consumes compressed frames.
     let container = resonance_protocol::replay::LegacyReplay::parse(&bytes)?;
@@ -670,7 +673,15 @@ async fn leaderboard(
             "invalid_leaderboard_type",
         ));
     }
-    let requested_mods: i64 = query.get("mods").and_then(|s| s.parse().ok()).unwrap_or(0);
+    let requested_mods = query
+        .get("mods")
+        .map(|value| value.parse::<u32>())
+        .transpose()
+        .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_score_mods"))?
+        .unwrap_or(0);
+    let variant = ScoreVariant::from_legacy(mode as u8, requested_mods)
+        .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_score_variant"))?;
+    let requested_mods = i64::from(requested_mods);
     let friend_filter = if leaderboard_type == 4 {
         let mut ids = common::friend_ids(&state, player.id)
             .await?
@@ -682,9 +693,9 @@ async fn leaderboard(
     } else {
         None
     };
-    let rows = sqlx::query("WITH best AS (SELECT DISTINCT ON(s.user_id) s.id,s.user_id,s.score,s.max_combo,s.mods,s.hit_counts,s.created_at,s.replay_path,u.username FROM scores s JOIN users u ON u.id=s.user_id WHERE s.beatmap_id=$1 AND s.mode=$2 AND s.client='stable' AND (s.mods & 536870912)=$7 AND s.verification='verified' AND s.passed AND NOT u.is_restricted AND ($3::bigint IS NULL OR s.mods=$3) AND ($3::bigint IS NOT NULL OR s.pp_eligible) AND ($4::text IS NULL OR u.country=$4) AND ($5::bigint[] IS NULL OR s.user_id=ANY($5)) ORDER BY s.user_id,s.score DESC,s.id),placed AS (SELECT *,row_number() OVER(ORDER BY score DESC,id) AS placement FROM best) SELECT * FROM placed WHERE placement<=100 OR user_id=$6 ORDER BY placement")
+    let rows = sqlx::query("WITH best AS (SELECT DISTINCT ON(s.user_id) s.id,s.user_id,s.score,s.pp,s.max_combo,s.mods,s.hit_counts,s.created_at,s.replay_path,u.username FROM scores s JOIN users u ON u.id=s.user_id WHERE s.beatmap_id=$1 AND s.mode=$2 AND s.score_variant=$8 AND s.client='stable' AND (s.mods & 536870912)=$7 AND s.verification='verified' AND s.passed AND NOT u.is_restricted AND ($3::bigint IS NULL OR s.mods=$3) AND ($3::bigint IS NOT NULL OR s.pp_eligible) AND ($8='vanilla' OR s.pp_eligible) AND ($4::text IS NULL OR u.country=$4) AND ($5::bigint[] IS NULL OR s.user_id=ANY($5)) ORDER BY s.user_id,CASE WHEN $8='relax' THEN s.pp ELSE s.score::float8 END DESC,s.id),placed AS (SELECT *,row_number() OVER(ORDER BY CASE WHEN $8='relax' THEN pp ELSE score::float8 END DESC,id) AS placement FROM best) SELECT * FROM placed WHERE placement<=100 OR user_id=$6 ORDER BY placement")
         .bind(id).bind(mode).bind(if leaderboard_type==2 {Some(requested_mods)} else {None})
-        .bind(if leaderboard_type==3 {Some(&player.country)}else{None}).bind(friend_filter).bind(player.id).bind(requested_mods & 536870912).fetch_all(&state.pool).await?;
+        .bind(if leaderboard_type==3 {Some(&player.country)}else{None}).bind(friend_filter).bind(player.id).bind(requested_mods & 536870912).bind(variant.as_str()).fetch_all(&state.pool).await?;
     let status = match map.get::<String, _>("status").as_str() {
         "ranked" => 2,
         "loved" => 5,

@@ -9,6 +9,8 @@ mod mail_delivery;
 #[cfg(test)]
 mod mail_queue_tests;
 mod maps;
+#[cfg(test)]
+mod relax_tests;
 mod score_recovery;
 mod score_scales;
 mod scores;
@@ -357,6 +359,10 @@ fn router(state: AppState) -> Router {
         .route("/api/v1/beatmaps/{id}/download", get(maps::download))
         .route("/api/v1/beatmaps/{id}/osu", get(maps::osu_file))
         .route(
+            "/api/v1/beatmaps/{id}/scores",
+            get(scores::beatmap_leaderboard),
+        )
+        .route(
             "/api/v1/scores",
             get(scores::list)
                 .post(scores::submit)
@@ -392,6 +398,10 @@ fn router(state: AppState) -> Router {
         .route("/api/v1/admin/beatmaps", get(maps::admin_list))
         .route("/api/v1/admin/beatmaps/{id}", patch(admin::update_map))
         .route("/api/v1/admin/scores/{id}", patch(admin::update_score))
+        .route(
+            "/api/v1/admin/scores/recalculate-relax",
+            post(scores::recalculate_relax).layer(DefaultBodyLimit::max(1024)),
+        )
         .route("/api/v1/admin/audit", get(admin::audit_events))
         .nest_service("/media", ServeDir::new(&state.media_root))
         .layer(DefaultBodyLimit::max(32 * 1024))

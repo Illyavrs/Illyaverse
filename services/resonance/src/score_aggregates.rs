@@ -1,23 +1,34 @@
 //! Profile score totals use a display scale; best-per-map selection uses the
 //! standardized scale. PP selection is independent of both score choices.
+use illya_domain::ScoreVariant;
 use sqlx::{PgPool, postgres::PgRow};
 
-pub(crate) async fn lifetime(pool: &PgPool, user: i64, mode: i16) -> Result<PgRow, sqlx::Error> {
+pub(crate) async fn lifetime(
+    pool: &PgPool,
+    user: i64,
+    mode: i16,
+    variant: ScoreVariant,
+) -> Result<PgRow, sqlx::Error> {
     sqlx::query(
         "SELECT count(*)::bigint plays,
          LEAST(COALESCE(sum(CASE WHEN client='stable' AND (mods & 536870912)=0 THEN score WHEN client IN ('stable','lazer') THEN classic_score END),0),9223372036854775807)::bigint total,
          count(*) FILTER(WHERE (client='stable' AND (mods & 536870912)=0) OR (client IN ('stable','lazer') AND classic_score IS NOT NULL))::bigint scaled_plays,
          COALESCE(avg(accuracy),0)::float8 accuracy,COALESCE(max(max_combo),0)::integer combo,
          COALESCE(sum(COALESCE((hit_counts->>'n300')::bigint,0)+COALESCE((hit_counts->>'n100')::bigint,0)+COALESCE((hit_counts->>'misses')::bigint,0)+CASE WHEN mode<>1 THEN COALESCE((hit_counts->>'n50')::bigint,0) ELSE 0 END+CASE WHEN mode=3 THEN COALESCE((hit_counts->>'geki')::bigint,0) ELSE 0 END+CASE WHEN mode IN(2,3) THEN COALESCE((hit_counts->>'katu')::bigint,0) ELSE 0 END),0)::bigint hits
-         FROM scores WHERE user_id=$1 AND mode=$2 AND verification='verified'",
-    ).bind(user).bind(mode).fetch_one(pool).await
+         FROM scores WHERE user_id=$1 AND mode=$2 AND score_variant=$3 AND verification='verified'",
+    ).bind(user).bind(mode).bind(variant.as_str()).fetch_one(pool).await
 }
 
-pub(crate) async fn ranking(pool: &PgPool, user: i64, mode: i16) -> Result<PgRow, sqlx::Error> {
+pub(crate) async fn ranking(
+    pool: &PgPool,
+    user: i64,
+    mode: i16,
+    variant: ScoreVariant,
+) -> Result<PgRow, sqlx::Error> {
     sqlx::query(
         "WITH eligible AS (
            SELECT s.* FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id
-           WHERE s.verification='verified' AND s.passed AND b.status='ranked' AND s.pp_eligible AND s.mode=$2
+           WHERE s.verification='verified' AND s.passed AND b.status='ranked' AND s.pp_eligible AND s.mode=$2 AND s.score_variant=$3
          ), best_pp AS (
            SELECT user_id,beatmap_id,max(pp) pp FROM eligible GROUP BY user_id,beatmap_id
          ), weighted AS (
@@ -37,7 +48,38 @@ pub(crate) async fn ranking(pool: &PgPool, user: i64, mode: i16) -> Result<PgRow
            FROM users u LEFT JOIN pp_totals t ON t.user_id=u.id LEFT JOIN score_totals s ON s.user_id=u.id
            WHERE NOT u.is_restricted
          ) SELECT * FROM placed WHERE id=$1",
-    ).bind(user).bind(mode).fetch_one(pool).await
+    ).bind(user).bind(mode).bind(variant.as_str()).fetch_one(pool).await
+}
+
+pub(crate) async fn ranking_page(
+    pool: &PgPool,
+    mode: i16,
+    variant: ScoreVariant,
+    country: Option<&str>,
+    friends: Option<Vec<i64>>,
+    offset: i64,
+    limit: i64,
+) -> Result<Vec<PgRow>, sqlx::Error> {
+    sqlx::query(
+        "WITH eligible AS (
+           SELECT s.user_id,s.beatmap_id,s.pp FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id
+           WHERE s.verification='verified' AND s.passed AND b.status='ranked' AND s.pp_eligible AND s.mode=$1 AND s.score_variant=$2
+         ), best_pp AS (
+           SELECT user_id,beatmap_id,max(pp) pp FROM eligible GROUP BY user_id,beatmap_id
+         ), weighted AS (
+           SELECT user_id,pp,row_number() OVER(PARTITION BY user_id ORDER BY pp DESC,beatmap_id) n FROM best_pp
+         ), pp_totals AS (
+           SELECT user_id,sum(pp*power(0.95,n-1)) pp FROM weighted GROUP BY user_id
+         ), placed AS (
+           SELECT u.id,u.country,COALESCE(t.pp,0)::float8 pp,
+           row_number() OVER(ORDER BY COALESCE(t.pp,0) DESC,u.id) global_rank,
+           row_number() OVER(PARTITION BY u.country ORDER BY COALESCE(t.pp,0) DESC,u.id) country_rank
+           FROM users u LEFT JOIN pp_totals t ON t.user_id=u.id WHERE NOT u.is_restricted
+         ), filtered AS (
+           SELECT *,count(*) OVER() total FROM placed
+           WHERE ($3::text IS NULL OR country=$3) AND ($4::bigint[] IS NULL OR id=ANY($4))
+         ) SELECT * FROM filtered ORDER BY global_rank LIMIT $6 OFFSET $5",
+    ).bind(mode).bind(variant.as_str()).bind(country).bind(friends).bind(offset).bind(limit).fetch_all(pool).await
 }
 
 #[cfg(test)]
@@ -115,44 +157,50 @@ mod tests {
             sqlx::query("INSERT INTO scores(user_id,beatmap_id,mode,score,accuracy,max_combo,pp,client,verification,standardised_score,classic_score,score_scale_status) VALUES($1,$2,0,$3,100,2,$4,$5,$6,$7,$8,CASE WHEN $5='stable' THEN 'legacy_estimated' WHEN $5='lazer' THEN 'native_reported' ELSE 'unavailable' END)")
                 .bind(user).bind(map).bind(raw).bind(pp).bind(client).bind(review).bind(standardised).bind(display).execute(&pool).await.unwrap();
         }
-        let row = lifetime(&pool, user, 0).await.unwrap();
+        let row = lifetime(&pool, user, 0, ScoreVariant::Vanilla)
+            .await
+            .unwrap();
         assert_eq!(row.get::<i64, _>("total"), 5_150_195);
         assert_eq!(row.get::<i64, _>("plays"), 4);
         assert_eq!(row.get::<i64, _>("scaled_plays"), 3);
-        let row = ranking(&pool, user, 0).await.unwrap();
+        let row = ranking(&pool, user, 0, ScoreVariant::Vanilla)
+            .await
+            .unwrap();
         assert_eq!(row.get::<i64, _>("ranked_score"), 80_104);
         assert_eq!(row.get::<f64, _>("pp"), 300.0);
         let v2: i64 = sqlx::query_scalar("INSERT INTO scores(user_id,beatmap_id,mode,score,accuracy,max_combo,mods,pp,client,verification,standardised_score,classic_score,score_scale_status) VALUES($1,$2,0,1000000,100,2,536870912,10,'stable','verified',1000000,100130,'legacy_scorev2') RETURNING id")
             .bind(user).bind(map).fetch_one(&pool).await.unwrap();
         assert_eq!(
-            lifetime(&pool, user, 0)
+            lifetime(&pool, user, 0, ScoreVariant::Vanilla)
                 .await
                 .unwrap()
                 .get::<i64, _>("total"),
             5_250_325
         );
         assert_eq!(
-            ranking(&pool, user, 0)
+            ranking(&pool, user, 0, ScoreVariant::Vanilla)
                 .await
                 .unwrap()
                 .get::<i64, _>("ranked_score"),
             100_130
         );
         sqlx::query("UPDATE scores SET standardised_score=NULL,classic_score=NULL,score_scale_status='unavailable' WHERE id=$1").bind(v2).execute(&pool).await.unwrap();
-        let row = lifetime(&pool, user, 0).await.unwrap();
+        let row = lifetime(&pool, user, 0, ScoreVariant::Vanilla)
+            .await
+            .unwrap();
         assert_eq!(row.get::<i64, _>("total"), 5_150_195);
         assert_eq!(row.get::<i64, _>("scaled_plays"), 3);
         // Missing conversion context must not leak a raw score into this total.
         sqlx::query("UPDATE scores SET standardised_score=NULL,classic_score=NULL,score_scale_status='unavailable' WHERE client='lazer'").execute(&pool).await.unwrap();
         assert_eq!(
-            ranking(&pool, user, 0)
+            ranking(&pool, user, 0, ScoreVariant::Vanilla)
                 .await
                 .unwrap()
                 .get::<i64, _>("ranked_score"),
             20_026
         );
         assert_eq!(
-            lifetime(&pool, user, 0)
+            lifetime(&pool, user, 0, ScoreVariant::Vanilla)
                 .await
                 .unwrap()
                 .get::<i64, _>("total"),

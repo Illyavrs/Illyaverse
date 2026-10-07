@@ -1,4 +1,5 @@
 export type Page<T> = { items: T[]; total: number; page: number; page_size: number };
+export type ScoreVariant = 'vanilla' | 'relax';
 export type User = {
   id: number;
   username: string;
@@ -12,6 +13,8 @@ export type User = {
   joined_at: string;
   pp: number;
   play_count: number;
+  statistics?: { mode: number; score_variant: ScoreVariant; pp: number; rank: number | null;
+    country_rank: number | null; play_count: number; accuracy: number };
   email?: string;
   email_verified?: boolean;
   is_restricted?: boolean;
@@ -50,6 +53,7 @@ export type Score = {
   title: string;
   version: string;
   mode: number;
+  score_variant?: ScoreVariant;
   score: number;
   standardised_score?: number | null;
   standardised_without_mods?: number | null;

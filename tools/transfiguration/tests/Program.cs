@@ -119,7 +119,7 @@ internal static class Program
             require(property(endpoints, "APIClientID") as string == "illyaverse-local-client", "OAuth client identity is fixed");
 
             var guard = bridge.GetType("Illyaverse.Transfiguration.Guard", true)!;
-            require(((System.Collections.ICollection)guard.GetField("patched", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!).Count == 17, "installed guard registry includes every exact destination and storage contract");
+            require(((System.Collections.ICollection)guard.GetField("patched", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!).Count == 25, "installed guard registry includes every exact destination, storage and RX contract");
             var options = Activator.CreateInstance(framework.GetType("osu.Framework.HostOptions", true)!)!;
             options.GetType().GetProperty("PortableInstallation")!.SetValue(options, true);
             object?[] hostArgs = ["osu", options];
@@ -174,6 +174,7 @@ internal static class Program
             var received = await allowedSocket.ReceiveAsync(bytes, CancellationToken.None);
             require(Encoding.UTF8.GetString(bytes, 0, received.Count) == "fixture", "allowed plain headless websocket succeeds");
             require(forbiddenHits == 0 && fixtureHits == 3, "only the fixed local fixture received traffic");
+            checks += RelaxProof.Run(bridge);
             Console.WriteLine($"Native contracts: osu.Game {game.GetName().Version}; osu.Framework {framework.GetName().Version}");
             Console.WriteLine($"Native directory: {nativeRoot}; runtime {Environment.Version}");
             foreach (var assembly in new[] { game, framework, AssemblyLoadContext.Default.Assemblies.Single(a => a.GetName().Name == "osu!"), typeof(SocketsHttpHandler).Assembly })

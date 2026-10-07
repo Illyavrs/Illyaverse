@@ -48,6 +48,8 @@ docker compose up -d --build --wait
 
 帳號統一由網站註冊；stable／lazer 的遊戲內註冊入口會提示網站網址，遊戲只提供登入。
 
+Relax（RX）支援 osu!、taiko、catch，成績、pp、排名與個人統計各自與 Normal 分開；mania 不支援 RX。網站可切換模式與 Normal／RX，stable／lazer 協定也有對應分區。RX 保留原始分數與 replay，目前不提供可比較的標準化／Classic 總分。資格、歷史重算與原生驗證範圍見 [RX 模式](docs/relax.md)。
+
 ## 本機開發與貢獻
 
 Node.js 22 以上與 Rust 1.96 以上：

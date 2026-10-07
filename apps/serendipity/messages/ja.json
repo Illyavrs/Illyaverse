@@ -114,7 +114,11 @@
       "scroll_speed": "スクロール速度",
       "only_fade_approach_circles": "アプローチサークルのみ消す",
       "no_slider_head_accuracy": "スライダーヘッド精度を無視"
-    }
+    },
+    "scoreVariant": "スコア区分",
+    "vanilla": "通常",
+    "relax": "Relax (RX)",
+    "relaxUnsupported": "mania では RX を利用できません。"
   },
   "auth": {
     "loginTitle": "おかえりなさい。",
@@ -195,7 +199,10 @@
     "importSuccess": "取得しました",
     "source": "ソース",
     "difficulty": "難易度",
-    "back": "マップ一覧に戻る"
+    "back": "マップ一覧に戻る",
+    "leaderboard": "譜面ランキング",
+    "relaxBoard": "RX は pp 順に、各プレイヤーの最高スコアを1件表示します。",
+    "normalBoard": "換算可能な標準化スコア順に、各プレイヤーの最高スコアを1件表示します。"
   },
   "rankings": {
     "title": "ランキング",
@@ -208,7 +215,7 @@
     "playCount": "プレイ回数",
     "emptyTitle": "最初の章は、あなたから。",
     "emptyDescription": "承認されたスコアがランキングを作ります。遊び、上達して、記録を残そう。",
-    "modeNotice": "承認されたスコアのみが対象です。"
+    "modeNotice": "pp・順位・統計は、ルールセットと通常／RX の区分ごとに集計されます。"
   },
   "profile": {
     "scoreReplayIncomplete": "リプレイの記録が中断されたため、一部のフレームが欠けている可能性があります。",
@@ -235,7 +242,8 @@
     "scoreNativeReported": "lazer から送信されたスコアです。Classic 表示への換算には、サーバーが譜面から算出した判定数を使用します。",
     "scoreLegacyEstimated": "stable の成績概要からの推定です。判定の順序は復元できないため、正確な lazer プレイのスコアとは異なります。",
     "scoreLegacyScoreV2": "stable の ScoreV2 スコアを保持し、Classic 表示値に換算します。",
-    "scoreScaleUnavailable": "換算に必要な情報が不足しているため、クライアント間のスコア比較には含まれません。"
+    "scoreScaleUnavailable": "換算に必要な情報が不足しているため、クライアント間のスコア比較には含まれません。",
+    "globalRank": "世界ランキング"
   },
   "settings": {
     "title": "あなたらしい、居場所に。",
@@ -336,7 +344,7 @@
     "tlsTitle": "DNS と HTTPS を確認",
     "tlsText": "現在のローカルテストは illya.test を使います。管理者がガイドに沿ってローカル DNS または hosts と、信頼できるテスト証明書を設定する必要があります。本番環境で公開 DNS と有効な HTTPS が使える場合、プレイヤーの hosts 変更は不要です。",
     "lazerTitle": "インストール済みの公式 lazer を使う",
-    "lazerText": "Kaleidoscope は対応する公式 lazer に小さな Transfiguration 接続ブリッジを一時的に読み込みます。クライアント全体の再ビルドは不要です。公式の更新が対応バージョンを超えた場合、対応するブリッジの更新まで起動を停止します。",
+    "lazerText": "Kaleidoscope は対応する公式 lazer に小さな Transfiguration 接続ブリッジを一時的に読み込みます。クライアント全体の再ビルドは不要です。公式の更新が対応バージョンを超えた場合は起動を停止します。対応版を待ち、ランチャーとブリッジのパッケージを一緒に更新してください。",
     "compatibilityTitle": "現在の互換性",
     "compatibilityText": "ランチャーのコア、接続ブリッジ、サーバープロトコルは自動テスト済みです。実際のゲーム画面の起動、stable・lazer の完全なプレイ、マルチプレイ、リプレイは、引き続き実クライアントでの検証が必要です。現在は実験的なテストです。",
     "restoreTitle": "公式サーバーに戻る",

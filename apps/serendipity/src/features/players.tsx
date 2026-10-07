@@ -20,14 +20,15 @@ import { fetcher } from '@/lib/api';
 import type { Leader, Page, User, Score } from '@/lib/types';
 import { ScoreTable } from './scores';
 import { RelationshipActions } from './social';
+import { ScoreVariantControl, useScoreSelection } from '@/components/score-selection';
 export function RankingsPage() {
   const t = useTranslations('rankings');
   const c = useTranslations('common');
   const f = useFormatter();
-  const [mode, setMode] = useState('0');
+  const { mode, variant, select, href } = useScoreSelection();
   const [country, setCountry] = useState('');
   const [page, setPage] = useState(1);
-  const query = new URLSearchParams({ mode, page: String(page), page_size: '24' });
+  const query = new URLSearchParams({ mode, variant, page: String(page), page_size: '24' });
   if (country.length === 2) query.set('country', country);
   const { data, error, isLoading, mutate } = useSWR<Page<Leader>>(`/leaderboard?${query}`, fetcher);
   return (
@@ -37,10 +38,11 @@ export function RankingsPage() {
         <GameMode
           value={mode}
           onChange={(v) => {
-            setMode(v);
+            select(v, variant);
             setPage(1);
           }}
         />
+        <ScoreVariantControl mode={mode} value={variant} onChange={(v) => { select(mode, v); setPage(1); }} />
         <input
           className="native-select country-input"
           placeholder="TW"
@@ -54,6 +56,7 @@ export function RankingsPage() {
         />
         <p className="hint">{t('modeNotice')}</p>
       </div>
+      {mode === '3' && <p className="hint">{c('relaxUnsupported')}</p>}
       <section className="glass content-panel">
         {isLoading ? (
           <Loading />
@@ -79,7 +82,7 @@ export function RankingsPage() {
                   <tr key={player.id}>
                     <td className="rank-cell">#{player.rank}</td>
                     <td>
-                      <Link href={`/players/${player.id}`} className="player-cell">
+                      <Link href={href(`/players/${player.id}`)} className="player-cell">
                         <Avatar name={player.username} url={player.avatar_url} />
                         {player.username}
                       </Link>
@@ -106,11 +109,10 @@ export function PlayerPage({ id }: { id: number }) {
   const c = useTranslations('common');
   const f = useFormatter();
   const { user } = useSession();
-  const [mode, setMode] = useState('all');
+  const { mode, variant, select, selection } = useScoreSelection();
   const [page, setPage] = useState(1);
-  const { data: player, error, isLoading, mutate } = useSWR<User>(`/users/${id}`, fetcher);
-  const query = new URLSearchParams({ user_id: String(id), page: String(page), page_size: '24' });
-  if (mode !== 'all') query.set('mode', mode);
+  const { data: player, error, isLoading, mutate } = useSWR<User>(`/users/${id}?${selection}`, fetcher);
+  const query = new URLSearchParams({ user_id: String(id), mode, variant, page: String(page), page_size: '24' });
   const {
     data: scores,
     error: scoreError,
@@ -161,6 +163,11 @@ export function PlayerPage({ id }: { id: number }) {
               )}
             </section>
             <RelationshipActions target={id} />
+            <div className="filter-bar glass">
+              <GameMode value={mode} onChange={(v) => { select(v, variant); setPage(1); }} />
+              <ScoreVariantControl mode={mode} value={variant} onChange={(v) => { select(mode, v); setPage(1); }} />
+              {mode === '3' && <p className="hint">{c('relaxUnsupported')}</p>}
+            </div>
             <div className="profile-layout">
               <aside className="profile-about glass">
                 <h2>{t('about')}</h2>
@@ -174,19 +181,16 @@ export function PlayerPage({ id }: { id: number }) {
                     <dt>{c('plays')}</dt>
                     <dd>{f.number(player.play_count)}</dd>
                   </div>
+                  {player.statistics && <>
+                    <div><dt>{t('globalRank')}</dt><dd>{player.statistics.rank ? `#${f.number(player.statistics.rank)}` : '—'}</dd></div>
+                    <div><dt>{c('accuracy')}</dt><dd>{f.number(player.statistics.accuracy, { maximumFractionDigits: 2 })}%</dd></div>
+                  </>}
                 </dl>
               </aside>
               <section className="content-panel glass">
                 <header className="section-heading profile-scores-header">
                   <h2>{t('scores')}</h2>
-                  <GameMode
-                    value={mode}
-                    onChange={(v) => {
-                      setMode(v);
-                      setPage(1);
-                    }}
-                    all
-                  />
+                  <Badge variant="secondary">{c(variant)}</Badge>
                 </header>
                 {scoreError ? (
                   <LoadError retry={() => reloadScores()} />

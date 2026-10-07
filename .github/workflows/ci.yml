@@ -58,6 +58,12 @@ jobs:
       - run: cargo test -p resonance credential_race_tests --locked -- --ignored
         env:
           ILLYA_TEST_DATABASE_URL: postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci
+      - run: cargo test -p sanctuary relax_tests --locked -- --ignored
+        env:
+          ILLYA_TEST_DATABASE_URL: postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci
+      - run: cargo test -p resonance relax_partitions_native_profiles_boards_rankings_and_replays --locked -- --ignored
+        env:
+          ILLYA_TEST_DATABASE_URL: postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
   serendipity:
@@ -94,10 +100,23 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
       - uses: Swatinem/rust-cache@v2
       - run: cargo test -p kaleidoscope --locked
       - run: ./tools/kaleidoscope/tests/runtime-host.ps1
         shell: pwsh
+      - run: npm ci
+      - run: npm run build --workspace @illyaverse/kaleidoscope
+      - run: cargo build --manifest-path apps/kaleidoscope/src-tauri/Cargo.toml --release --locked --features custom-protocol
+      - name: Verify embedded production interface without opening a window
+        shell: pwsh
+        run: |
+          $launcher = Join-Path $pwd 'apps/kaleidoscope/src-tauri/target/release/kaleidoscope-desktop.exe'
+          $proof = Start-Process -FilePath $launcher -ArgumentList '--verify-embedded-interface' -WindowStyle Hidden -Wait -PassThru
+          if ($proof.ExitCode -ne 0) { throw 'Embedded production interface proof failed.' }
 
   containers:
     runs-on: ubuntu-latest

@@ -46,6 +46,7 @@ internal static class Guard
             verifyContracts();
             installNetworkGuards();
             installClientGuards();
+            installRelaxGuards();
             foreach (var method in patched)
                 if (Harmony.GetPatchInfo(method)?.Owners.Contains(owner) != true) fail("patch_not_installed");
             LaunchState.Active = true;
@@ -167,6 +168,23 @@ internal static class Guard
         _ = method(type(framework, "osu.Framework.Platform.DesktopGameHost"), "GetDefaultGameStorage");
         _ = method(type(desktop, "osu.Desktop.OsuGameDesktop"), "GetStorageForStableInstall");
         _ = typeof(osu.Game.Rulesets.Transfiguration.BridgeRuleset).GetMethods();
+        RelaxContext.VerifyContracts();
+    }
+
+    private static void installRelaxGuards()
+    {
+        var api = type(game, "osu.Game.Online.API.APIAccess");
+        patch(api.GetConstructor([type(game, "osu.Game.OsuGameBase"), type(game, "osu.Game.Configuration.OsuConfigManager"), type(game, "osu.Game.Online.EndpointConfiguration"), typeof(string)])!, "CapturePrefix", typeof(RelaxContext));
+        var request = type(game, "osu.Game.Online.API.APIRequest");
+        patch(request.GetConstructor(BindingFlags.Instance | BindingFlags.NonPublic, null, Type.EmptyTypes, null)!, "RequestConstructorPrefix", typeof(RelaxContext));
+        patch(request.GetProperty("Uri", BindingFlags.Instance | BindingFlags.NonPublic)!.GetMethod!, "UriPostfix", typeof(RelaxContext), postfix: true);
+        var scores = type(game, "osu.Game.Online.API.Requests.GetScoresRequest");
+        patch(scores.GetConstructors().Single(), "ScoresConstructorPrefix", typeof(RelaxContext));
+        patch(method(scores, "Equals", scores), "ScoresEqualsPrefix", typeof(RelaxContext));
+        var statistics = type(game, "osu.Game.Online.LocalUserStatisticsProvider");
+        patch(statistics.GetConstructor(Type.EmptyTypes)!, "StatisticsConstructorPostfix", typeof(RelaxContext), postfix: true);
+        patch(method(statistics, "GetStatisticsFor", type(game, "osu.Game.Rulesets.RulesetInfo")), "StatisticsGetPrefix", typeof(RelaxContext));
+        patch(method(statistics, "RefetchStatistics", type(game, "osu.Game.Rulesets.RulesetInfo"), typeof(Action<>).MakeGenericType(type(game, "osu.Game.Online.UserStatisticsUpdate"))), "StatisticsRefetchPrefix", typeof(RelaxContext));
     }
 
     private static void requireAssembly(Assembly assembly, string version, string sha256)

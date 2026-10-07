@@ -114,7 +114,11 @@
       "scroll_speed": "捲動速度",
       "only_fade_approach_circles": "僅淡出接近圈",
       "no_slider_head_accuracy": "忽略滑條起點準確率"
-    }
+    },
+    "scoreVariant": "成績分區",
+    "vanilla": "一般",
+    "relax": "Relax (RX)",
+    "relaxUnsupported": "mania 不支援 RX。"
   },
   "auth": {
     "loginTitle": "歡迎回來。",
@@ -195,7 +199,10 @@
     "importSuccess": "圖譜已匯入",
     "source": "來源",
     "difficulty": "難度",
-    "back": "返回圖譜列表"
+    "back": "返回圖譜列表",
+    "leaderboard": "譜面排行榜",
+    "relaxBoard": "RX 依 pp 排序，每位玩家保留一筆最佳成績。",
+    "normalBoard": "依可用的標準化分數排序，每位玩家保留一筆最佳成績。"
   },
   "rankings": {
     "title": "排行榜",
@@ -208,7 +215,7 @@
     "playCount": "遊玩次數",
     "emptyTitle": "第一個章節，由你開始。",
     "emptyDescription": "經審核的排名成績會出現在這裡。遊玩、進步，留下屬於你的紀錄。",
-    "modeNotice": "排行榜只計入已核准的成績。"
+    "modeNotice": "pp、排名與統計依遊戲模式和一般／RX 分區計算。"
   },
   "profile": {
     "scoreReplayIncomplete": "Replay 擷取曾中斷，可能缺少部分影格。",
@@ -235,7 +242,8 @@
     "scoreNativeReported": "lazer 提交的標準化分數；Classic 顯示換算使用伺服器從譜面計算的判定數。",
     "scoreLegacyEstimated": "由 stable 成績摘要估算。無法重建每次判定的先後順序，因此不等同於精確的 lazer 遊玩分數。",
     "scoreLegacyScoreV2": "保留 stable ScoreV2 分數，再換算 Classic 顯示分數。",
-    "scoreScaleUnavailable": "這筆成績缺少可用的換算資訊，不會參與跨客戶端的分數比較。"
+    "scoreScaleUnavailable": "這筆成績缺少可用的換算資訊，不會參與跨客戶端的分數比較。",
+    "globalRank": "全球排名"
   },
   "settings": {
     "title": "讓這裡，成為你的樣子。",
@@ -336,7 +344,7 @@
     "tlsTitle": "確認網域與 HTTPS",
     "tlsText": "目前本機測試使用 illya.test，需要本機 DNS／hosts 對應與可信任的測試憑證，由管理員依本機測試指南設定。正式部署使用公開 DNS 與有效 HTTPS 憑證時，一般玩家不需修改 hosts。",
     "lazerTitle": "使用已安裝的官方 lazer",
-    "lazerText": "Kaleidoscope 會為支援的官方 lazer 暫時載入小型 Transfiguration 連線橋接，不必重新建置整個客戶端。若官方更新超出支援版本，啟動器會停止啟動，等待對應的橋接更新。",
+    "lazerText": "Kaleidoscope 會為支援的官方 lazer 暫時載入小型 Transfiguration 連線橋接，不必重新建置整個客戶端。若官方更新超出支援版本，啟動器會停止啟動；請等待並一起更新相容的啟動器與橋接套件。",
     "compatibilityTitle": "目前相容性",
     "compatibilityText": "啟動器核心、連線橋接與伺服器協定已有自動測試。實際遊戲畫面的啟動、完整 stable／lazer 遊玩、多人遊戲與 Replay 仍待原生客戶端驗證，目前屬於實驗性測試。",
     "restoreTitle": "回到官方伺服器",

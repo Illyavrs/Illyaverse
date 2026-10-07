@@ -21,7 +21,7 @@ Unknown fields, duplicate or incompatible mods, wrong setting types and unsuppor
 
 ## Ranking policy
 
-Submitted scores remain pending until moderator review. In addition, Illyaverse excludes DA, RX and AP from ranked pp via the server-owned `pp_eligible` column. Their calculated pp can still be displayed as a reference value. Review does not override this mod policy. Legacy autoplay, relax and autopilot scores retain their existing exclusion. This is Illyaverse's current policy, not a claim about official osu! ranking eligibility.
+Submitted scores remain pending until moderator review. Illyaverse excludes DA, AP and legacy autoplay from ranked pp via the server-owned `pp_eligible` column. Valid RX scores in osu!/taiko/catch belong to a separate `relax` partition with their own PP, rankings and statistics; mania RX is rejected. Review does not override other mod exclusions. Historical RX eligibility is restored only through explicit audited recalculation. See [RX policy and API](relax.md). These are Illyaverse policies, not official osu! ranking eligibility.
 
 The server validates that the legacy bit projection matches the structured mods. Public web score submissions cannot impersonate native lazer ingestion by supplying structured mods. Native beatmap mod filters compare the full acronym set for stored structured mods, so DA is not mistaken for NM because both have a zero legacy projection. Filter acronyms do not constrain custom parameter values.
 

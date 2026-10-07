@@ -7,6 +7,12 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <UseAppHost>false</UseAppHost>
+    <NativeRoot Condition="'$(NativeRoot)' == ''">$(LOCALAPPDATA)/osulazer/current</NativeRoot>
   </PropertyGroup>
   <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /></ItemGroup>
+  <ItemGroup>
+    <Reference Include="osu.Game"><HintPath>$(NativeRoot)/osu.Game.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="osu.Framework"><HintPath>$(NativeRoot)/osu.Framework.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Realm"><HintPath>$(NativeRoot)/Realm.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
 </Project>

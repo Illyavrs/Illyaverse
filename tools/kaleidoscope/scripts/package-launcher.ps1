@@ -29,11 +29,14 @@ try {
     if ($bridgeManifest.protocol -ne 1 -or $bridgeManifest.fixture -ne $false -or $bridgeManifest.endpoint -ne 'https://illya.test' -or $bridgeManifest.sha256 -ne $env:ILLYA_BRIDGE_SHA256) { throw 'Production bridge manifest validation failed.' }
     & npm run build --workspace '@illyaverse/kaleidoscope'
     Assert-Build 'Launcher interface build'
-    & cargo build --manifest-path apps/kaleidoscope/src-tauri/Cargo.toml --release --locked
+    & cargo build --manifest-path apps/kaleidoscope/src-tauri/Cargo.toml --release --locked --features custom-protocol
     Assert-Build 'Native launcher build'
-    Copy-Item -LiteralPath 'apps/kaleidoscope/src-tauri/target/release/kaleidoscope-desktop.exe' -Destination (Join-Path $output 'Kaleidoscope.exe')
+    $launcher = Join-Path $repo 'apps/kaleidoscope/src-tauri/target/release/kaleidoscope-desktop.exe'
+    $interfaceProof = Start-Process -FilePath $launcher -ArgumentList '--verify-embedded-interface' -WindowStyle Hidden -Wait -PassThru
+    if ($interfaceProof.ExitCode -ne 0) { throw 'Embedded production interface verification failed; no launcher is ready to distribute.' }
+    Copy-Item -LiteralPath $launcher -Destination (Join-Path $output 'Kaleidoscope.exe')
     Copy-Item -LiteralPath $bridge -Destination (Join-Path $output 'osu.Game.Rulesets.Transfiguration.dll')
-    $manifest = @{ version = 1; server = 'https://illya.test'; bridge_sha256 = $env:ILLYA_BRIDGE_SHA256; native_gui_verified = $false }
+    $manifest = @{ version = 1; server = 'https://illya.test'; bridge_sha256 = $env:ILLYA_BRIDGE_SHA256; embedded_interface_verified = $true; native_gui_verified = $false }
     $manifest | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'package.json') -Encoding utf8
     if (Test-Path -LiteralPath 'tools/transfiguration/THIRD-PARTY-NOTICES.md') {
         Copy-Item -LiteralPath 'tools/transfiguration/THIRD-PARTY-NOTICES.md' -Destination (Join-Path $output 'THIRD-PARTY-NOTICES.md')
@@ -48,7 +51,8 @@ Run Kaleidoscope.exe, choose the installed stable/lazer osu!.exe, then launch.
 This build is fixed to https://illya.test for local development. It still needs
 the documented local DNS/CA setup; public releases use real DNS and HTTPS.
 Lazer updates outside the tested build stop before Main until a compatible
-small bridge is published. Never manually copy this DLL into official rulesets.
+launcher and bridge package is published. Update the complete package together;
+never manually copy this DLL into official rulesets.
 Close the game to remove the temporary private-profile DLL. The independent
 guardian survives closing this window. After an interrupted guardian or power
 loss, reopen the launcher and use cleanup. Foreign or changed files are kept.

@@ -1,6 +1,8 @@
 //! Shared, transport-independent rules for Illyaverse.
 pub mod score_math;
 pub mod score_mods;
+pub mod score_variant;
+pub use score_variant::ScoreVariant;
 use serde::{Deserialize, Serialize};
 
 pub const PERMISSIONS: &[&str] = &[

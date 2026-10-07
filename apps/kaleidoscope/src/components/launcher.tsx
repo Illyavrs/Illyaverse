@@ -19,7 +19,7 @@ function ClientRow({ client, snapshot, disabled, run, choose }: {
   const blocked = client === 'lazer' && (snapshot.lazer.compatibility !== 'supported'
     || (snapshot.pluginPresent && !snapshot.lazer.running));
   const hint = client === 'stable' ? '以 devserver 參數連到 Illyaverse。'
-    : snapshot.lazer.compatibility === 'unsupported' ? '此版本暫不支援，請等待連線 ruleset 更新。'
+    : snapshot.lazer.compatibility === 'unsupported' ? '此版本暫不支援，請等待啟動器與連線 ruleset 配套更新。'
       : snapshot.lazer.compatibility === 'unknown' && state.path ? '正在確認此版本的相容性。'
         : '啟動前放入連線 ruleset，關閉後自動清理。';
 

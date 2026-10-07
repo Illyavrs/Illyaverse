@@ -19,7 +19,7 @@ function Invoke-ProofCommand([string]$Command, [string[]]$CommandArgs) {
 & (Join-Path $proofRoot 'build.ps1') -NativeRoot $proofNative
 Invoke-ProofCommand 'dotnet' @('build',(Join-Path $proofRoot 'Transfiguration.csproj'),'-c','Fixture','-p:Fixture=true',"-p:NativeRoot=$proofNative",'--nologo')
 $proofRuntime = Join-Path $proofOutput 'runtime-10.0.12'
-Invoke-ProofCommand 'dotnet' @('publish',(Join-Path $proofRoot 'tests/Proof.csproj'),'-c','Release','-r','win-x64','--self-contained','true','-p:UseAppHost=true','-p:RuntimeFrameworkVersion=10.0.12','-o',$proofRuntime,'--nologo')
+Invoke-ProofCommand 'dotnet' @('publish',(Join-Path $proofRoot 'tests/Proof.csproj'),'-c','Release','-r','win-x64','--self-contained','true','-p:UseAppHost=true','-p:RuntimeFrameworkVersion=10.0.12',"-p:NativeRoot=$proofNative",'-o',$proofRuntime,'--nologo')
 $proofExe = Join-Path $proofRuntime 'Transfiguration.Proof.exe'
 $proofFixture = Join-Path $proofRoot 'bin/Fixture/net10.0/osu.Game.Rulesets.Transfiguration.dll'
 $proofProduction = Join-Path $proofRoot 'artifacts/osu.Game.Rulesets.Transfiguration.dll'
