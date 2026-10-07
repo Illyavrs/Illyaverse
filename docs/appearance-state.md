@@ -20,6 +20,14 @@ The detector ran once on the changed targets and reported 83 advisories, with no
 
 The fresh full interface reviewer returned `disposition: ship`, with no material in-scope fixes. It checked the five required appearance captures and incumbent contracts; its verdict does not cover other site surfaces or the later functional cross-profile rerun. The unavailable named role was substituted by a fresh generic agent using the supplied role contract; see [verdict](../.impeccable/review/appearance-state-verdict.md).
 
+A separate fresh generic documenter verified the five image and seven production-source hashes, compared the finished extension with the incumbent authority, and preserved `DESIGN.md` and its sidecar. Its [comparison](../.impeccable/review/appearance-state-documentation.md) reports the legacy contrast-threshold/focus descriptions and existing border cascade without promoting them into new rules or repairing system artifacts outside this scope.
+
+## Local deployment
+
+2026-10-08 Asia/Taipei: source commit `33750f4` was deployed by replacing only each stack's Serendipity container with the verified web image. Main and client-test PostgreSQL, Sanctuary, Resonance and Caddy container identities were checked and retained. Schema remains `0019`, with no failed migration. Before/after account and complete beatmap fingerprints match, as do user/map/score counts: 2/0/0 in main and 2/44/0 in client-test. No database migration or copy of compiler caches was needed.
+
+Both new web containers match the pinned image and all ten stack containers are healthy. Read-only landing/settings/player GETs returned 200 on localhost and CA-verified `https://illya.test`; public profile defaults and privacy also passed. TLS used the existing CA file and request-local DNS override without changing hosts or trust. Raw update/runtime evidence is ignored under `data-appearance-state/`. This record was written after the image build and is repository evidence, not a claim about later prose bundled in that image.
+
 ## Native submission boundary
 
 A separate bounded read-only inspection of the newly deployed client-test gateway/API logs found zero retained diagnostic events during 2026-10-07 19:21:48–19:27:10 UTC. Both logging drivers were enabled. This does not prove that no successful request occurred: response traces default to DEBUG, while deployment logging is INFO.
