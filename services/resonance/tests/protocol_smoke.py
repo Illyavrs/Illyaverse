@@ -553,6 +553,7 @@ def run():
     body, headers = multipart([], [("file", "protocol.osz", archive)])
     uploaded = admin.json("POST", "/api/v1/beatmaps/upload", body, headers)["items"]
     assert len(uploaded) == 2
+    assert all(item["status"] == "pending" for item in uploaded), "New local package was not pending"
     retry_items = admin.json("POST", "/api/v1/beatmaps/upload", body, headers)["items"]
     assert {(item["id"], item["native_id"], item["native_set_id"], item["local_package_id"]) for item in retry_items} == {(item["id"], item["native_id"], item["native_set_id"], item["local_package_id"]) for item in uploaded}
     beatmap = next(item for item in uploaded if item["md5"] == hashlib.md5(fixture).hexdigest())
@@ -680,6 +681,7 @@ def run():
     assert any(i == 15 and p == spectator_bundle for i, p in packets(gateway.request("POST", "/", packet(4), admin_bancho)[0]))
     gateway.request("POST", "/", packet(17), admin_bancho)
     assert any(i == 14 for i, _ in packets(gateway.request("POST", "/", packet(4), player_bancho)[0]))
+    pending_statistics_before = gateway.json("GET", "/api/v2/me/osu", headers=bearer)["statistics"]
     token_fields = urllib.parse.urlencode({"beatmap_hash": map_hash, "version_hash": "independent-smoke-fixture", "ruleset_id": 0}).encode()
     token = gateway.json("POST", f"/api/v2/beatmaps/{map_id}/solo/scores", token_fields, dict(bearer, **{"Content-Type": "application/x-www-form-urlencoded"}))["id"]
     score = {"ruleset_id": 0, "passed": True, "total_score": 1000000, "total_score_without_mods": 1000000, "accuracy": 1, "max_combo": 2, "rank": "X", "mods": [], "statistics": {"great": 2}, "maximum_statistics": {"great": 2}, "pauses": [], "user_id": 9999, "beatmap_id": 9999, "score_variant": "relax"}
@@ -711,6 +713,7 @@ def run():
     fields = [("score", encrypt(envelope)), ("iv", base64.b64encode(iv).decode()), ("osuver", version), ("pass", digest(player_password)), ("bmk", map_hash), ("sbk", ""), ("s", encrypt(client_hash))]
     body, headers = multipart(fields, [("score", "replay.osr", frames)])
     stable = gateway.request("POST", "/web/osu-submit-modular-selector.php", body, headers)[0].decode()
+    assert stable.startswith(f"beatmapId:{map_id}|beatmapSetId:{set_id}|"), "Pending success chart lost canonical map identities"
     stable_id = int(re.search(r"onlineScoreId:(\d+)", stable).group(1))
     alternate_body, alternate_headers = multipart(fields, [("score", "replay.osr", frames)], name_attribute="Name", filename_attribute="FileName")
     again = gateway.request("POST", "/web/osu-submit-modular-selector.php", alternate_body, alternate_headers)[0].decode()
@@ -731,7 +734,11 @@ def run():
     gateway.request("POST", "/web/osu-submit-modular-selector.php", unauthorized_body, unauthorized_headers, expected=401)
     leaderboard_query = urllib.parse.urlencode({"u": player_name, "h": digest(player_password), "c": map_hash, "m": 0})
     score_line = re.compile(rf"^{stable_id}\|{re.escape(player_name)}\|", re.MULTILINE)
-    assert not score_line.search(gateway.request("GET", "/web/osu-osz2-getscores.php?" + leaderboard_query)[0].decode()), "Pending score leaked to ranking"
+    pending_board = gateway.request("GET", "/web/osu-osz2-getscores.php?" + leaderboard_query)[0].decode()
+    assert pending_board.startswith(f"0|false|{map_id}|{set_id}|"), "Known pending leaderboard lost canonical map identities"
+    assert not score_line.search(pending_board), "Pending score leaked to ranking"
+    pending_statistics_after = gateway.json("GET", "/api/v2/me/osu", headers=bearer)["statistics"]
+    assert all(pending_statistics_after[key] == pending_statistics_before[key] for key in ("ranked_score", "pp")), "Pending submissions changed ranked totals"
     admin.json("PATCH", f"/api/v1/admin/beatmaps/{map_pk}", {"status": "ranked"})
     admin.json("PATCH", f"/api/v1/admin/scores/{stable_id}", {"verification": "verified"})
     assert score_line.search(gateway.request("GET", "/web/osu-osz2-getscores.php?" + leaderboard_query)[0].decode())
