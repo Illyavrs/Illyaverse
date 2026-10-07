@@ -3,7 +3,31 @@
 	skip_install_trust
 }
 
+# Local diagnostics intentionally omit headers, query strings and bodies.
+# Stable authentication may place password hashes in legacy URL queries.
+(client_test_diagnostics) {
+	log {
+		output file /tmp/illyaverse-client-requests.jsonl {
+			mode 0600
+			roll_size 1MiB
+			roll_keep 2
+		}
+		format filter {
+			wrap json
+			fields {
+				request delete
+				resp_headers delete
+				user_id delete
+			}
+		}
+	}
+	log_append method {http.request.method}
+	log_append host {http.request.host}
+	log_append path {http.request.uri.path}
+}
+
 (client_test_website) {
+	import client_test_diagnostics
 	tls internal
 	encode zstd gzip
 	request_body {
@@ -27,6 +51,7 @@ illya.test, osu.illya.test {
 }
 
 c.illya.test, ce.illya.test, c4.illya.test, api.illya.test, spectator.illya.test, bss.illya.test, a.illya.test, b.illya.test {
+	import client_test_diagnostics
 	tls internal
 	encode zstd gzip
 	request_body {

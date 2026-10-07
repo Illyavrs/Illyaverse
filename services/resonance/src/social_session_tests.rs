@@ -8,7 +8,7 @@ use sqlx::{
     PgPool,
     postgres::{PgConnectOptions, PgPoolOptions},
 };
-use std::{net::SocketAddr, str::FromStr, sync::Arc, time::Duration};
+use std::{collections::HashSet, net::SocketAddr, str::FromStr, sync::Arc, time::Duration};
 use tokio::{net::TcpListener, sync::oneshot, task::JoinHandle};
 
 struct Database {
@@ -66,6 +66,7 @@ impl Database {
         };
         let router = Router::new()
             .route("/", post(stable::bancho))
+            .merge(stable::router())
             .with_state(state);
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}/", listener.local_addr().unwrap());
@@ -128,6 +129,10 @@ struct Server {
 
 impl Server {
     async fn login(&self, name: &str, password: &str) -> String {
+        self.inspect_login(name, password).await.token
+    }
+
+    async fn inspect_login(&self, name: &str, password: &str) -> InitialLogin {
         let response = self
             .http
             .post(&self.url)
@@ -139,10 +144,18 @@ impl Server {
             .await
             .unwrap();
         assert_eq!(response.status(), reqwest::StatusCode::OK);
+        assert_eq!(response.headers()["cho-protocol"], "19");
+        assert_eq!(
+            response.headers()["content-type"],
+            "application/octet-stream"
+        );
         let token = response.headers()["cho-token"].to_str().unwrap().to_owned();
         assert_ne!(token, "no", "real stable login must succeed");
-        response.bytes().await.unwrap();
-        token
+        assert!(!token.is_empty() && token.len() <= 128);
+        let bytes = response.bytes().await.unwrap();
+        let mut initial = inspect_initial_login(&bytes, name);
+        initial.token = token;
+        initial
     }
 
     async fn poll(&self, token: &str, body: Vec<u8>) -> reqwest::Response {
@@ -161,6 +174,280 @@ impl Server {
             .await
             .expect("ephemeral HTTP server must shut down")
             .unwrap();
+    }
+}
+
+struct InitialLogin {
+    token: String,
+    user_id: i32,
+    presences: Vec<wire::Presence>,
+    stats: wire::UserStats,
+    friends: Vec<i32>,
+}
+
+/// This test reader and packet scanner deliberately do not use the production
+/// decoders. Packet lengths, primitive widths and complete field consumption
+/// are checked independently against the public initial-login wire contract.
+struct InitialReader<'a> {
+    bytes: &'a [u8],
+    position: usize,
+}
+
+impl<'a> InitialReader<'a> {
+    fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes, position: 0 }
+    }
+    fn take(&mut self, length: usize) -> &'a [u8] {
+        let end = self
+            .position
+            .checked_add(length)
+            .expect("initial field size overflow");
+        let bytes = self
+            .bytes
+            .get(self.position..end)
+            .expect("complete initial packet field");
+        self.position = end;
+        bytes
+    }
+    fn u8(&mut self) -> u8 {
+        self.take(1)[0]
+    }
+    fn u16(&mut self) -> u16 {
+        u16::from_le_bytes(self.take(2).try_into().unwrap())
+    }
+    fn i32(&mut self) -> i32 {
+        i32::from_le_bytes(self.take(4).try_into().unwrap())
+    }
+    fn u32(&mut self) -> u32 {
+        u32::from_le_bytes(self.take(4).try_into().unwrap())
+    }
+    fn i64(&mut self) -> i64 {
+        i64::from_le_bytes(self.take(8).try_into().unwrap())
+    }
+    fn f32(&mut self) -> f32 {
+        f32::from_le_bytes(self.take(4).try_into().unwrap())
+    }
+    fn string(&mut self) -> String {
+        match self.u8() {
+            0 => return String::new(),
+            11 => {}
+            _ => panic!("initial string marker must be empty or UTF-8"),
+        }
+        let mut length = 0u32;
+        for shift in [0, 7, 14, 21, 28] {
+            let part = self.u8();
+            if shift == 28 {
+                assert!(part <= 15, "initial string length fits u32");
+            }
+            length |= u32::from(part & 127) << shift;
+            if part < 128 {
+                assert!(length <= 16_384, "bounded initial string");
+                return std::str::from_utf8(self.take(length as usize))
+                    .expect("initial UTF-8")
+                    .to_owned();
+            }
+        }
+        panic!("initial string length must terminate")
+    }
+    fn finish(self) {
+        assert_eq!(
+            self.position,
+            self.bytes.len(),
+            "initial packet has no unread/trailing fields"
+        );
+    }
+}
+
+fn initial_presence(payload: &[u8]) -> wire::Presence {
+    let mut reader = InitialReader::new(payload);
+    let user_id = reader.i32();
+    let username = reader.string();
+    let utc = reader.u8();
+    let country_code = reader.u8();
+    let privileges_and_mode = reader.u8();
+    let longitude = reader.f32();
+    let latitude = reader.f32();
+    let rank = reader.i32();
+    reader.finish();
+    assert!(user_id > 0 && !username.is_empty());
+    assert!(utc <= 48, "encoded UTC offset remains in -24..24");
+    assert!(
+        (1..=252).contains(&country_code),
+        "country is a legacy client table entry"
+    );
+    let mode = privileges_and_mode >> 5;
+    assert!(mode <= 3);
+    assert_eq!(privileges_and_mode & 31, 1);
+    assert!(longitude.is_finite() && longitude.abs() <= 180.0);
+    assert!(latitude.is_finite() && latitude.abs() <= 90.0);
+    assert!(rank >= 0);
+    wire::Presence {
+        user_id,
+        username,
+        utc_offset: (i16::from(utc) - 24) as i8,
+        country_code,
+        client_privileges: privileges_and_mode & 31,
+        mode,
+        longitude,
+        latitude,
+        rank,
+    }
+}
+
+fn inspect_initial_login(bytes: &[u8], expected_name: &str) -> InitialLogin {
+    assert!(
+        bytes.len() <= 4_194_304,
+        "bounded complete initial response"
+    );
+    let mut packets = Vec::new();
+    let mut offset = 0usize;
+    while offset < bytes.len() {
+        let header = bytes
+            .get(offset..offset + 7)
+            .expect("complete initial packet header");
+        let id = u16::from_le_bytes(header[..2].try_into().unwrap());
+        assert_eq!(header[2], 0, "initial packet reserved byte");
+        let length = u32::from_le_bytes(header[3..].try_into().unwrap()) as usize;
+        assert!(length <= 1_048_576);
+        offset += 7;
+        let end = offset
+            .checked_add(length)
+            .expect("initial packet length overflow");
+        packets.push((
+            id,
+            bytes
+                .get(offset..end)
+                .expect("complete initial packet body"),
+        ));
+        offset = end;
+    }
+    assert_eq!(offset, bytes.len());
+    assert!(packets.len() <= 4096 && packets.len() >= 11);
+    let single_integer = |index: usize, id: u16| {
+        assert_eq!(packets[index].0, id);
+        let mut reader = InitialReader::new(packets[index].1);
+        let value = reader.i32();
+        reader.finish();
+        value
+    };
+    let user_id = single_integer(0, 5);
+    assert!(user_id > 0, "successful initial user identity");
+    assert_eq!(single_integer(1, 75), 19);
+    assert_eq!(single_integer(2, 71), 5);
+    assert_eq!(single_integer(3, 92), 0);
+    assert_eq!(packets[4].0, 72);
+    let mut reader = InitialReader::new(packets[4].1);
+    let count = reader.u16();
+    assert!(count <= 4096);
+    let friends: Vec<_> = (0..count).map(|_| reader.i32()).collect();
+    reader.finish();
+    assert!(friends.iter().all(|id| *id > 0 && *id != user_id));
+    assert_eq!(
+        friends.iter().copied().collect::<HashSet<_>>().len(),
+        friends.len()
+    );
+
+    let mut index = 5;
+    let mut channel_names = HashSet::new();
+    while packets[index].0 == 65 {
+        let channel = |packet: (u16, &[u8])| {
+            let mut reader = InitialReader::new(packet.1);
+            let name = reader.string();
+            let description = reader.string();
+            let members = reader.u16();
+            reader.finish();
+            assert!(name.starts_with('#') && name.len() > 1);
+            (name, description, members)
+        };
+        let info = channel(packets[index]);
+        assert!(
+            channel_names.insert(info.0.clone()),
+            "each initial channel appears once"
+        );
+        index += 1;
+        assert_eq!(
+            packets[index].0, 67,
+            "each advertised channel has its complete autojoin"
+        );
+        assert_eq!(channel(packets[index]), info);
+        index += 1;
+    }
+    assert!(
+        !channel_names.is_empty(),
+        "initial channel directory is present"
+    );
+    assert_eq!(packets[index].0, 89);
+    InitialReader::new(packets[index].1).finish();
+    index += 1;
+    assert_eq!(
+        packets[index].0, 83,
+        "self presence follows channel-directory end"
+    );
+    let self_presence = initial_presence(packets[index].1);
+    assert_eq!(self_presence.user_id, user_id);
+    assert_eq!(self_presence.username, expected_name);
+    assert_eq!(self_presence.utc_offset, 8);
+    assert_eq!(self_presence.mode, 0);
+    assert_eq!(
+        (self_presence.longitude, self_presence.latitude),
+        (0.0, 0.0)
+    );
+    index += 1;
+    assert_eq!(packets[index].0, 11, "self stats follows self presence");
+    let mut reader = InitialReader::new(packets[index].1);
+    let stats = wire::UserStats {
+        user_id: reader.i32(),
+        action: wire::UserAction {
+            action: reader.u8(),
+            info_text: reader.string(),
+            beatmap_md5: reader.string(),
+            mods: reader.u32(),
+            mode: reader.u8(),
+            beatmap_id: reader.i32(),
+        },
+        ranked_score: reader.i64(),
+        accuracy: reader.f32(),
+        play_count: reader.i32(),
+        total_score: reader.i64(),
+        rank: reader.i32(),
+        pp: reader.u16(),
+    };
+    reader.finish();
+    assert_eq!(stats.user_id, user_id);
+    assert_eq!(stats.action, wire::UserAction::default());
+    assert!(
+        stats.ranked_score >= 0
+            && stats.play_count >= 0
+            && stats.total_score >= 0
+            && stats.rank >= 0
+    );
+    assert!(stats.accuracy.is_finite() && (0.0..=1.0).contains(&stats.accuracy));
+    index += 1;
+    let mut presences = vec![self_presence];
+    let mut present_ids = HashSet::from([user_id]);
+    while packets[index].0 == 83 {
+        let presence = initial_presence(packets[index].1);
+        assert!(
+            present_ids.insert(presence.user_id),
+            "initial peer presence identity is unique"
+        );
+        presences.push(presence);
+        index += 1;
+    }
+    assert_eq!(
+        packets[index].0, 24,
+        "welcome notification terminates the initial response"
+    );
+    let mut reader = InitialReader::new(packets[index].1);
+    assert!(!reader.string().is_empty());
+    reader.finish();
+    assert_eq!(index + 1, packets.len(), "entire initial response consumed");
+    InitialLogin {
+        token: String::new(),
+        user_id,
+        presences,
+        stats,
+        friends,
     }
 }
 
@@ -313,6 +600,80 @@ fn assert_stats(packets: &[(u16, Vec<u8>)], id: i64, mode: u8, mods: u32, total:
     assert_eq!(stats.play_count, 1);
     assert_eq!(stats.pp, pp);
     assert!((stats.accuracy - 0.98).abs() < 0.0001);
+}
+
+#[tokio::test]
+#[ignore = "requires ILLYA_TEST_DATABASE_URL; creates and removes an isolated schema"]
+async fn stable_initial_login_packets_are_complete_and_preserve_legacy_country_bytes() {
+    let database = Database::new(1).await;
+    let server = database.server().await;
+    let result = std::panic::AssertUnwindSafe(async {
+        let password = "Initial-Login-Fixture-Password";
+        let seasonal = server.http.get(format!("{}web/osu-getseasonal.php?fixture=ignored", server.url))
+            .send().await.unwrap();
+        assert_eq!(seasonal.status(), reqwest::StatusCode::OK);
+        assert_eq!(seasonal.json::<serde_json::Value>().await.unwrap(), serde_json::json!([]));
+        let probe = server.http.get(format!("{}web/bancho_connect.php?fixture=ignored", server.url))
+            .send().await.unwrap();
+        assert_eq!(probe.status(), reqwest::StatusCode::OK);
+        assert!(probe.bytes().await.unwrap().is_empty());
+        let taiwan = user(&database.pool, "InitialTaiwan", password).await;
+        let unknown = user(&database.pool, "InitialUnknown", password).await;
+        // Existing account fixtures inherit the schema's TW default. Only this
+        // separately owned synthetic peer gets an unsupported country value.
+        let country: String = sqlx::query_scalar("SELECT country FROM users WHERE id=$1")
+            .bind(taiwan).fetch_one(&database.pool).await.unwrap();
+        assert_eq!(country, "TW");
+        sqlx::query("UPDATE users SET country='ZZ' WHERE id=$1")
+            .bind(unknown).execute(&database.pool).await.unwrap();
+        sqlx::query("INSERT INTO user_relationships(user_id,target_id,relation_type) VALUES($1,$2,'friend')")
+            .bind(taiwan).bind(unknown).execute(&database.pool).await.unwrap();
+
+        let first = server.inspect_login("InitialTaiwan", password).await;
+        assert_eq!(i64::from(first.user_id), taiwan);
+        assert_eq!(first.presences.len(), 1);
+        assert_eq!(first.presences[0].country_code, 220);
+        assert_eq!(first.friends, vec![i32::try_from(unknown).unwrap()]);
+        assert_eq!((first.stats.ranked_score, first.stats.total_score, first.stats.play_count, first.stats.pp), (0, 0, 0, 0));
+        assert_eq!(first.stats.accuracy, 0.0);
+
+        for _ in 0..3 {
+            let idle = server.poll(&first.token, vec![4, 0, 0, 0, 0, 0, 0]).await;
+            assert_eq!(idle.status(), reqwest::StatusCode::OK);
+            assert!(idle.bytes().await.unwrap().is_empty(), "idle heartbeat must not generate unsolicited packets");
+        }
+        let queued = [24, 0, 0, 8, 0, 0, 0, 11, 6, b'q', b'u', b'e', b'u', b'e', b'd'];
+        sqlx::query("INSERT INTO bancho_packet_queue(user_id,payload) VALUES($1,$2)")
+            .bind(taiwan).bind(queued.as_slice()).execute(&database.pool).await.unwrap();
+        let delivery = server.poll(&first.token, vec![4, 0, 0, 0, 0, 0, 0]).await;
+        assert_eq!(delivery.status(), reqwest::StatusCode::OK);
+        assert_eq!(delivery.bytes().await.unwrap().as_ref(), queued);
+        assert!(server.poll(&first.token, vec![4, 0, 0, 0, 0, 0, 0]).await.bytes().await.unwrap().is_empty());
+        assert_eq!(server.poll(&first.token, vec![4, 0, 0, 1, 0, 0, 0, 42]).await.status(), reqwest::StatusCode::BAD_REQUEST);
+
+        let second = server.inspect_login("InitialUnknown", password).await;
+        assert_eq!(i64::from(second.user_id), unknown);
+        assert!(second.friends.is_empty(), "friendship does not become reciprocal at login");
+        assert_eq!(second.presences.len(), 2);
+        for (id, expected_country) in [(taiwan, 220), (unknown, 244)] {
+            let presence = second.presences.iter().find(|presence| i64::from(presence.user_id) == id)
+                .expect("both active synthetic accounts have complete initial presences");
+            assert_eq!(presence.country_code, expected_country);
+        }
+        assert_eq!(second.stats.total_score, 0);
+        // The explicit unknown region and an unsupported value share the same
+        // wire assignment. Relogin validates the whole response again.
+        sqlx::query("UPDATE users SET country='XX' WHERE id=$1")
+            .bind(unknown).execute(&database.pool).await.unwrap();
+        let relogin = server.inspect_login("InitialUnknown", password).await;
+        assert_eq!(relogin.presences[0].country_code, 244);
+        assert_eq!(relogin.presences.len(), 2);
+    }).catch_unwind().await;
+    server.cleanup().await;
+    database.cleanup().await;
+    if let Err(error) = result {
+        std::panic::resume_unwind(error);
+    }
 }
 
 #[tokio::test]

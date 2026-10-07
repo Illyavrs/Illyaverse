@@ -1,6 +1,6 @@
 use crate::common::{self, Account, ApiError, AppState};
 use axum::{
-    Router,
+    Json, Router,
     body::Bytes,
     extract::{ConnectInfo, Path, Query, State},
     http::{HeaderMap, StatusCode},
@@ -19,6 +19,8 @@ use std::{collections::HashMap, net::SocketAddr};
 
 pub fn router() -> Router<AppState> {
     Router::new()
+        .route("/web/osu-getseasonal.php", get(seasonal))
+        .route("/web/bancho_connect.php", get(bancho_connect))
         .route("/web/osu-getfriends.php", get(friends))
         .route("/web/osu-getreplay.php", get(replay))
         .route("/web/osu-osz2-getscores.php", get(leaderboard))
@@ -32,6 +34,14 @@ pub fn router() -> Router<AppState> {
         )
         .route("/osu/{id}", get(beatmap_file))
         .route("/d/{id}", get(beatmap_archive))
+}
+
+async fn seasonal() -> Json<Vec<String>> {
+    Json(Vec::new())
+}
+
+async fn bancho_connect() -> &'static str {
+    ""
 }
 
 fn binary(body: Vec<u8>, token: Option<&str>) -> Response {
@@ -207,7 +217,7 @@ fn append_presence(
             user_id: id32(player.id)?,
             username: player.username.clone(),
             utc_offset,
-            country_code: 0,
+            country_code: wire::country_code(&player.country),
             client_privileges: 1,
             mode,
             longitude: 0.0,
@@ -327,7 +337,7 @@ async fn poll(state: &AppState, token: &str, body: &[u8]) -> Result<Response, Ap
                 if !packet.payload.is_empty() {
                     return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_ping"));
                 }
-                append(&mut output, wire::encode_packet(wire::server::PONG, &[]))?;
+                // A heartbeat only drains pending events; an idle poll has no packets.
             }
             wire::client::CHANGE_ACTION => {
                 action = UserAction::decode(packet.payload)?;

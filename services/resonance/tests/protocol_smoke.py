@@ -536,8 +536,16 @@ def run():
 
     player_id, player_bancho = login(player_name, player_password)
     admin_id, admin_bancho = login(admin_name, admin_password)
+    assert gateway.json("GET", "/web/osu-getseasonal.php?fixture=ignored") == []
+    assert gateway.request("GET", "/web/bancho_connect.php?fixture=ignored")[0] == b""
+    avatar_headers = {"Host": "a.smoke.illya.test"}
+    avatar, avatar_response = gateway.request("GET", f"/{player_id}", headers=avatar_headers)
+    assert avatar.startswith(b"\x89PNG\r\n\x1a\n") and avatar_response["content-type"] == "image/png"
+    gateway.request("GET", f"/{player_id}", headers={**avatar_headers, "If-None-Match": avatar_response["etag"]}, expected=304)
+    gateway.request("GET", "/9223372036854775807", headers=avatar_headers, expected=404)
     response = gateway.request("POST", "/", packet(4), player_bancho)[0]
-    assert any(i == 8 for i, _ in packets(response)), "Ping/pong failed"
+    assert response == b"", "Idle heartbeat must not emit unsolicited PONG packets"
+    gateway.request("POST", "/", packet(4, b"invalid"), player_bancho, expected=400)
     text = "Protocol smoke " + uuid.uuid4().hex
     chat = wire_string("spoofed-admin") + wire_string(text) + wire_string("#general") + struct.pack("<i", 9999)
     gateway.request("POST", "/", packet(1, chat), player_bancho)

@@ -24,6 +24,7 @@ const MAX_SIDE: u32 = 512;
 const MAX_PNG: usize = 2 * 1024 * 1024;
 const CACHE_ENTRIES: usize = 32;
 static CACHE: OnceLock<Mutex<VecDeque<(PathBuf, Avatar)>>> = OnceLock::new();
+static DEFAULT_AVATAR: OnceLock<Avatar> = OnceLock::new();
 static WORKERS: OnceLock<Arc<Semaphore>> = OnceLock::new();
 
 #[derive(Clone)]
@@ -164,6 +165,11 @@ fn normalize(bytes: &[u8]) -> Result<Avatar, ApiError> {
     let rgba = image::DynamicImage::from_decoder(decoder)
         .map_err(|_| invalid())?
         .into_rgba8();
+    png_avatar(&rgba)
+}
+
+fn png_avatar(rgba: &image::RgbaImage) -> Result<Avatar, ApiError> {
+    let invalid = || ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_avatar");
     let mut output = BoundedPng(Vec::new());
     // Fixed dimensions, fast compression, and no adaptive filter bound encoder work.
     image::codecs::png::PngEncoder::new_with_quality(
@@ -173,8 +179,8 @@ fn normalize(bytes: &[u8]) -> Result<Avatar, ApiError> {
     )
     .write_image(
         rgba.as_raw(),
-        width,
-        height,
+        rgba.width(),
+        rgba.height(),
         image::ExtendedColorType::Rgba8,
     )
     .map_err(|_| invalid())?;
@@ -184,6 +190,16 @@ fn normalize(bytes: &[u8]) -> Result<Avatar, ApiError> {
         png: Bytes::from(output.0),
         etag,
     })
+}
+
+fn default_avatar() -> Result<Avatar, ApiError> {
+    if let Some(avatar) = DEFAULT_AVATAR.get() {
+        return Ok(avatar.clone());
+    }
+    let rgba = image::RgbaImage::from_pixel(64, 64, image::Rgba([0, 0, 0, 255]));
+    let avatar = png_avatar(&rgba)?;
+    let _ = DEFAULT_AVATAR.set(avatar.clone());
+    Ok(avatar)
 }
 
 fn cached(key: &FsPath) -> Option<Avatar> {
@@ -259,8 +275,10 @@ async fn avatar(
     .bind(id)
     .fetch_optional(&state.pool)
     .await?
-    .flatten()
     .ok_or(ApiError(StatusCode::NOT_FOUND, "avatar_not_found"))?;
+    let Some(url) = url else {
+        return Ok(response(default_avatar()?, &headers));
+    };
     let relative = relative_avatar(&url)?;
     let key = state.storage.join("media").join(&relative);
     if let Some(avatar) = cached(&key) {
@@ -356,6 +374,45 @@ mod tests {
         ] {
             assert!(relative_avatar(url).is_err());
         }
+    }
+
+    #[tokio::test]
+    async fn default_avatar_is_black_png_with_conditional_headers() {
+        let avatar = default_avatar().unwrap();
+        let decoded = image::load_from_memory_with_format(&avatar.png, ImageFormat::Png)
+            .unwrap()
+            .into_rgba8();
+        assert_eq!(decoded.dimensions(), (64, 64));
+        assert!(decoded.pixels().all(|pixel| pixel.0 == [0, 0, 0, 255]));
+        assert_eq!(default_avatar().unwrap().etag, avatar.etag);
+
+        let fresh = response(avatar.clone(), &HeaderMap::new());
+        assert_eq!(fresh.status(), StatusCode::OK);
+        assert_eq!(fresh.headers()[header::CONTENT_TYPE], "image/png");
+        assert_eq!(fresh.headers()[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+        assert_eq!(
+            fresh.headers()[header::CACHE_CONTROL],
+            "public, max-age=60, must-revalidate"
+        );
+        assert_eq!(fresh.headers()[header::ETAG], avatar.etag);
+        assert_eq!(
+            axum::body::to_bytes(fresh.into_body(), MAX_PNG)
+                .await
+                .unwrap(),
+            avatar.png
+        );
+
+        let mut conditional = HeaderMap::new();
+        conditional.insert(header::IF_NONE_MATCH, avatar.etag.clone());
+        let cached = response(avatar.clone(), &conditional);
+        assert_eq!(cached.status(), StatusCode::NOT_MODIFIED);
+        assert_eq!(cached.headers()[header::ETAG], avatar.etag);
+        assert!(
+            axum::body::to_bytes(cached.into_body(), MAX_PNG)
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[tokio::test]

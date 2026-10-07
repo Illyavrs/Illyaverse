@@ -12,6 +12,38 @@ pub const MAX_REQUEST_BYTES: usize = 4_194_304;
 pub const MAX_STRING_BYTES: usize = 16_384;
 pub const MAX_PACKETS: usize = 4096;
 
+// Historical Bancho wire assignments, including retired and special regions.
+// These protocol facts cannot be regenerated from today's ISO alphabetical list.
+// Fact reference: osuAkatsuki/bancho.py at f10c03a3969c1b48a0cf9a423384653633c52fba,
+// app/state/services.py. This representation and lookup are original.
+const LEGACY_COUNTRIES: [&str; 252] = [
+    "OC", "EU", "AD", "AE", "AF", "AG", "AI", "AL", "AM", "AN", "AO", "AQ", "AR", "AS", "AT", "AU",
+    "AW", "AZ", "BA", "BB", "BD", "BE", "BF", "BG", "BH", "BI", "BJ", "BM", "BN", "BO", "BR", "BS",
+    "BT", "BV", "BW", "BY", "BZ", "CA", "CC", "CD", "CF", "CG", "CH", "CI", "CK", "CL", "CM", "CN",
+    "CO", "CR", "CU", "CV", "CX", "CY", "CZ", "DE", "DJ", "DK", "DM", "DO", "DZ", "EC", "EE", "EG",
+    "EH", "ER", "ES", "ET", "FI", "FJ", "FK", "FM", "FO", "FR", "FX", "GA", "GB", "GD", "GE", "GF",
+    "GH", "GI", "GL", "GM", "GN", "GP", "GQ", "GR", "GS", "GT", "GU", "GW", "GY", "HK", "HM", "HN",
+    "HR", "HT", "HU", "ID", "IE", "IL", "IN", "IO", "IQ", "IR", "IS", "IT", "JM", "JO", "JP", "KE",
+    "KG", "KH", "KI", "KM", "KN", "KP", "KR", "KW", "KY", "KZ", "LA", "LB", "LC", "LI", "LK", "LR",
+    "LS", "LT", "LU", "LV", "LY", "MA", "MC", "MD", "MG", "MH", "MK", "ML", "MM", "MN", "MO", "MP",
+    "MQ", "MR", "MS", "MT", "MU", "MV", "MW", "MX", "MY", "MZ", "NA", "NC", "NE", "NF", "NG", "NI",
+    "NL", "NO", "NP", "NR", "NU", "NZ", "OM", "PA", "PE", "PF", "PG", "PH", "PK", "PL", "PM", "PN",
+    "PR", "PS", "PT", "PW", "PY", "QA", "RE", "RO", "RU", "RW", "SA", "SB", "SC", "SD", "SE", "SG",
+    "SH", "SI", "SJ", "SK", "SL", "SM", "SN", "SO", "SR", "ST", "SV", "SY", "SZ", "TC", "TD", "TF",
+    "TG", "TH", "TJ", "TK", "TM", "TN", "TO", "TL", "TR", "TT", "TV", "TW", "TZ", "UA", "UG", "UM",
+    "US", "UY", "UZ", "VA", "VC", "VE", "VG", "VI", "VN", "VU", "WF", "WS", "YE", "YT", "RS", "ZA",
+    "ZM", "ME", "ZW", "XX", "A2", "O1", "AX", "GG", "IM", "JE", "BL", "MF",
+];
+
+/// Translate the account's two-letter country to stable's legacy wire value.
+/// Unknown or unsupported values use the defined unknown region, XX (244).
+pub fn country_code(country: &str) -> u8 {
+    LEGACY_COUNTRIES
+        .iter()
+        .position(|candidate| candidate.eq_ignore_ascii_case(country))
+        .map_or(244, |index| (index + 1) as u8)
+}
+
 pub mod client {
     pub const CHANGE_ACTION: u16 = 0;
     pub const SEND_PUBLIC_MESSAGE: u16 = 1;
@@ -551,6 +583,39 @@ impl UserStats {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn historical_country_assignments_and_unknown_region_are_preserved() {
+        for (country, expected) in [
+            ("TW", 220),
+            ("tw", 220),
+            ("JP", 111),
+            ("US", 225),
+            ("GB", 77),
+            ("AN", 10),
+            ("FX", 75),
+            ("TL", 216),
+            ("RS", 239),
+            ("ME", 242),
+            ("XX", 244),
+            ("A2", 245),
+            ("O1", 246),
+            ("AX", 247),
+            ("MF", 252),
+            ("", 244),
+            ("ZZ", 244),
+            ("TWN", 244),
+            (" TW", 244),
+            ("臺灣", 244),
+        ] {
+            assert_eq!(country_code(country), expected, "{country}");
+        }
+        let mut unique = std::collections::HashSet::new();
+        for (index, country) in LEGACY_COUNTRIES.iter().enumerate() {
+            assert!(unique.insert(country));
+            assert_eq!(country_code(country), (index + 1) as u8);
+        }
+    }
 
     #[test]
     fn wire_fixture_header_and_unknown_ids_are_preserved() {

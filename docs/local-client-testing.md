@@ -2,7 +2,7 @@
 
 可以把測試伺服器部署在目前這台電腦。單機測試使用 `illya.test` 與 `127.0.0.1`，不需要購買網域、修改公開 DNS 或開放路由器。`localhost` 代表使用者自己的電腦；若之後要讓別台電腦連線，應另用實際主機 IP／公開部署設定。
 
-此配置準備本機 HTTPS、正確 Host 路由及獨立資料庫。**不代表 stable／lazer 已經通過原生客戶端驗證。** 實際測試仍需分別檢查登入、聊天、下載、遊玩、成績、replay、多人房間與重新連線。新的 [Kaleidoscope 啟動器](kaleidoscope-launcher.md)沿用官方 lazer，使用強制載入的原創外掛；隔離啟動／合約測試已通過，真實 GUI 仍待驗證。先前獨立 source build 保留為開發比較工具。
+此配置準備本機 HTTPS、正確 Host 路由及獨立資料庫。**不代表 stable／lazer 已經通過原生客戶端驗證，原生 crash 的原因與修復仍待確認。** 實際測試仍需分別檢查登入、聊天、下載、遊玩、成績、replay、多人房間與重新連線。[Kaleidoscope 啟動器](kaleidoscope-launcher.md)沿用官方 lazer，強制載入原創 Transfiguration 外掛；隔離啟動／合約測試已通過，真實 GUI 仍待驗證。先前獨立 source build 保留為可選的開發比較工具。
 
 ## 獨立測試環境
 
@@ -137,6 +137,30 @@ Windows 內建 curl 使用 Schannel；此本機 CA 沒有公開 CRL distribution
 
 Website 的 `/api/v1/*` 與 `/media/*` 送到 Sanctuary；legacy／OAuth／API v2 送到 Resonance。`/spectator`、`/multiplayer`、`/metadata` 及各自的 `/negotiate` 和 `/signalr/*` 都送到 Resonance。Caddy 的 reverse proxy 支援 WebSocket，SignalR 的 JSON SSE 也經同一條代理路徑；服務的 real-time 實作狀態見[協定相容性文件](protocol-compatibility.md)。
 
+## 最小連線診斷
+
+目前 [client-test Caddyfile](../infra/Caddyfile.client-test)將 HTTPS 存取摘要寫到容器內的 `/tmp/illyaverse-client-requests.jsonl`，用來確認原生客戶端是否送出請求，以及 Host／path 是否到達預期路由。保留的連線欄位是 `path`、`method`、`host`、`status`、`duration`（秒）與 `size`（回應 bytes）。完整 `request` 物件、回應 headers 與 `user_id` 都移除；不記錄 query、body、headers 或 session 內容。這也避免 stable legacy query 中的認證資料進入診斷檔。
+
+記錄檔權限為 `0600`，以 `1MiB` 輪替，最多保留兩份舊檔；它位於容器的暫存檔案系統，重建 Caddy 容器後不保留。以下命令只讀取目前檔案，並只顯示這六個欄位：
+
+```powershell
+docker compose --env-file .env.client-test.local -p illyaverse-client-test -f compose.yaml -f compose.client-test.yaml exec -T caddy cat /tmp/illyaverse-client-requests.jsonl |
+    ForEach-Object { $_ | ConvertFrom-Json } |
+    Select-Object path, method, host, status, duration, size
+```
+
+若沒有該檔案，先確認本次 Caddy 已載入上述 client-test 設定且確實收到 HTTPS 請求。這份摘要不能顯示遊戲程序內部的例外；沒有請求或收到成功回應，都不足以判定原生 crash 已修復。登入、實際遊玩與退出清理仍需另外驗證。
+
+## Stable 登入診斷與驗證狀態
+
+目前可用的 stable 登入診斷只證明伺服器邊界和請求路由。歷史國碼查表不分大小寫：`TW` 對應 220，未知國碼對應 244。`GET /web/osu-getseasonal.php` 回傳 JSON `[]`；`GET /web/bancho_connect.php` 回傳空的 200 回應。有效的空 `PING`（type 4）會取出待送封包，不會自行產生 `PONG`（type 8）。獨立解析器核對 `cho-protocol: 19`，逐一解析初始 self ID、presence、stats、friends、channel 封包並要求完整消費 payload。測試另涵蓋重複空閒輪詢、只送出一次的待送通知與非空 `PING` payload 的 400 回應；測試檔見 [social session tests](../services/resonance/src/social_session_tests.rs) 及 [protocol smoke](../services/resonance/tests/protocol_smoke.py)。
+
+已存在且可見、但沒有頭像的帳號，會回傳原創的不透明純黑 64×64 PNG，並支援 ETag/304；未知或受限制帳號回傳 404。
+
+最新的隔離映像測試通過 308 個 HTTP requests、34 類檢查；Sanctuary image digest 是 `sha256:64bed401ce2c54d3257f961b0954286fb8e4b0def30d5811a22af5e7a935066c`，Resonance image digest 是 `sha256:54ed7af26c1544e97f3156b72a2c4ecd235d14a6b40dcb5beeaf4497a4263429`。完整原始碼檢查另通過 157 個 unit/CLI tests、18 個 Resonance 加 10 個 Sanctuary ignored tests，以及 fmt 與 warnings denied 的 Clippy。僅供本機查看、被 Git 忽略的記錄保存在 `data-room-score-work/appearance-protocol-image-smoke.log` 與 `data-room-score-work/combined-source-gate.log`。
+
+使用者已重現正式簽章 stable 在 `-devserver illya.test` 登入後退出。修正前的安全 Caddy 摘要在約 3 秒內有 44 個 7-byte 回應；其長度與當時程式產生的 `PONG` 相符，seasonal、probe 與 avatar 請求則回傳 404。這些資料不足以判定原生 AccessViolation 的原因。修正後已更新本機兩組 Docker 服務，既有帳號與資料保留，並驗證上述三個 HTTPS 端點均回傳 200。仍需使用者重新測試原生登入；自動測試沒有啟動真實遊戲。
+
 ## 原生客戶端測試入口
 
 請先到 `https://illya.test/register` 建立獨立測試帳號。遊戲內註冊入口會提示改到這個網站；它不會建立帳號。接著才在 stable／lazer 輸入測試帳號登入。
@@ -151,13 +175,17 @@ Stable 的根網域規劃與啟動參數：
 
 路徑只是範例，請用實際安裝位置與獨立測試設定。此文件沒有啟動客戶端，也沒有修改官方帳號的連線設定。
 
-Lazer 需獨立 source build 與資料目錄，不能以 stock client 的 hosts 切換當作完成。Kaleidoscope 以下只輸出規劃 manifest，並不是官方客戶端可直接匯入的設定：
+Lazer 的目前流程使用已安裝的官方 stock client，以及完整的 Kaleidoscope／Transfiguration 測試包，不需要重新編譯整套 client。先完成上面的本機 DNS／CA 設定，再依[啟動器文件](kaleidoscope-launcher.md)開啟 `Kaleidoscope.exe`、選擇 lazer 的 `osu!.exe`，並由啟動器啟動。營運者可用 `tools\kaleidoscope\scripts\package-launcher.ps1` 建立測試包；產物位於被 Git 忽略的 `data-kaleidoscope-package`，包含啟動器、橋接 DLL、`package.json` 與 `compatibility.json`。請保持完整配套。
+
+目前相容性固定為 Windows x64 stock `2026.1005.1-tachyon` 與 .NET runtime `10.0.12`，並核對[相容性清單](../tools/transfiguration/compatibility.json)中的 assembly versions／SHA-256。啟動器在遊戲 Main 前強制載入原創 Transfiguration，設定固定 endpoints、HTTP／WebSocket guard 與 `%LOCALAPPDATA%\Illyaverse\lazer` 私服資料目錄，不讀取或複製官方登入資料。必要修補、檔案或相容性核對失敗時不執行遊戲入口；更新到未測版本後需取得相容的新配套，沒有官方伺服器 fallback。單獨改 hosts、直接執行 stock client 或手動放置 DLL，都不是此啟動流程。完整契約見[連線文件](connection.md)與[橋接說明](../tools/transfiguration/README.md)。
+
+若需要比較 endpoints 或另行開發測試，可選用保留的[獨立 source build](lazer-client-build.md)；它是另外的測試方案，使用自己的資料目錄，不是啟動器自動 fallback。以下 CLI 仍只輸出開發規劃 manifest，並不是官方客戶端可直接匯入的設定：
 
 ```powershell
 .\target\release\kaleidoscope.exe profile --client lazer --domain illya.test
 ```
 
-對應 source build 的 Website／API 是 `https://osu.illya.test`，三個 hub 是 `https://spectator.illya.test/spectator`、`/multiplayer`、`/metadata`。BSS hostname 預留路由，但目前不宣稱支援原生 editor 投稿。OAuth、score／replay 與指定版本的實際測試仍需依[連線文件](connection.md)逐項完成。
+目前橋接的 Website／API 是 `https://osu.illya.test`，三個 hub 是 `https://spectator.illya.test/spectator`、`/multiplayer`、`/metadata`。BSS hostname 預留路由，橋接停用該 endpoint，目前不宣稱支援原生 editor 投稿。OAuth、score／replay 與指定版本的實際測試仍需依[連線文件](connection.md)逐項完成。
 
 ## 停止測試
 
