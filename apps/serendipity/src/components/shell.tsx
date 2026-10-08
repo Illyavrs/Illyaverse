@@ -33,6 +33,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState('');
   const links = [
     ['/', 'home'],
+    ['/news', 'news'],
     ['/beatmaps', 'beatmaps'],
     ['/rankings', 'rankings'],
     ['/chat', 'community'],

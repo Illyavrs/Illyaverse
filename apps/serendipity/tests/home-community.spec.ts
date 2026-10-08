@@ -215,6 +215,8 @@ async function fixture(
         state.user ? { json: state.user } : { status: 401, json: { error: { code: 'qa_guest' } } },
       );
     if (endpoint === '/me/preferences') return route.fulfill({ json: pref });
+    if (endpoint === '/announcements')
+      return route.fulfill({ json: { items: [], total: 0, page: 1, page_size: 3 } });
     if (endpoint === '/status')
       return state.statusFailure
         ? route.fulfill({ status: 503, json: { error: { code: 'qa_status_unavailable' } } })

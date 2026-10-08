@@ -1,4 +1,16 @@
 export type Page<T> = { items: T[]; total: number; page: number; page_size: number };
+export type AnnouncementStatus = 'draft' | 'published' | 'archived';
+export type Announcement = {
+  id: number;
+  title: string;
+  body: string;
+  status: AnnouncementStatus;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+  published_at: string | null;
+  author: { id: number; username: string; avatar_url: string | null };
+};
 export type ScoreVariant = 'vanilla' | 'relax';
 export type ScoreBoardOrder = 'standardised_score' | 'pp';
 export type ScoreBoard = Page<Score> & {

@@ -19,6 +19,7 @@ export const documents = Object.freeze({
   'account-recovery': 'account-recovery.md',
   architecture: 'architecture.md',
   permissions: 'permissions.md',
+  announcements: 'announcements.md',
   protocol: 'protocol-compatibility.md',
   realtime: 'signalr-compatibility.md',
   'room-scores': 'lazer-room-scores-plan.md',
@@ -68,18 +69,25 @@ export function documentLink(href?: string): string | undefined {
 }
 
 function headingText(nodes: readonly PhrasingContent[]): string {
-  return nodes.map((node): string => {
-    if (node.type === 'text' || node.type === 'inlineCode') return node.value;
-    if ('children' in node) return headingText(node.children);
-    if (node.type === 'image' || node.type === 'imageReference') return node.alt ?? '';
-    return node.type === 'break' ? ' ' : '';
-  }).join('');
+  return nodes
+    .map((node): string => {
+      if (node.type === 'text' || node.type === 'inlineCode') return node.value;
+      if ('children' in node) return headingText(node.children);
+      if (node.type === 'image' || node.type === 'imageReference') return node.alt ?? '';
+      return node.type === 'break' ? ' ' : '';
+    })
+    .join('');
 }
 
 export function headingSlug(text: string): string {
-  return text.normalize('NFC').trim().toLowerCase()
-    .replace(/[^\p{L}\p{N}\p{M}\s_-]/gu, '')
-    .replace(/\s+/g, '-') || 'section';
+  return (
+    text
+      .normalize('NFC')
+      .trim()
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\p{M}\s_-]/gu, '')
+      .replace(/\s+/g, '-') || 'section'
+  );
 }
 
 /** Original remark plugin: each render owns its IDs, including suffix collisions. */

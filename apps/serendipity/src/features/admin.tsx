@@ -1,5 +1,13 @@
 'use client';
-import { Suspense, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { useSearchParams } from 'next/navigation';
 import useSWR, { unstable_serialize, useSWRConfig } from 'swr';
@@ -30,6 +38,7 @@ import type {
   Score,
   Audit,
 } from '@/lib/types';
+import { AdminAnnouncements, type AnnouncementNavigationGuard } from './announcements';
 
 const grants = [
   'chat.send',
@@ -43,8 +52,9 @@ const grants = [
   'audit.read',
   'scores.moderate',
   'admin.view',
+  'announcements.manage',
 ];
-type Section = 'users' | 'roles' | 'beatmaps' | 'scores' | 'audit';
+type Section = 'users' | 'roles' | 'beatmaps' | 'scores' | 'audit' | 'announcements';
 const mapStatuses = ['pending', 'ranked', 'loved', 'unranked'] as const;
 const mapModes = ['osu!', 'taiko', 'catch', 'mania'] as const;
 type MapStatus = (typeof mapStatuses)[number];
@@ -1356,12 +1366,20 @@ function AdminContents() {
   if (allowed('admin.view')) sections.push('beatmaps');
   if (allowed('scores.moderate')) sections.push('scores');
   if (allowed('audit.read')) sections.push('audit');
+  if (allowed('announcements.manage')) sections.push('announcements');
   const requestedSection = query.get('tab') as Section | null;
   const section =
     requestedSection && sections.includes(requestedSection) ? requestedSection : sections[0];
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+  const announcementNavigationGuard = useRef<AnnouncementNavigationGuard | null>(null);
+  const registerAnnouncementNavigationGuard = useCallback(
+    (guard: AnnouncementNavigationGuard | null) => {
+      announcementNavigationGuard.current = guard;
+    },
+    [],
+  );
   const key =
     section === 'scores'
       ? `/scores?verification=pending&page=${page}&page_size=24`
@@ -1369,7 +1387,7 @@ function AdminContents() {
         ? `/admin/${section}?page=${page}&page_size=24${section === 'users' && search ? `&search=${encodeURIComponent(search)}` : ''}`
         : null;
   const { data, error, isLoading, mutate } = useSWR<Page<AdminUser | Score | Audit>>(
-    section === 'roles' || section === 'beatmaps' ? null : key,
+    section === 'roles' || section === 'beatmaps' || section === 'announcements' ? null : key,
     fetcher,
     {
       keepPreviousData: false,
@@ -1430,20 +1448,26 @@ function AdminContents() {
             key={s}
             aria-pressed={section === s}
             onClick={() => {
-              const next = new URLSearchParams(window.location.search);
-              next.set('tab', s);
-              next.delete('page');
-              window.history.pushState(null, '', `?${next}`);
-              setPage(1);
-              setFailed('');
-              setFeedback(false);
+              if (section === s) return;
+              const navigate = () => {
+                const next = new URLSearchParams(window.location.search);
+                next.set('tab', s);
+                next.delete('page');
+                window.history.pushState(null, '', `?${next}`);
+                setPage(1);
+                setFailed('');
+                setFeedback(false);
+              };
+              if (section === 'announcements' && announcementNavigationGuard.current)
+                announcementNavigationGuard.current(navigate);
+              else navigate();
             }}
           >
             {t(s)}
           </button>
         ))}
       </div>
-      {section !== 'beatmaps' && (
+      {section !== 'beatmaps' && section !== 'announcements' && (
         <Feedback error={failed} success={feedback ? t('saved') : ''} stale={stale} />
       )}
       {section === 'users' && (
@@ -1491,7 +1515,9 @@ function AdminContents() {
           </div>
         </form>
       )}
-      {section === 'beatmaps' ? (
+      {section === 'announcements' ? (
+        <AdminAnnouncements registerNavigationGuard={registerAnnouncementNavigationGuard} />
+      ) : section === 'beatmaps' ? (
         <MapModeration />
       ) : (
         <section className="glass content-panel">
@@ -1683,7 +1709,7 @@ function AdminContents() {
           )}
         </section>
       )}
-      {section !== 'roles' && section !== 'beatmaps' && data && (
+      {section !== 'roles' && section !== 'beatmaps' && section !== 'announcements' && data && (
         <Pagination page={page} total={data.total} pageSize={data.page_size} onChange={setPage} />
       )}
     </>

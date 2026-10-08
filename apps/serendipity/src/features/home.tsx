@@ -10,6 +10,7 @@ import { fetcher, hasPermission } from '@/lib/api';
 import { scoreMods } from '@/lib/score-display';
 import type { Status, Beatmap, Leader, Score, Page } from '@/lib/types';
 import { MapRows } from './beatmaps';
+import { AnnouncementsPreview } from './announcements';
 
 const modes = ['osu!', 'taiko', 'catch', 'mania'];
 
@@ -230,6 +231,7 @@ export function HomePage() {
         </div>
 
         <aside className="home-side-content">
+          <AnnouncementsPreview />
           <section className="home-onboarding glass" aria-labelledby="home-start-title">
             <h2 id="home-start-title">{t('gettingStarted')}</h2>
             <ol>

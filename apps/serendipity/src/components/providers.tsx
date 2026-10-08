@@ -14,7 +14,8 @@ import { ThemeProvider, useTheme } from 'next-themes';
 import { useRouter } from 'next/navigation';
 import { useLocale } from 'next-intl';
 import useSWR, { SWRConfig } from 'swr';
-import { api, ApiError, fetcher } from '@/lib/api';
+import { api, ApiError, fetcher, hasPermission } from '@/lib/api';
+import { AnnouncementDraftProvider } from '@/features/announcement-draft';
 import { isLocale, type Locale } from '@/i18n/config';
 import type { Preferences, User } from '@/lib/types';
 
@@ -132,7 +133,9 @@ function AppearanceProvider({ children }: { children: ReactNode }) {
       const raw = localStorage.getItem('illya_appearance');
       if (raw) {
         const cached = validate(JSON.parse(raw));
-        queueMicrotask(() => applyPreferences({ ...cached, locale: preferencesRef.current.locale }));
+        queueMicrotask(() =>
+          applyPreferences({ ...cached, locale: preferencesRef.current.locale }),
+        );
       }
     } catch {
       localStorage.removeItem('illya_appearance');
@@ -234,8 +237,7 @@ function AppearanceProvider({ children }: { children: ReactNode }) {
       border_radius: p.border_radius,
     };
     await runOperation({ operation: 'save' }, async () => {
-      if (user)
-        await api('/me/preferences', { method: 'PATCH', body: JSON.stringify(submitted) });
+      if (user) await api('/me/preferences', { method: 'PATCH', body: JSON.stringify(submitted) });
     });
   }
   async function upload(file: File) {
@@ -327,7 +329,16 @@ export function Providers({ children }: { children: ReactNode }) {
         value={{ user, loading: isLoading, refresh: () => mutate(), logout }}
       >
         <SWRConfig key={user?.id ?? 'guest'} value={{ provider: () => new Map() }}>
-          <AppearanceProvider>{children}</AppearanceProvider>
+          <AnnouncementDraftProvider
+            userId={user?.id ?? null}
+            authorized={Boolean(
+              user &&
+              hasPermission(user.permissions, 'admin.view') &&
+              hasPermission(user.permissions, 'announcements.manage'),
+            )}
+          >
+            <AppearanceProvider>{children}</AppearanceProvider>
+          </AnnouncementDraftProvider>
         </SWRConfig>
       </SessionContext.Provider>
     </ThemeProvider>

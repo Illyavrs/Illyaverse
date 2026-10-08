@@ -1,0 +1,70 @@
+{
+  "fixtures": "Synthetic announcement fixtures; no real account or database is used.",
+  "captures": [
+    {
+      "filename": "announcements-news-1440-dark-zh-TW-populated.png",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "route": "/news",
+      "fixture": "Synthetic announcement fixtures; no real account or database is used.",
+      "locale": "zh-TW",
+      "theme": "dark",
+      "scrollY": 0,
+      "overflow": false
+    },
+    {
+      "filename": "announcements-home-1440-dark-zh-TW-populated.png",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "route": "/",
+      "fixture": "Synthetic announcement fixtures; no real account or database is used.",
+      "locale": "zh-TW",
+      "theme": "dark",
+      "scrollY": 0,
+      "overflow": false
+    },
+    {
+      "filename": "announcements-news-390-light-en-longbody.png",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "route": "/news/990899",
+      "fixture": "Synthetic announcement fixtures; no real account or database is used.",
+      "locale": "en",
+      "theme": "light",
+      "scrollY": 0,
+      "overflow": false
+    },
+    {
+      "filename": "announcements-admin-1440-dark-zh-TW-edit.png",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "route": "/admin?tab=announcements",
+      "fixture": "Synthetic announcement fixtures; no real account or database is used.",
+      "locale": "zh-TW",
+      "theme": "dark",
+      "scrollY": 0,
+      "overflow": false
+    },
+    {
+      "filename": "announcements-admin-390-dark-ja-conflict.png",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "route": "/admin?tab=announcements",
+      "fixture": "Synthetic announcement fixtures; no real account or database is used.",
+      "locale": "ja",
+      "theme": "dark",
+      "scrollY": 0,
+      "overflow": false
+    }
+  ]
+}
