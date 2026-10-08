@@ -39,6 +39,6 @@ Kaleidoscope 是 Illyaverse 專用的 Windows 啟動器。先在網站註冊，�
 .\tools\kaleidoscope\scripts\package-launcher.ps1
 ```
 
-需要 Windows Rust/MSVC 工具鏈、.NET 10 SDK、Node.js 22，以及已安裝且相容的 lazer。腳本只讀取安裝檔作為編譯參考，編譯自製外掛與 Tauri／Next.js 啟動器，將外掛 SHA-256 綁入啟動器；不重新編譯、修改或散布官方 client。腳本以 production 模式嵌入網站介面，並執行不開視窗的 HTML／JS／CSS 完整性檢查，通過後才複製測試包。產物位於 Git 忽略的 `data-kaleidoscope-package`，腳本不啟動遊戲。
+需要 Windows Rust/MSVC 工具鏈、.NET 10 SDK、Node.js 22，以及已安裝且相容的 lazer。腳本只讀取安裝檔作為編譯參考，編譯自製外掛與 Tauri／Next.js 啟動器，將外掛 SHA-256 綁入啟動器；不重新編譯、修改或散布官方 client。腳本以 production 模式嵌入網站介面，並執行不開視窗的 HTML／JS／CSS 完整性檢查。必要 metadata、授權及每份 payload 的雜湊通過目錄／ZIP 一致性檢查後，才輸出測試包。預設產物是 Git 忽略的 `data-kaleidoscope-package-<時間>-<nonce>/` 目錄與同名 `.zip`；既有輸出不會被覆寫。腳本使用 repository 的 `target/` 並停用 Rust 增量編譯，不啟動遊戲。
 
 測試包尚未經過真正原生 GUI／遊玩驗證。請依序回報登入、聊天、譜面下載、遊玩、成績／replay、多人與重連，以及退出後外掛是否移除。[驗證記錄](verification.md)區分 source、隔離整合與原生驗證。
