@@ -15,3 +15,37 @@ cargo run -p kaleidoscope -- profile --client lazer --domain illya.example.com
 `inspect`、`plan`、`apply` 與 `restore` 全部預設只讀／預覽。只有 `apply --write` 或 `restore --write` 會修改指定 hosts 檔。每次修改先產生原始位元組備份，並驗證結果。這些命令不啟動遊戲、不安裝憑證、不修改 DNS 快取。新 `launcher status/set-client/start/stop/recover` 使用同一個固定連線核心。
 
 完整操作方式、TLS 要求與 lazer 相容性限制見 [連線文件](../../docs/connection.md)。
+
+## 本機測試 package
+
+`pwsh -File tools/kaleidoscope/scripts/package-launcher.ps1` 會驗證所選官方安裝、
+建置正式 bridge／介面／原生啟動器，再執行 `--verify-embedded-interface`。
+Rust 使用現有 repository `target/`，停用 incremental，完成後還原 process
+environment。這個指令會執行原生啟動器的無視窗介面檢查，不啟動遊戲。
+
+預設輸出是新的 `data-kaleidoscope-package-<時間>-<nonce>/` 與同名 `.zip`。
+`-OutputDirectory` 必須在 repository 內、父目錄已存在，目錄和 ZIP 都必須尚未
+存在。必要 payload 先複製到唯一 sibling staging 目錄；所有內容完成後最後才
+寫入 `package.json`，驗證組裝目錄與 ZIP 一致後才移至指定輸出。既有 artifacts
+不會覆寫或刪除；失敗的本次 staging 可保留供檢查，不能當成完成 package。
+
+完成 package 包含 `Kaleidoscope.exe`、正式 bridge、`artifact.json`、
+`compatibility.json`、`LICENSE`、`THIRD-PARTY-NOTICES.md`、五份 `licenses/`
+授權文字、`README.txt` 與 `Transfiguration-README.md`。`package.json` 記錄每份
+payload 的 SHA256、固定 `https://illya.test`、`fixture:false`、完成狀態及介面檢查
+類型。verifier 拒絕缺檔、額外檔案、reparse points、hash 不符、不完整／重複
+JSON fields、fixture bridge、其他 endpoint 及無效相容性 metadata；ZIP 不需解壓
+即可檢查每個 entry 與內容 hashes。
+
+```powershell
+pwsh -File tools/kaleidoscope/scripts/verify-launcher-package.ps1 -Directory <package-directory>
+pwsh -File tools/kaleidoscope/scripts/verify-launcher-package.ps1 -ArchivePath <package.zip>
+pwsh -NoProfile -File tools/kaleidoscope/tests/package-integrity.ps1
+```
+
+最後一個指令只在自己的 identity-marked fixture 目錄使用文字 EXE／DLL bytes，
+不執行任何 EXE／DLL。它只證明 package 組裝及拒絕條件，metadata 明確為
+`synthetic_package_integrity`、`embedded_interface_verified:false`；production
+verifier 預設拒絕這類 fixture。package hashes 及 packager 所記錄的介面檢查
+不能證明實際遊戲登入或原生 UI。這是需要本機 DNS／CA 的 `illya.test` 測試
+package，公開下載尚未承諾，原生 GUI／登入／遊玩仍待使用者實機驗證。

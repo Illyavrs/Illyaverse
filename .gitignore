@@ -6,6 +6,7 @@ target/
 .env.*.local
 data/
 data-*/
+data-kaleidoscope-package-*.zip
 .test-deps/
 .protocol-venv/
 *.log

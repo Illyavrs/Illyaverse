@@ -23,6 +23,13 @@ pwsh -File tools/transfiguration/test.ps1 -NativeHost target/debug/examples/runt
 `compatibility.json` 和第三方授權 notices；`proof-output/`、fixture DLL、osu!
 assemblies 與 proof runtime 不可放進正式 package。
 
+完整啟動器的本機測試 package 由
+`tools/kaleidoscope/scripts/package-launcher.ps1` 組裝，必要 bridge notices、五份
+授權與 `artifact.json` 都必須存在。組裝目錄與 ZIP 的 payload hashes 通過驗證
+後才輸出完成 artifact；詳見 [package 指南](../kaleidoscope/README.md#本機測試-package)。
+合成檔案的 package integrity 測試不執行 bridge，也不代表真實原生介面或登入
+已驗證。
+
 測試使用獨立的 compile-time loopback fixture（127.0.0.1:18376）與自己的測試
 資料夾，沒有執行 osu! `Main`、GameHost、UI、Realm database 或 APIAccess 建構子，也沒有
 讀取帳號快取。它驗證 stock assemblies 的實際 endpoint/storage 方法、同版

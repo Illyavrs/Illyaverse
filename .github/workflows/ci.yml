@@ -148,6 +148,9 @@ jobs:
       - run: cargo test -p kaleidoscope --locked
       - run: ./tools/kaleidoscope/tests/runtime-host.ps1
         shell: pwsh
+      - name: Verify portable package assembly with synthetic files
+        shell: pwsh
+        run: ./tools/kaleidoscope/tests/package-integrity.ps1
       - run: npm ci
       - run: npm run build --workspace @illyaverse/kaleidoscope
       - run: cargo build --manifest-path apps/kaleidoscope/src-tauri/Cargo.toml --release --locked --features custom-protocol
