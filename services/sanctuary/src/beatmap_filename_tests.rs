@@ -315,6 +315,63 @@ async fn archive_basenames_bind_their_actual_difficulty_after_checksum_sorting()
 
 #[tokio::test]
 #[ignore = "requires ILLYA_TEST_DATABASE_URL; owned disposable PostgreSQL 17"]
+async fn cp932_archive_aliases_preserve_unicode_original_bytes_and_exact_retry() {
+    let server = OfficialServer::start().await;
+    let fixture = MutationFixture::new("filename_cp932_archive", server.origin.clone()).await;
+    let state = fixture.state.clone();
+    let app = fixture.app.clone();
+    let result = tokio::spawn(async move {
+        let (user, _, _, cookie) =
+            actor(&state, "FilenameCp932Archive", &["beatmaps.upload"]).await;
+        let easy = local_map("CP932 archive", "Easy");
+        let hard = local_map("CP932 archive", "Hard");
+        let bytes = crate::maps::archive_names::tests::stored_archive(&[
+            (b"\x83\x5c.osu", 0, &easy),
+            (b"\x90\xaf.osu", 0, &hard),
+            (b"audio.mp3", 0, b"owned archive asset"),
+        ]);
+        let (status, created) = upload(&app, &cookie, "cp932.osz", &bytes).await;
+        assert_eq!(status, StatusCode::OK, "{created}");
+        let before = snapshot(&state).await;
+        let files = files_snapshot(&state.maps_root).await;
+        assert_eq!(before.aliases.as_array().unwrap().len(), 2);
+        for (filename, raw) in [("ソ.osu", &easy), ("星.osu", &hard)] {
+            let checksum = format!("{:x}", md5::compute(raw));
+            let id = map_id(&created, &checksum);
+            assert_eq!(alias_ids(&state, filename).await, [id]);
+            let (status, resolved) = resolve_filename(&app, user, filename).await;
+            assert_eq!(status, StatusCode::OK, "{resolved}");
+            assert_public_resolution(&resolved, id, &checksum, "local");
+            assert_eq!(
+                get_bytes(&app, &format!("/api/v1/beatmaps/{id}/download")).await,
+                (StatusCode::OK, bytes.clone())
+            );
+            assert_eq!(
+                get_bytes(&app, &format!("/api/v1/beatmaps/{id}/osu")).await,
+                (StatusCode::OK, raw.clone())
+            );
+        }
+        let (status, retried) = upload(&app, &cookie, "renamed.osz", &bytes).await;
+        assert_eq!(status, StatusCode::OK, "{retried}");
+        assert_eq!(retried["idempotent"], true);
+        assert_eq!(retried["package"], created["package"]);
+        for raw in [&easy, &hard] {
+            let checksum = format!("{:x}", md5::compute(raw));
+            assert_eq!(map_id(&retried, &checksum), map_id(&created, &checksum));
+        }
+        assert!(alias_ids(&state, "É».osu").await.is_empty());
+        assert!(alias_ids(&state, "cp932.osz").await.is_empty());
+        assert!(alias_ids(&state, "renamed.osz").await.is_empty());
+        assert_eq!(snapshot(&state).await, before);
+        assert_eq!(files_snapshot(&state.maps_root).await, files);
+        assert_eq!(server.counters(), [0; 4]);
+    })
+    .await;
+    fixture.finish(result).await;
+}
+
+#[tokio::test]
+#[ignore = "requires ILLYA_TEST_DATABASE_URL; owned disposable PostgreSQL 17"]
 async fn distinct_local_maps_with_the_same_exact_filename_are_ambiguous_without_upstream_fallback()
 {
     let server = OfficialServer::start().await;

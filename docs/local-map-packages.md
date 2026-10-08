@@ -148,9 +148,43 @@ Two distinct difficulties can retain the same filename. Filename-only lookup
 then fails with an explicit ambiguity instead of choosing one owner, source or
 status. Strong checksum/native-ID selectors retain their original behavior.
 The migration does not infer names from metadata or hashed storage paths, rewrite
-bytes or backfill legacy archives during lookup. Legacy filename recovery and
-ZIP character-encoding differences are explicit remaining work. See the
+bytes or backfill legacy archives during lookup. New archives validate raw ZIP
+records and decode declared UTF-8, CP932 and valid Unicode Path overrides before
+normalizing separators. Legacy filename recovery remains pending. See the
+[archive filename policy](#archive-filename-validation) and
 [native discovery contract](native-beatmap-discovery.md).
+
+## Archive filename validation
+
+New local and official archives share raw-directory validation before the ZIP
+decompressor builds its filename index. Bit 11 selects strict UTF-8; otherwise
+names use Windows CP932, including standalone private-use extensions. A unique
+version-1 Unicode Path extra (`0x7075`) overrides decoding only when its raw-name
+CRC and strict UTF-8 payload are valid. Actual backslash separators are normalized
+after decoding: CP932 `83 5C` remains `ソ`, rather than becoming a nested path.
+Unflagged UTF-8 is not guessed and malformed encoding is not repaired with
+replacement characters. Existing basename restrictions still apply.
+
+Every original central record is checked for normalized duplicate paths,
+unsafe paths, symbolic links, local/central metadata and overlapping ranges.
+The limits remain 512 entries, 64 MiB per declared entry, 256 MiB declared total,
+and 8 MiB per decompressed `.osu`; actual `.osu` length must match its metadata.
+Normal ZIP, single-disk ZIP64, prepended stubs, valid data descriptors and one
+bounded optional central-directory signature retain support. Signature payloads
+are opaque; cryptographic signature verification is not claimed. Encrypted and
+multi-disk archives are unsupported. Original archive bytes are retained.
+
+Decompression checks record count, order, offsets, sizes and CRC metadata
+against the validated original records. An index that collapses distinct names
+is rejected. Publication, authority, ownership and exact retry rules are
+unchanged; legacy aliases are not backfilled during lookup.
+
+The pinned stock archive reader accepts some malformed Unicode extras and
+replacement characters that the server intentionally refuses. Its offline
+filename-enumeration proof is separate from real import, play or submission.
+See the original tool and exact evidence in `tools/archive-compatibility/`.
+Primary contracts: [pinned lazer archive reader](https://github.com/ppy/osu/blob/2026.1005.1-tachyon/osu.Game/IO/Archives/ZipArchiveReader.cs)
+and [PKWARE ZIP specification](https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT).
 
 ## Verification state
 

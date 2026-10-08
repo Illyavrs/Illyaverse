@@ -32,7 +32,10 @@ assets 是營運者所提供的原始內容；metadata 無法逐一證明這些 
 
 官方 set response 的 `beatmaps` 是原始成員集合；`converts` 不當作額外 `.osu`。
 已標示 convert 或 deleted 的 member、畸形 metadata 和 checksum 不一致會拒絕。
-舊 ZIP 檔名編碼與 stock lazer CP932 fallback 的無損相容性仍待驗證。
+新封包使用共用的原始 ZIP 項目與檔名驗證：UTF-8 flag、CP932 fallback、
+有效 Unicode Path override 與解碼後的路徑檢查。原始封包不改寫。
+畸形編碼的拒絕規則與 stock reader 的差異見[檔名政策](local-map-packages.md#archive-filename-validation)；
+實際原生匯入仍待人工驗證。
 
 現有 `public` client-credentials token 可查 metadata。官方完整 `.osz` 下載
 另有登入帳號與 privilege 檢查，並重新導向 mirror；本流程讓營運者提供封包，

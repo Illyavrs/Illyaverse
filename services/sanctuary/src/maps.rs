@@ -19,6 +19,8 @@ use std::{
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+#[path = "archive_names.rs"]
+pub(crate) mod archive_names;
 #[path = "official_archive.rs"]
 mod official_archive;
 pub use official_archive::import_archive;
@@ -533,48 +535,29 @@ fn unpack_archive_with_policy(
     bytes: &[u8],
     top_level_maps: bool,
 ) -> ApiResult<Vec<(String, Vec<u8>)>> {
+    let original_entries = archive_names::preflight(bytes)?;
     let mut archive = zip::ZipArchive::new(Cursor::new(bytes))
         .map_err(|_| ApiError::bad("Invalid .osz archive."))?;
-    if archive.len() > 512 {
-        return Err(ApiError::bad("Archive may contain at most 512 entries."));
+    if archive.len() != original_entries.len() {
+        return Err(ApiError::bad("Archive entry metadata is ambiguous."));
     }
-    let mut total = 0_u64;
     let mut maps = Vec::new();
-    let mut paths = HashSet::new();
-    for index in 0..archive.len() {
+    for (index, original) in original_entries.into_iter().enumerate() {
         let mut entry = archive
             .by_index(index)
             .map_err(|_| ApiError::bad("Unreadable archive entry."))?;
-        // Keep the zip crate's decoded entry name; do not guess legacy encodings.
-        let name = entry.name().replace('\\', "/");
-        if entry.enclosed_name().is_none()
-            || name.starts_with('/')
-            || name.split('/').any(|p| p == ".." || p.contains(':'))
-            || entry.unix_mode().is_some_and(|m| m & 0o170000 == 0o120000)
+        // zip indexes decoded names, which can collapse original directory
+        // records. Decompress only the exact records validated above.
+        if entry.central_header_start() != original.central_start
+            || entry.header_start() != original.header_start
+            || entry.data_start() != original.data_start
+            || entry.compressed_size() != original.compressed_size
+            || entry.size() != original.size
+            || entry.crc32() != original.crc32
         {
-            return Err(ApiError::bad(
-                "Archive contains an unsafe path or symbolic link.",
-            ));
+            return Err(ApiError::bad("Archive entry metadata is ambiguous."));
         }
-        // Compare extracted paths after slash/segment normalization and Unicode
-        // lowercase, so case variants cannot overwrite another package member.
-        let normalized = name
-            .split('/')
-            .filter(|part| !part.is_empty() && *part != ".")
-            .collect::<Vec<_>>()
-            .join("/")
-            .to_lowercase();
-        if !paths.insert(normalized) {
-            return Err(ApiError::bad("Archive contains duplicate file paths."));
-        }
-        total = total
-            .checked_add(entry.size())
-            .ok_or_else(|| ApiError::bad("Archive size overflow."))?;
-        if total > 256 * 1024 * 1024 || entry.size() > 64 * 1024 * 1024 {
-            return Err(ApiError::bad(
-                "Archive exceeds its uncompressed size limit.",
-            ));
-        }
+        let name = original.name;
         if name.to_ascii_lowercase().ends_with(".osu") {
             if top_level_maps && name.contains('/') {
                 return Err(ApiError::bad(
@@ -598,6 +581,11 @@ fn unpack_archive_with_policy(
                 .map_err(|_| ApiError::bad("Archive decompression failed."))?;
             if buffer.len() > 8 * 1024 * 1024 {
                 return Err(ApiError::bad("Beatmap file exceeds 8 MiB."));
+            }
+            if buffer.len() as u64 != original.size {
+                return Err(ApiError::bad(
+                    "Archive entry size does not match its metadata.",
+                ));
             }
             maps.push((filename.to_owned(), buffer));
         }

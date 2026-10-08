@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Illyaverse.ArchiveCompatibility</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <UseAppHost>false</UseAppHost>
+    <NativeRoot Condition="'$(NativeRoot)' == ''">$(LOCALAPPDATA)/osulazer/current</NativeRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Installed official assemblies are read in place, never redistributed. -->
+    <Reference Include="osu.Game"><HintPath>$(NativeRoot)/osu.Game.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="osu.Framework"><HintPath>$(NativeRoot)/osu.Framework.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>

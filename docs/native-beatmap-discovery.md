@@ -40,7 +40,7 @@ Lazer 的 `BeatmapOnlineStatus` 沒有 `Unranked` 成員。本站資料庫的 un
 
 新 `.osu` 上傳保留原始 basename；新 `.osz` 上傳將每張 difficulty 與封包內解碼後的 basename 一起保存，checksum 排序不會打散其關聯。`beatmap_filename_aliases` 使用精確、區分大小寫及 Unicode bytes 的資料庫鍵；名稱不經 trim、case folding 或 Unicode normalization。它是查詢資料，不會組成檔案路徑，也不會在每次 lookup 解壓封包。公開圖譜回覆不新增檔名、對照表或檔案路徑欄位。
 
-本站 filename selector 限制為 5–1024 UTF-8 bytes、`.osu` 副檔名（副檔名驗證忽略 ASCII 大小寫），禁止斜線、反斜線、冒號與 control characters。驗證允許 `.OSU` 不代表查詢會把它改成 `.osu`；整個名稱仍精確比對。這是本站的 basename 政策，不是官方 API 宣告的完整字元規則。既有 zip 解碼器與 stock lazer 的 CP932 fallback 不同，本輪不宣稱所有舊封包編碼無損。
+本站 filename selector 限制為 5–1024 UTF-8 bytes、`.osu` 副檔名（副檔名驗證忽略 ASCII 大小寫），禁止斜線、反斜線、冒號與 control characters。驗證允許 `.OSU` 不代表查詢會把它改成 `.osu`；整個名稱仍精確比對。這是本站的 basename 政策，不是官方 API 宣告的完整字元規則。新 ZIP 上傳在建立索引前驗證原始項目，依 UTF-8 flag、CP932 或有效 Unicode Path 解碼，再處理分隔符；畸形編碼不使用替代字元修補。見[封包檔名政策](local-map-packages.md#archive-filename-validation)。舊 alias backfill 與實際 native 匯入仍未完成。
 
 同名可以屬於不同 difficulty；lookup 若命中兩張以上，回覆 409 `beatmap_filename_ambiguous`，不依 ID 大小、owner、官方來源或狀態任意選一張，也不繼續查官方。新的 alias 與圖譜在同一 publication transaction 發布，並使用 authority → filename → checksum／resource 的鎖順序。完整同 owner 重試不會以新的 standalone 檔名擴充既有 alias。Migration 0017 只建對照表，不猜測舊名稱、不改任何 retained bytes／checksum／ID；舊封包可驗證的離線 backfill 尚未實作。
 

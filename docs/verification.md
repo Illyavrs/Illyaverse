@@ -6,6 +6,54 @@ The current public profile presentation and website chat visibility checkpoint i
 
 Last recorded evidence: 2026-10-08. Local Docker deployments and isolated-schema tests use synthetic fixtures; they are not a production player community. The INITIAL checkpoint below predates the follow-up chat, replay, mod and connection work. Later source gates and image checks are recorded in the follow-up sections; keep the INITIAL results separate from those checkpoints.
 
+## Original archive filename and raw-record checkpoint
+
+2026-10-08: local and official `.osz` ingestion validates every original central
+record before the decompressor creates its filename index. Declared UTF-8,
+Windows CP932 (including standalone private-use mappings) and validated Unicode
+Path extras decode before separator normalization. Original archive/map bytes,
+publication authority, ownership and exact retries are preserved. Existing old
+aliases are not rewritten or backfilled. See the
+[filename policy](local-map-packages.md#archive-filename-validation).
+
+Final Sanctuary gates pass **71 unit cases**, including **18 raw ZIP/name
+cases**, **35 isolated PostgreSQL cases** (13 package, 12 official archive, 10
+filename), formatting and all-target Sanctuary Clippy with warnings denied.
+The first compile exposed a parent import used by the official-archive child
+module; restoring that import fixed it. Independent review identified valid
+ordinary-comment, optional ZIP64, descriptor and signature layouts; original
+positive controls now cover those cases. Final read-only review reports no
+remaining material finding in this bounded change. All Rust compilation reused
+existing target caches with `CARGO_INCREMENTAL=0`; no old cache was deleted.
+
+The original offline probe passes **17 installed-reader filename fixtures** on
+the pinned 2026.1005.1.0 game assembly using .NET 10.0.4. The client bundles
+10.0.12; that runtime was not tested. Only tiny memory archives and audited
+metadata initialization are used, with no game, player-storage or network flow.
+Exact pins, observed permissive Unicode behavior and report hash are recorded in
+`tools/archive-compatibility/README.md`.
+
+Sanctuary `sha256:044dbe9f6ac8f7eec0146e71e09545e18082af12a5d9d045a155e6000ec8c06d`
+and retained Resonance `sha256:f50992f1a2170ab38d1f830269c4eaf8876520a779a67146f0f665326a4ddb1c`
+pass **458 HTTP requests/55 categories** in `illya-smoke-e059bbd173c587ac`.
+Sixteen added requests check CP932 uploads, exact same-owner retry/package IDs,
+native filename lookup and original `.osz`/`.osu` downloads, plus duplicate raw
+records and invalid flagged UTF-8 refusing without catalogue publication.
+Another fresh project, `illya-smoke-db2371fa768fd42f`, passes **12 official
+archive refusal requests/five categories** without official credentials.
+Both projects' containers, networks, volumes and private temporary files were
+verified removed. These fixtures do not use either retained local database.
+
+Website application code is unchanged. Documentation is read at runtime;
+the documentation update preserves the already verified website layers and
+runtime configuration rather than recompiling the frontend. Detailed source,
+image and subsequent deployment evidence is under `data-archive-compatibility/`
+and the tool README. Historical encoding-pending statements in earlier
+checkpoints below describe those older snapshots; new-upload coverage is the
+bounded policy above. Legacy alias recovery and actual native import/play remain
+pending. This archive change does not resolve the last real stable scalar-limit
+413; no new human score retry has arrived.
+
 ## Stable multipart status checkpoint
 
 2026-10-08: both multipart read branches now preserve the trusted Axum 0.8.9 status instead of replacing every parser failure with 400. Framework request-body limits return 413 `score_upload_too_large`; malformed/truncated input remains 400 `invalid_score_multipart`; other framework stream failures retain their status with that same static generic code. Raw parser errors and attacker-controlled metadata are not exposed. All scalar, replay, aggregate and framed-body limits, classification, authentication and receipt rules remain unchanged. See the [submission contract](native-score-submission.md) and the primary [MultipartError.status() contract](https://docs.rs/axum/latest/axum/extract/multipart/struct.MultipartError.html#method.status).

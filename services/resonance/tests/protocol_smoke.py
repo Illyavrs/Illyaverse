@@ -1183,6 +1183,105 @@ def run():
     gateway.request("POST", "/", packet(2), player_bancho)
     after_logout = gateway.request("POST", "/", packet(4), player_bancho)[0]
     assert any(i == 86 for i, _ in packets(after_logout)), "Logged out stable session remained valid"
+
+    # Keep this finite original archive fixture after score/ranking assertions.
+    # Handwrite stored ZIP wire fields so raw CP932 names reach the HTTP parser
+    # without Python's ZipFile converting them to flagged UTF-8 names.
+    # The normal per-IP upload guard counts the three media and three earlier
+    # beatmap posts too; these four posts keep the suite within its ten requests.
+    archive_name_initial_requests = Client.request_count
+    archive_name_bearer = {"Authorization": "Bearer " + rotated["access_token"]}
+
+    def raw_stored_zip(members):
+        assert 1 <= len(members) <= 8
+        local, central = bytearray(), bytearray()
+        for raw_name, flags, contents in members:
+            assert 1 <= len(raw_name) <= 256 and len(contents) <= 8192
+            assert flags in (0, 1 << 11)
+            offset, size, crc = len(local), len(contents), zlib.crc32(contents)
+            local.extend(struct.pack("<IHHHHHIIIHH", 0x04034B50, 20, flags, 0,
+                                     0, 0, crc, size, size, len(raw_name), 0))
+            local.extend(raw_name)
+            local.extend(contents)
+            central.extend(struct.pack("<IHHHHHHIIIHHHHHII", 0x02014B50, 20, 20,
+                                       flags, 0, 0, 0, crc, size, size,
+                                       len(raw_name), 0, 0, 0, 0, 0, offset))
+            central.extend(raw_name)
+        footer = struct.pack("<IHHHHIIH", 0x06054B50, 0, 0, len(members),
+                             len(members), len(central), len(local), 0)
+        return bytes(local + central) + footer
+
+    def archive_name_map(title, difficulty, first_x):
+        return (f"osu file format v14\n[General]\nMode:0\n[Metadata]\nTitle:{title}\n"
+                f"Artist:Illyaverse\nCreator:Independent HTTP fixture\nVersion:{difficulty}\n"
+                "[Difficulty]\nHPDrainRate:5\nCircleSize:4\nOverallDifficulty:5\nApproachRate:5\n"
+                "SliderMultiplier:1.4\nSliderTickRate:1\n[TimingPoints]\n0,500,4,2,1,100,1,0\n"
+                f"[HitObjects]\n{first_x},64,1000,1,0,0:0:0:0:\n256,192,2000,1,0,0:0:0:0:\n").encode()
+
+    archive_name_title = "Archive name HTTP fixture " + uuid.uuid4().hex
+    cp932_members = [(b"\x83\x5c.osu", "ソ.osu", archive_name_map(archive_name_title, "CP932 So", 64)),
+                     (b"\x90\xaf.osu", "星.osu", archive_name_map(archive_name_title, "CP932 Hoshi", 96))]
+    cp932_archive = raw_stored_zip([(raw_name, 0, contents) for raw_name, _, contents in cp932_members]
+                                 + [(b"notes.txt", 0, b"original CP932 HTTP archive asset\n")])
+    cp932_body, cp932_headers = multipart([], [("file", "original-cp932.osz", cp932_archive)])
+    cp932_created = admin.json("POST", "/api/v1/beatmaps/upload", cp932_body, cp932_headers)
+    assert cp932_created["idempotent"] is False
+    cp932_uploaded = cp932_created["items"]
+    assert len(cp932_uploaded) == 2 and all(item["status"] == "pending" for item in cp932_uploaded)
+    cp932_retried = admin.json("POST", "/api/v1/beatmaps/upload", cp932_body, cp932_headers)
+    assert cp932_retried["idempotent"] is True and cp932_retried["package"] == cp932_created["package"]
+    cp932_retry = cp932_retried["items"]
+    assert len(cp932_retry) == len(cp932_uploaded)
+    identity_keys = ("id", "native_id", "native_set_id", "local_package_id", "md5")
+    assert {tuple(item[key] for key in identity_keys) for item in cp932_retry} == {
+        tuple(item[key] for key in identity_keys) for item in cp932_uploaded}
+    cp932_by_name = {filename: next(item for item in cp932_uploaded
+                                    if item["md5"] == hashlib.md5(contents).hexdigest())
+                     for _, filename, contents in cp932_members}
+    cp932_set_id = cp932_by_name["ソ.osu"]["native_set_id"]
+    assert len({item["native_id"] for item in cp932_uploaded}) == 2
+    assert {item["native_set_id"] for item in cp932_uploaded} == {cp932_set_id}
+    assert len({item["local_package_id"] for item in cp932_uploaded}) == 1
+    for _, filename, contents in cp932_members:
+        item = cp932_by_name[filename]
+        named = gateway.json("GET", "/api/v2/beatmaps/lookup?" + urllib.parse.urlencode({"filename": filename}),
+                             headers=archive_name_bearer)
+        assert named["id"] == item["native_id"] and named["checksum"] == item["md5"]
+        assert named["beatmapset_id"] == cp932_set_id
+        assert gateway.request("GET", f"/osu/{item['native_id']}")[0] == contents
+        assert anonymous.request("GET", f"/api/v1/beatmaps/{item['id']}/osu")[0] == contents
+        assert anonymous.request("GET", f"/api/v1/beatmaps/{item['id']}/download")[0] == cp932_archive
+    cp932_stable_names = ["星.osu", "ソ.osu", "ソ.osu"]
+    cp932_info = gateway.request("POST", "/web/osu-getbeatmapinfo.php?" + urllib.parse.urlencode(direct_auth),
+                                {"Filenames": cp932_stable_names, "Ids": []})[0].decode()
+    assert cp932_info == "\n".join(
+        f"{position}|{cp932_by_name[filename]['native_id']}|{cp932_set_id}|{cp932_by_name[filename]['md5']}|0|N|N|N|N"
+        for position, filename in enumerate(cp932_stable_names))
+    assert gateway.request("GET", f"/d/{cp932_set_id}")[0] == cp932_archive
+    assert gateway.request("GET", f"/api/v2/beatmapsets/{cp932_set_id}/download",
+                           headers=archive_name_bearer)[0] == cp932_archive
+
+    # Two same-name central records must be rejected before a ZIP library can
+    # collapse them. Distinct owned map bytes would expose accidental publication.
+    rejected_name_title = "Rejected archive name HTTP fixture " + uuid.uuid4().hex
+    rejected_first = archive_name_map(rejected_name_title, "Rejected first", 128)
+    rejected_second = archive_name_map(rejected_name_title, "Rejected second", 160)
+    for label, members in [("duplicate-raw-records", [(b"shadowed.osu", 0, rejected_first),
+                                                     (b"shadowed.osu", 0, rejected_second)]),
+                           ("invalid-flagged-utf8", [(b"\xff.osu", 1 << 11, rejected_first)])]:
+        rejected_body, rejected_headers = multipart([], [("file", label + ".osz", raw_stored_zip(members))])
+        admin.request("POST", "/api/v1/beatmaps/upload", rejected_body, rejected_headers, expected=400)
+    rejected_query = urllib.parse.urlencode({"q": rejected_name_title})
+    assert anonymous.json("GET", "/api/v1/beatmaps?" + rejected_query)["total"] == 0
+    archive_names = {"native_set_id": cp932_set_id,
+                     "retry_idempotent": cp932_retried["idempotent"],
+                     "maps": [{"raw_filename_hex": raw_name.hex(), "filename": filename,
+                               "native_id": cp932_by_name[filename]["native_id"]}
+                              for raw_name, filename, _ in cp932_members],
+                     "rejected_cases": ["duplicate-raw-records", "invalid-flagged-utf8"],
+                     "archive_bytes": len(cp932_archive),
+                     "http_requests": Client.request_count - archive_name_initial_requests,
+                     "scope": "disposable_release_image_http"}
     checks = ["shared auth", "stable binary login/ping/chat/logout", "lazer OAuth/refresh", "lazer checksum/set lookup/archive/score collections", "immutable multi-difficulty package/retry/native set grouping/full asset archive", "stable direct canonical difficulty/set selectors", "native signed-int bounds and reserved local misses", "Classic profile totals and standardized mixed-client ranking", "stable ScoreV1/ScoreV2 board partition", "RBAC", "friend/block/DM settings", "stable password room/host authority/slot identity", "stable ready/start/load/score/complete/transfer/leave", "stable spectator frame relay", "lazer score token/idempotency", "stable Rijndael256 submission/checksum", "server PP", "replay round trip", "pending rankings", "moderation", "encrypted stable RX and native solo RX", "RX metadata and unavailable common scale", "RX retry deduplication and native mod binding", "RX pending isolation and fixture moderation", "RX replay original ruleset/mod binding", "RX PP-sorted boards and best-per-map totals", "NM/RX API and gateway rank/stat isolation", "osu/taiko/catch RX partition isolation", "mania RX rejection and untrusted variant derivation"]
     checks.extend(["exact retained filename lookup and cached stable input positions",
                    "website package pagination and explicit original download formats",
@@ -1203,7 +1302,10 @@ def run():
                    "uncached official set terminal withdrawal without upstream discovery",
                    "stable same-checksum changed-judgement retry conflict before/after withdrawal"])
     checks.append("stable multipart request boundary preserves 400/413 static errors without payload leakage or publication")
-    print(json.dumps({"status": "passed", "beatmap_id": primary_map_id, "rx_beatmap_id": map_id, "stable_score_id": stable_id, "lazer_score_id": lazer["id"], "rx_stable_score_id": rx_stable_id, "rx_lazer_score_id": rx_lazer["id"], "rx_converted_score_ids": rx_converted_ids, "room_scores": room_scores, "withdrawal": withdrawal, "upload_boundary": upload_boundary, "http_requests": Client.request_count, "check_count": len(checks), "checks": checks}))
+    checks.extend(["raw CP932 ZIP names decode before separators and preserve stable/lazer filename selectors",
+                   "CP932 package same-owner retry IDs and original .osz/.osu download bytes",
+                   "all duplicate raw ZIP records and invalid flagged UTF-8 reject without publication"])
+    print(json.dumps({"status": "passed", "beatmap_id": primary_map_id, "rx_beatmap_id": map_id, "stable_score_id": stable_id, "lazer_score_id": lazer["id"], "rx_stable_score_id": rx_stable_id, "rx_lazer_score_id": rx_lazer["id"], "rx_converted_score_ids": rx_converted_ids, "room_scores": room_scores, "withdrawal": withdrawal, "upload_boundary": upload_boundary, "archive_names": archive_names, "http_requests": Client.request_count, "check_count": len(checks), "checks": checks}))
 
 
 if __name__ == "__main__":
