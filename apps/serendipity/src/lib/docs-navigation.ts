@@ -20,6 +20,7 @@ export const documents = Object.freeze({
   architecture: 'architecture.md',
   permissions: 'permissions.md',
   announcements: 'announcements.md',
+  'rank-history': 'rank-history.md',
   protocol: 'protocol-compatibility.md',
   realtime: 'signalr-compatibility.md',
   'room-scores': 'lazer-room-scores-plan.md',

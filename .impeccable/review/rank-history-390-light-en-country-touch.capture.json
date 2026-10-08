@@ -1,0 +1,18 @@
+{
+  "filename": "rank-history-390-light-en-country-touch.png",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "locale": "en",
+  "theme": "light",
+  "route": "/players/991801?rank_days=30&rank_metric=country",
+  "facts": {
+    "days": 30,
+    "metric": "country",
+    "selectedDate": "2026-10-01",
+    "selectedCountry": "TW",
+    "profileUsername": "Synthetic long player name",
+    "observationCount": 7
+  }
+}

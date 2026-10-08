@@ -7,6 +7,7 @@ import '@fontsource/noto-sans-tc/600.css';
 import './globals.css';
 import '@/features/home.css';
 import '@/features/profile.css';
+import '@/styles/rank-history.css';
 import '@/features/announcements.css';
 import { Providers } from '@/components/providers';
 import { Shell } from '@/components/shell';

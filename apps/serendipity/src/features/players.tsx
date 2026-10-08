@@ -23,6 +23,7 @@ import { ProfileScoreList } from '@/components/profile-score-list';
 import { MapRows } from './beatmaps';
 import { RelationshipActions } from './social';
 import { ScoreVariantControl, useScoreSelection } from '@/components/score-selection';
+import { RankHistoryPanel } from './rank-history';
 
 function profilePresentation(player: User): CSSProperties {
   const accent =
@@ -215,6 +216,7 @@ function isProfileAccessError(error: unknown): error is ApiError {
 
 export function PlayerPage({ id }: { id: number }) {
   const t = useTranslations('profile');
+  const rankHistory = useTranslations('rankHistory');
   const c = useTranslations('common');
   const f = useFormatter();
   const { user, loading: sessionLoading } = useSession();
@@ -500,11 +502,13 @@ export function PlayerPage({ id }: { id: number }) {
             </section>
             <nav className="profile-section-nav" aria-label={t('sections')}>
               <a href="#profile-overview">{t('stats')}</a>
+              <a href="#profile-rank-history">{rankHistory('title')}</a>
               <a href="#profile-about">{t('about')}</a>
               <a href="#profile-scores">{t('scoreView')}</a>
               <a href="#profile-uploads">{t('uploadedMaps')}</a>
             </nav>
             <div className="profile-layout">
+              <RankHistoryPanel id={id} mode={mode} variant={variant} />
               <section
                 className="profile-about glass"
                 id="profile-about"

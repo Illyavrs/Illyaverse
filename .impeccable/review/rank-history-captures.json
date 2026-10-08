@@ -1,0 +1,74 @@
+{
+  "fixtures": "Synthetic intercepted profile and rank-history observations. No database or real account is used.",
+  "captures": [
+    {
+      "filename": "rank-history-1440-dark-zh-TW-observed.png",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "locale": "zh-TW",
+      "theme": "dark",
+      "route": "/players/991801",
+      "facts": {
+        "days": 90,
+        "observationCount": 7,
+        "missingDate": "2026-10-03",
+        "unrankedDate": "2026-10-05",
+        "latestCountry": "JP",
+        "profileCountry": "TW",
+        "profileAccent": "#78b9dc"
+      }
+    },
+    {
+      "filename": "rank-history-1440-light-en-service-error.png",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "locale": "en",
+      "theme": "light",
+      "route": "/players/991801",
+      "facts": {
+        "rankHistoryStatus": 503,
+        "profileStatus": 200
+      }
+    },
+    {
+      "filename": "rank-history-390-light-en-country-touch.png",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "locale": "en",
+      "theme": "light",
+      "route": "/players/991801?rank_days=30&rank_metric=country",
+      "facts": {
+        "days": 30,
+        "metric": "country",
+        "selectedDate": "2026-10-01",
+        "selectedCountry": "TW",
+        "profileUsername": "Synthetic long player name",
+        "observationCount": 7
+      }
+    },
+    {
+      "filename": "rank-history-320-dark-ja-single-unranked.png",
+      "viewport": {
+        "width": 320,
+        "height": 780
+      },
+      "locale": "ja",
+      "theme": "dark",
+      "route": "/players/991801",
+      "facts": {
+        "days": 90,
+        "observationCount": 1,
+        "selectedDate": "2026-10-05",
+        "pp": 0,
+        "rank": null,
+        "countryRank": null
+      }
+    }
+  ]
+}

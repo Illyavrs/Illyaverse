@@ -35,6 +35,9 @@ mod profile_best_tests;
 mod profile_media_tests;
 #[cfg(test)]
 mod profile_presentation_tests;
+mod rank_history;
+#[cfg(test)]
+mod rank_history_tests;
 #[cfg(test)]
 mod rbac_tests;
 #[cfg(test)]
@@ -389,6 +392,7 @@ fn router(state: AppState) -> Router {
                 .merge(delete(auth::remove_profile_media).layer(DefaultBodyLimit::max(1024))),
         )
         .route("/api/v1/users/{id}", get(auth::user_profile))
+        .route("/api/v1/users/{id}/rank-history", get(rank_history::get))
         .route("/api/v1/announcements", get(announcements::list))
         .route("/api/v1/announcements/{id}", get(announcements::get))
         .route("/api/v1/users/{id}/scores/best", get(scores::best_for_user))
@@ -607,6 +611,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     auth::bootstrap(&state).await?;
     score_recovery::start(state.clone());
+    rank_history::start(state.db.clone());
     mail_delivery::start(state.db.clone(), state.mail.clone());
     sqlx::query("DELETE FROM sessions WHERE expires_at < now()")
         .execute(&state.db)

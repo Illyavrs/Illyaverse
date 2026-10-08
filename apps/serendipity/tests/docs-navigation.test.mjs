@@ -32,8 +32,8 @@ function render(markdown) {
   );
 }
 
-test('the public reader retains twenty guides and exposes the six added guides', () => {
-  assert.equal(Object.keys(documents).length, 26);
+test('the public reader retains twenty guides and exposes the seven added guides', () => {
+  assert.equal(Object.keys(documents).length, 27);
   assert.equal(documentFilename('kaleidoscope'), 'kaleidoscope-launcher.md');
   for (const slug of [
     'appearance-state',
@@ -42,9 +42,10 @@ test('the public reader retains twenty guides and exposes the six added guides',
     'mutation-authorization',
     'website-chat',
     'announcements',
+    'rank-history',
   ])
     assert.equal(documentFilename(slug), `${slug}.md`);
-  assert.equal(new Set(Object.values(documents)).size, 26);
+  assert.equal(new Set(Object.values(documents)).size, 27);
   assert.ok(Object.isFrozen(documents));
 });
 

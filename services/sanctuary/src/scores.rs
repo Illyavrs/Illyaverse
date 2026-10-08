@@ -226,7 +226,7 @@ fn validate_country(country: Option<&str>) -> ApiResult<()> {
     Ok(())
 }
 
-const RANKING_CTE: &str = "WITH eligible AS (
+pub(crate) const RANKING_CTE: &str = "WITH eligible AS (
     SELECT s.* FROM scores s JOIN active_beatmaps b ON b.id=s.beatmap_id
     WHERE s.mode=$1 AND s.score_variant=$2 AND s.verification='verified' AND s.passed AND b.status='ranked' AND s.pp_eligible
 ),best AS (

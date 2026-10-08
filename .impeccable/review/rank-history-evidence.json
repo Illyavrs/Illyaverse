@@ -1,0 +1,196 @@
+{
+  "timestamp_utc": "2026-10-08T03:32:58.0986689Z",
+  "scope": "Rank history extension only; unrelated unreferenced map catalogue work excluded",
+  "images": {
+    "serendipity": "sha256:88ad45fd2aecf22fbe6f7262b2a5d4b624e20f89fcae684675934eae4bae11c0",
+    "resonance": "sha256:8fac03733eb6713d2e322d07fc8e0431316a900d4adf7bc437afc19599092b0d",
+    "sanctuary": "sha256:a6f97d927c20348d32dbd47509062bcd6538caae8642d88fd30ad73b670cb80e"
+  },
+  "source_sha256": {
+    "apps/serendipity/src/features/players.tsx": "0da33ec426dbfbb10be50d3277004268eb8bd2ba11cb12f91975ebe922a98f12",
+    "apps/serendipity/src/features/rank-history.tsx": "19a1507f4e34e64aa6dbb2240a3740cdf59d11251b40108fceae7b5793418684",
+    "migrations/0022_rank_history.sql": "29ff415d96e5d7f41614bde4b90da9c5b7adbe4e8d0cc0d51aff09550c86cc68",
+    ".impeccable/surfaces/rank-history.md": "441db409533e2accdef6a77309af011ac08d4fbf545178a7a3b3174752ec903a",
+    "apps/serendipity/tests/rank-history.spec.ts": "5da49ad107f2466729b4cb6f86f8ae528b05d027cba8b72d2dbf614d5b3765c4",
+    "apps/serendipity/src/app/layout.tsx": "b36c5ee22ac61bb3091c5547d51238a69ad016900531d2458a5324f6cbf83414",
+    "services/sanctuary/src/rank_history.rs": "da865a8674dc906fcd3005b76a8cb92924ef693ad6a6bcbc6247409d0fb7e82b",
+    "apps/serendipity/messages/zh-TW.json": "28a35b2c7c3ae8419f029fff51b5be0ff620cbefa4b219823f7a44a572d17076",
+    "apps/serendipity/messages/ja.json": "043fd014588720bc6407e290525227c2d2f139f66ba4b0a3d459478b2c3c6599",
+    "apps/serendipity/src/app/globals.css": "15f8c368f82a22a1324a7f4e5d8ed7c97043b238a3d183ef604bb9333dd2dd14",
+    "docs/website-features.md": "63b8946652f7031b8a51850b0a8e159cc800875cf725e588314035b393aebc22",
+    "services/sanctuary/src/scores.rs": "1eebf07f9a1d1a74e32b1950587105e3ac4690cdcd938a3ac11d278e13d87b96",
+    "apps/serendipity/messages/en.json": "ae59c84f679a2d5a1af7737997f00ab931799b0d369b7feb73510b2dd575878f",
+    "services/sanctuary/src/rank_history_tests.rs": "147fa31a5ba270f9c653f1d58e76dfc8ba0d51661eddce9912772c606aa31bf3",
+    "services/sanctuary/src/main.rs": "cc6f83ef0c3d84bfd2d915eba70a63b6cb3add2afbcef9e6a60b4fd7e91d32a1",
+    "docs/rank-history.md": "c84907666d054491505aa988a51d5c8a3eeb531704c2fb8a2d8deec295a9ba0a",
+    "apps/serendipity/src/styles/rank-history.css": "273f3c8128f4bd09eb830f414d1c592539f9e75bc74614d36d200264433d3ecc"
+  },
+  "capture_validity": "Root opened all four PNGs once: names/routes/themes/states correct; fonts awaited, animations disabled, fullPage from scrollY=0, no document overflow asserted by capture helper; synthetic intercepted observations",
+  "capture_metadata": {
+    "fixtures": "Synthetic intercepted profile and rank-history observations. No database or real account is used.",
+    "captures": [
+      {
+        "filename": "rank-history-1440-dark-zh-TW-observed.png",
+        "viewport": {
+          "width": 1440,
+          "height": 1000
+        },
+        "locale": "zh-TW",
+        "theme": "dark",
+        "route": "/players/991801",
+        "facts": {
+          "days": 90,
+          "observationCount": 7,
+          "missingDate": "2026-10-03",
+          "unrankedDate": "2026-10-05",
+          "latestCountry": "JP",
+          "profileCountry": "TW",
+          "profileAccent": "#78b9dc"
+        },
+        "sha256": "3152792ba2c405d954deba44da6b623f02e69d24344d2f55cbf066bdf1d55698"
+      },
+      {
+        "filename": "rank-history-1440-light-en-service-error.png",
+        "viewport": {
+          "width": 1440,
+          "height": 1000
+        },
+        "locale": "en",
+        "theme": "light",
+        "route": "/players/991801",
+        "facts": {
+          "rankHistoryStatus": 503,
+          "profileStatus": 200
+        },
+        "sha256": "f9186e3ddde52b7663df6f2f7049d83411e1232c001dce470974801efeed86df"
+      },
+      {
+        "filename": "rank-history-390-light-en-country-touch.png",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "locale": "en",
+        "theme": "light",
+        "route": "/players/991801?rank_days=30&rank_metric=country",
+        "facts": {
+          "days": 30,
+          "metric": "country",
+          "selectedDate": "2026-10-01",
+          "selectedCountry": "TW",
+          "profileUsername": "Synthetic long player name",
+          "observationCount": 7
+        },
+        "sha256": "9e8ea5549d3bcaf25ce774aa93da11a5d3949f7f62b1879e445359f6e43ceed9"
+      },
+      {
+        "filename": "rank-history-320-dark-ja-single-unranked.png",
+        "viewport": {
+          "width": 320,
+          "height": 780
+        },
+        "locale": "ja",
+        "theme": "dark",
+        "route": "/players/991801",
+        "facts": {
+          "days": 90,
+          "observationCount": 1,
+          "selectedDate": "2026-10-05",
+          "pp": 0,
+          "rank": null,
+          "countryRank": null
+        },
+        "sha256": "21678ede7b799cbd080bdb5f749d34125a74cc0179457ad68d799fc4ae55fe65"
+      }
+    ]
+  },
+  "source_gate_log": "data-rank-history/source-gates-confirmation.log",
+  "source_gate_artifacts": "data-rank-history/source-20261008T032938Z-843ac3ac0fff489c95061efcaf179d4f",
+  "source_results": {
+    "migration_source": 6,
+    "frontend_typecheck": "passed",
+    "profile_presentation_postgresql": 1,
+    "relax_postgresql": 2,
+    "sanctuary_clippy": "passed",
+    "profile_best_postgresql": 3,
+    "resonance_unit": 56,
+    "rank_history_postgresql": 6,
+    "frontend_lint": "passed",
+    "fmt": "passed",
+    "sanctuary_unit": 75,
+    "docs_navigation": 10
+  },
+  "browser": {
+    "first_batch_log": "data-rank-history/browser-round-one.log",
+    "unbroken46_case_batch": false,
+    "unique_cases_passed_across_batches": 46,
+    "first_batch_passed": 43,
+    "first_batch_failed": 3,
+    "confirmation_passed": 12,
+    "failure": "test-only getByLabel exact implicit labels included select options",
+    "confirmation_failed": 0,
+    "confirmation_log": "data-rank-history/browser-confirmation.log"
+  },
+  "detector": {
+    "advisories": 6,
+    "path": "data-rank-history/detector.json",
+    "runs": 1,
+    "primary": 0
+  },
+  "shipping_rasters": [],
+  "native_score_client_test": "pending human; actual retained scores/replays 0 at baseline",
+  "runtime": {
+    "verification": "Root completed deployment and read-only runtime verification; documenter read both logs, inspected verifier assertions and checked matched baseline snapshots without rerunning deployment or runtime tools.",
+    "deploy_log": "data-rank-history/deploy.log",
+    "runtime_log": "data-rank-history/runtime.log",
+    "deploy_log_sha256": "61cb49c4a72ce6e2c9fcd8cc3eb6822e795a9f236eb152dcaeb421fbaae9f906",
+    "runtime_log_sha256": "c31354f9a4a44a8641f96065241ec01749d5e2977ca222a8ede5409b50d0cde4",
+    "get_assertions_passed": 26,
+    "healthy_containers": 10,
+    "application_images_match_review_pins": true,
+    "preserved_postgresql_caddy_full_ids": 4,
+    "retained_identities": "data-rank-history/retained-container-identities-20261008T033727Z.json",
+    "schema_version": 22,
+    "failed_migrations": 0,
+    "protected_counts_and_fingerprints": "Core users/maps/aliases/scores, community, availability and announcements retained in both stacks.",
+    "backup_timestamp_utc": "2026-10-08T03:37:27Z",
+    "backup_files": [
+      "data-rank-history/before-rank-history-20261008T033727Z-main.pgdump",
+      "data-rank-history/before-rank-history-20261008T033727Z-main-shared-data.tar.gz",
+      "data-rank-history/before-rank-history-20261008T033727Z-main-snapshot.json",
+      "data-rank-history/before-rank-history-20261008T033727Z-client.pgdump",
+      "data-rank-history/before-rank-history-20261008T033727Z-client-shared-data.tar.gz",
+      "data-rank-history/before-rank-history-20261008T033727Z-client-snapshot.json"
+    ],
+    "collection_origin": "Application collector only; verifier made no observation writes or synthetic backfill.",
+    "tls": "Request-only CA and resolve options; no host or trust-store changes.",
+    "stacks": [
+      {
+        "project": "illyaverse",
+        "get_assertions_passed": 13,
+        "unrestricted_users": 2,
+        "actual_scores": 0,
+        "replay_paths": 0,
+        "observation_date_utc": "2026-10-08",
+        "history_rows": 14,
+        "partitions": 7,
+        "prior_history_rows": 0,
+        "last_captured_at": "2026-10-08T03:37:44Z"
+      },
+      {
+        "project": "illyaverse-client-test",
+        "get_assertions_passed": 13,
+        "unrestricted_users": 2,
+        "actual_scores": 0,
+        "replay_paths": 0,
+        "observation_date_utc": "2026-10-08",
+        "history_rows": 14,
+        "partitions": 7,
+        "prior_history_rows": 0,
+        "last_captured_at": "2026-10-08T03:38:05Z"
+      }
+    ],
+    "http_scope": "Real unrestricted profile and all seven public history partitions return 200 with exact UTC windows and actual observations; missing user returns 404; days 0/181 and mania RX return 400; private guide returns 404.",
+    "native_client_validation": "Still pending human; HTTP, source, PostgreSQL and intercepted browser evidence do not certify native stable/lazer gameplay or score submission."
+  }
+}
