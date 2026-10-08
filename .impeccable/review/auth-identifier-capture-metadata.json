@@ -1,0 +1,71 @@
+{
+  "scope": "Account identifier incumbent Operate refinement",
+  "capturedFrom": "illya-web-smoke-3108c8d7d34d870e",
+  "webImage": "sha256:cbac39aed4d63df1a9af4059a48b054a7bcde1876182cfa40c0a9a9738878f66",
+  "sanctuaryImage": "sha256:fdeba8f3767c41aae64e7335443f1a66c6fb0e808715e8436daf02d6952cdcac",
+  "resonanceImage": "sha256:f50992f1a2170ab38d1f830269c4eaf8876520a779a67146f0f665326a4ddb1c",
+  "engine": "Playwright Chromium, desktop and emulated mobile viewports",
+  "evidenceBoundary": "Five intercepted browser form cases and one real website register/logout/full-email-login case restricted to the owned disposable PostgreSQL stack. Captured cases are synthetic. No game launched.",
+  "captures": [
+    {
+      "path": ".impeccable/review/auth-identifier-desktop-dark-en-login-error.png",
+      "sha256": "971fa606469c787b81668ad056987c4198fc430ee2608c155901da974d77f346",
+      "capturedUtc": "2026-10-08T00:11:05.496Z",
+      "bytes": 62411,
+      "route": "/login",
+      "locale": "en",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "pngDimensions": {
+        "width": 1440,
+        "height": 1114
+      },
+      "state": "synthetic generic credential error after full 254-character identifier submission",
+      "fullPage": true
+    },
+    {
+      "path": ".impeccable/review/auth-identifier-mobile-light-ja-register-boundary.png",
+      "sha256": "141827688d047f6e3290a654cb6b6fe8bc1461dd9303c67523f2ae646e41635f",
+      "capturedUtc": "2026-10-08T00:11:06.194Z",
+      "bytes": 46808,
+      "route": "/register",
+      "locale": "ja",
+      "theme": "light",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "pngDimensions": {
+        "width": 390,
+        "height": 1000
+      },
+      "state": "synthetic 24-character username and separate 254-character email before submit",
+      "fullPage": true
+    }
+  ],
+  "productionSources": [
+    {
+      "path": "apps/serendipity/src/features/auth.tsx",
+      "sha256": "9049c1902531b6094ae775044aff5af1297153fd52c83f447c9dc3a43addcacb"
+    },
+    {
+      "path": "apps/serendipity/messages/en.json",
+      "sha256": "2582c1957aaf5ddc7d06bf5d2db8f9346249c447c17f8822660ff2895b4c318c"
+    },
+    {
+      "path": "apps/serendipity/messages/zh-TW.json",
+      "sha256": "ba5d620520b3690873aee6e1ab31c809254ad66ba2f01b906332b2b03d8c1202"
+    },
+    {
+      "path": "apps/serendipity/messages/ja.json",
+      "sha256": "582f9449d7b458fba4c860e53a675c7e3ce0ebc6ecc84ad1fd87fa2e0ec7710e"
+    },
+    {
+      "path": "apps/serendipity/src/app/globals.css",
+      "sha256": "f6c8ba7d0144c2b2068be6dac6e4a6f630a04a78cc6d23f8f9168d0f9fb65276"
+    }
+  ]
+}

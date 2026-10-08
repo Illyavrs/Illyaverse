@@ -125,10 +125,11 @@
   },
   "auth": {
     "loginTitle": "登入",
-    "loginDescription": "輸入 Illyaverse 的使用者名稱與密碼。",
+    "loginDescription": "輸入 Illyaverse 的使用者名稱或電子郵件，以及密碼。",
     "registerTitle": "建立帳號",
     "registerDescription": "建立 Illyaverse 帳號，供網站與支援的遊戲客戶端使用。",
     "username": "使用者名稱",
+    "loginIdentifier": "使用者名稱或電子郵件",
     "email": "電子郵件",
     "password": "密碼",
     "passwordHint": "至少 12 個字元，請使用獨立的密碼。",

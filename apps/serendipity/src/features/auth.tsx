@@ -48,14 +48,14 @@ export function AuthPage({ register = false }: { register?: boolean }) {
         <p className="lede">{t(register ? 'registerDescription' : 'loginDescription')}</p>
         <form onSubmit={submit}>
           <div className="field">
-            <label htmlFor="username">{t('username')}</label>
+            <label htmlFor="username">{t(register ? 'username' : 'loginIdentifier')}</label>
             <Input
               id="username"
               name="username"
               autoComplete="username"
               required
               minLength={3}
-              maxLength={24}
+              maxLength={register ? 24 : 254}
             />
           </div>
           {register && (

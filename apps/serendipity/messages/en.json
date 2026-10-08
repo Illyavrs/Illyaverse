@@ -125,10 +125,11 @@
   },
   "auth": {
     "loginTitle": "Sign in",
-    "loginDescription": "Use your Illyaverse username and password.",
+    "loginDescription": "Use your Illyaverse username or email and password.",
     "registerTitle": "Create account",
     "registerDescription": "Create an Illyaverse account for the website and supported game clients.",
     "username": "Username",
+    "loginIdentifier": "Username or email",
     "email": "Email",
     "password": "Password",
     "passwordHint": "At least 12 characters. Use a unique password.",

@@ -125,10 +125,11 @@
   },
   "auth": {
     "loginTitle": "ログイン",
-    "loginDescription": "Illyaverse のユーザー名とパスワードを入力してください。",
+    "loginDescription": "Illyaverse のユーザー名またはメールアドレスとパスワードを入力してください。",
     "registerTitle": "アカウント作成",
     "registerDescription": "ウェブサイトと対応するゲームクライアント用の Illyaverse アカウントを作成します。",
     "username": "ユーザー名",
+    "loginIdentifier": "ユーザー名またはメールアドレス",
     "email": "メールアドレス",
     "password": "パスワード",
     "passwordHint": "12 文字以上の専用パスワードを使ってください。",
