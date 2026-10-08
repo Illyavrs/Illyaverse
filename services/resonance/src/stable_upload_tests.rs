@@ -1,6 +1,7 @@
 //! Multipart-reader tests use synthetic bodies and never reach score ingestion.
 use super::{
-    ScoreUpload, read_score_upload, resolve_upload_disposition, upload_disposition_metadata,
+    ScoreUpload, parse_score_submission, read_score_upload, resolve_upload_disposition,
+    upload_disposition_metadata,
 };
 use crate::common::ApiError;
 use axum::{
@@ -851,6 +852,151 @@ async fn diagnostic_limited_body(
     let result = read_request_body(body, DefaultBodyLimit::max(FRAMEWORK_BODY_LIMIT)).await;
     let event = String::from_utf8(captured.0.lock().unwrap().clone()).unwrap();
     (result, event)
+}
+
+fn synthetic_score_envelope_fields() -> Vec<String> {
+    [
+        "0123456789abcdef0123456789abcdef",
+        "SECRET_USERNAME_MARKER",
+        "abcdef0123456789abcdef0123456789",
+        "2",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "600",
+        "2",
+        "True",
+        "X",
+        "0",
+        "True",
+        "0",
+        "261008120000",
+        "  b20261008  ",
+    ]
+    .map(str::to_owned)
+    .to_vec()
+}
+
+#[tokio::test]
+async fn score_envelope_parse_diagnostics_preserve_status_and_redact() {
+    if diagnostic_runs_in_child(
+        "stable_scores::upload_tests::score_envelope_parse_diagnostics_preserve_status_and_redact",
+    ) {
+        return;
+    }
+    let _guard = UPLOAD_TEST_LOCK.lock().await;
+    let captured = diagnostic_capture();
+    let valid_fields = synthetic_score_envelope_fields();
+    assert_eq!(valid_fields.len(), 18);
+    let accepted = parse_score_submission(&valid_fields.join(":"))
+        .expect("synthetic valid envelope must retain existing parser behavior");
+    assert_eq!(accepted.username, "SECRET_USERNAME_MARKER");
+    assert_eq!(accepted.client_version, "b20261008");
+    assert!(captured.0.lock().unwrap().is_empty());
+
+    let mut cases = Vec::new();
+    for (reason, field_index, replacement) in [
+        ("digest", 0, "SECRET_FIELD_MARKER"),
+        ("username", 1, "SECRET_USERNAME_MARKER\n"),
+        ("hit_counts", 3, "SECRET_FIELD_MARKER"),
+        ("total", 9, "SECRET_FIELD_MARKER"),
+        ("combo", 10, "SECRET_FIELD_MARKER"),
+        ("boolean", 11, "SECRET_FIELD_MARKER"),
+        ("grade", 12, "SECRET_FIELD_MARKER"),
+        ("mods", 13, "SECRET_FIELD_MARKER"),
+        ("mode", 15, "SECRET_FIELD_MARKER"),
+        ("timestamp", 16, "SECRET_FIELD_MARKER"),
+        ("client_version", 17, "      "),
+    ] {
+        let mut fields = valid_fields.clone();
+        fields[field_index] = replacement.into();
+        cases.push((reason, fields.join(":")));
+    }
+    // An overlong client field can contain arbitrary secret text. The reason
+    // and byte lengths may be logged, but its text must remain private.
+    let mut overlong_version = valid_fields.clone();
+    overlong_version[17] = format!("{}  ", "SECRET_VERSION_MARKER".repeat(7));
+    assert!(overlong_version[17].trim_end_matches(' ').len() > 128);
+    cases.push(("client_version", overlong_version.join(":")));
+    let mut wrong_count = valid_fields.clone();
+    wrong_count.push("SECRET_FIELD_MARKER".into());
+    cases.push(("field_count", wrong_count.join(":")));
+    cases.push((
+        "envelope_limit",
+        "SECRET_FIELD_MARKER".repeat(
+            resonance_protocol::submission::MAX_ENVELOPE_BYTES / "SECRET_FIELD_MARKER".len() + 1,
+        ),
+    ));
+
+    for (reason, decoded) in cases {
+        captured.0.lock().unwrap().clear();
+        let error = parse_score_submission(&decoded)
+            .expect_err("synthetic malformed envelope must preserve rejection");
+        assert_eq!(error.0, StatusCode::BAD_REQUEST);
+        assert_eq!(error.1, "invalid_score_envelope");
+        let response = error.into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.headers()[header::CONTENT_TYPE], "application/json");
+        let body = String::from_utf8(to_bytes(response.into_body(), 1024).await.unwrap().to_vec())
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&body).unwrap(),
+            serde_json::json!({
+                "error": "invalid_score_envelope",
+                "message": "invalid_score_envelope",
+            }),
+        );
+        let event = String::from_utf8(captured.0.lock().unwrap().clone()).unwrap();
+        assert!(event.contains("stable score envelope rejected"));
+        let field_count = decoded.split(':').count();
+        let mut metrics = vec![
+            format!("parse_reason=\"{reason}\""),
+            format!("envelope_field_count={field_count}"),
+            format!("envelope_bytes={}", decoded.len()),
+        ];
+        if field_count == 18 {
+            let client_version = decoded.rsplit(':').next().unwrap();
+            metrics.extend([
+                format!("client_version_raw_bytes={}", client_version.len()),
+                format!(
+                    "client_version_normalized_bytes={}",
+                    client_version.trim().len()
+                ),
+                format!(
+                    "client_flag_spaces={}",
+                    client_version.len() - client_version.trim_end_matches(' ').len(),
+                ),
+            ]);
+        } else {
+            // A final substring in a malformed field count has no established
+            // client-version meaning and must not acquire version diagnostics.
+            for key in [
+                "client_version_raw_bytes=",
+                "client_version_normalized_bytes=",
+                "client_flag_spaces=",
+            ] {
+                assert!(!event.contains(key), "unexpected unclassified metric {key}");
+            }
+        }
+        for metric in metrics {
+            assert!(
+                event.split_whitespace().any(|token| token == metric),
+                "missing fixed diagnostic {metric}: {event}",
+            );
+        }
+        for marker in [
+            "SECRET_USERNAME_MARKER",
+            "SECRET_FIELD_MARKER",
+            "SECRET_VERSION_MARKER",
+        ] {
+            assert!(
+                !event.contains(marker) && !body.contains(marker),
+                "decrypted envelope text must not enter diagnostics or responses",
+            );
+        }
+    }
 }
 
 #[tokio::test]

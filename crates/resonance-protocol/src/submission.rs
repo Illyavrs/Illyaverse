@@ -139,7 +139,11 @@ impl StableSubmission {
         }
         let played_at = NaiveDateTime::parse_from_str(fields[16], "%y%m%d%H%M%S")
             .map_err(|_| ProtocolError::Invalid("score timestamp"))?;
-        if fields[17].len() > 128 || fields[17].trim().len() < 8 {
+        // Stable appends one ASCII space per legacy client-flag value to the
+        // version field. Bound the version separately from that suffix; the
+        // complete decrypted envelope remains bounded above.
+        let client_version = fields[17].trim_end_matches(' ');
+        if client_version.len() > 128 || client_version.trim().len() < 8 {
             return Err(ProtocolError::Invalid("score client version"));
         }
         Ok(Self {
@@ -155,7 +159,7 @@ impl StableSubmission {
             passed: boolean(fields[14])?,
             mode,
             played_at,
-            client_version: fields[17].trim().to_owned(),
+            client_version: client_version.trim().to_owned(),
         })
     }
     pub fn online_checksum(
@@ -308,6 +312,96 @@ pub fn validate_compressed_frames(compressed: &[u8]) -> Result<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn envelope_with_version(version: &str) -> String {
+        format!(
+            "0123456789abcdef0123456789abcdef:Illya:00000000000000000000000000000000:10:0:0:0:0:0:1000:10:True:X:0:True:0:261007120000:{version}"
+        )
+    }
+
+    #[test]
+    fn stable_ascii_space_flags_preserve_version_checksum_and_replay_metadata() {
+        for version in ["20261007", "b20261007"] {
+            let unsigned = envelope_with_version(version);
+            let checksum = StableSubmission::parse(&unsigned).unwrap().online_checksum(
+                "20261007",
+                "synthetic-client",
+                "",
+            );
+            let input = unsigned.replacen(&"0".repeat(32), &checksum, 1);
+            let baseline = StableSubmission::parse(&input).unwrap();
+            let baseline_replay = baseline.replay_container(20261007, &[1, 2, 3], 42).unwrap();
+            for flags in [0, 128, 256, 512] {
+                let parsed =
+                    StableSubmission::parse(&format!("{input}{}", " ".repeat(flags))).unwrap();
+                assert_eq!(parsed.client_version, version);
+                assert_eq!(parsed.checksum, checksum);
+                parsed
+                    .validate_checksum("20261007", "synthetic-client", "")
+                    .unwrap();
+                assert_eq!(
+                    parsed.replay_container(20261007, &[1, 2, 3], 42).unwrap(),
+                    baseline_replay,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn stable_flag_suffix_keeps_normalized_version_length_bounds() {
+        for length in [8, 128] {
+            let version = "v".repeat(length);
+            for flags in [0, 512] {
+                let input = envelope_with_version(&format!("{version}{}", " ".repeat(flags)));
+                assert_eq!(
+                    StableSubmission::parse(&input).unwrap().client_version,
+                    version
+                );
+            }
+        }
+        for length in [7, 129] {
+            for flags in [0, 512] {
+                let input =
+                    envelope_with_version(&format!("{}{}", "v".repeat(length), " ".repeat(flags)));
+                assert_eq!(
+                    StableSubmission::parse(&input).unwrap_err(),
+                    ProtocolError::Invalid("score client version"),
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn stable_flag_suffix_remains_subject_to_full_envelope_bound() {
+        let input = envelope_with_version("b20261007");
+        let input = format!("{input}{}", " ".repeat(MAX_ENVELOPE_BYTES - input.len()));
+        assert_eq!(input.len(), MAX_ENVELOPE_BYTES);
+        assert_eq!(
+            StableSubmission::parse(&input).unwrap().client_version,
+            "b20261007"
+        );
+        assert_eq!(
+            StableSubmission::parse(&format!("{input} ")).unwrap_err(),
+            ProtocolError::Limit("score envelope"),
+        );
+    }
+
+    #[test]
+    fn stable_flag_suffix_does_not_relax_non_space_padding_bounds() {
+        for version in [
+            format!("20261007{}", "\t".repeat(128)),
+            format!("20261007{}", "\n".repeat(128)),
+            format!("20261007{}", "\u{2003}".repeat(128)),
+            format!("{}20261007", " ".repeat(512)),
+            format!("2026{}1007", " ".repeat(512)),
+            format!("20261007{}\t", " ".repeat(512)),
+        ] {
+            assert_eq!(
+                StableSubmission::parse(&envelope_with_version(&version)).unwrap_err(),
+                ProtocolError::Invalid("score client version"),
+            );
+        }
+    }
     #[test]
     fn decrypts_independent_python_rijndael256_fixture() {
         // Produced with py3rijndael 0.3.3, IV bytes 0..31; no reference repo code.

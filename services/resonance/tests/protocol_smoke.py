@@ -792,6 +792,16 @@ def run():
     assert len(extended_fields) == 12 and len(ancillary) == 80486
     extended_body, extended_headers = multipart(extended_fields, [("score", "replay.osr", frames)], trailing_fields=[("probe", ancillary)])
     assert f"onlineScoreId:{stable_id}|" in gateway.request("POST", "/web/osu-submit-modular-selector.php", extended_body, extended_headers)[0].decode()
+    # Stable appends ASCII-space client flags to the version field. They do not
+    # change the checksum, score identity or stored replay metadata.
+    for flag_spaces in (128, 256, 512):
+        flagged_fields = [(name, encrypt(envelope + " " * flag_spaces) if name == "score" else value) for name, value in extended_fields]
+        flagged_body, flagged_headers = multipart(flagged_fields, [("score", "replay.osr", frames)], trailing_fields=[("probe", ancillary)])
+        assert f"onlineScoreId:{stable_id}|" in gateway.request("POST", "/web/osu-submit-modular-selector.php", flagged_body, flagged_headers)[0].decode()
+    invalid_version_envelope = envelope.rsplit(":", 1)[0] + ":" + "v" * 129 + " " * 512
+    invalid_version_fields = [(name, encrypt(invalid_version_envelope) if name == "score" else value) for name, value in fields]
+    invalid_version_body, invalid_version_headers = multipart(invalid_version_fields, [("score", "replay.osr", frames)])
+    gateway.request("POST", "/web/osu-submit-modular-selector.php", invalid_version_body, invalid_version_headers, expected=400)
     query = urllib.parse.urlencode({"u": player_name, "h": digest(player_password), "c": stable_id, "m": 0})
     assert gateway.request("GET", "/web/osu-getreplay.php?" + query)[0] == frames
     stable_score = gateway.json("GET", f"/api/v2/scores/{stable_id}", headers=bearer)
@@ -1319,6 +1329,7 @@ def run():
                    "stable same-checksum changed-judgement retry conflict before/after withdrawal"])
     checks.append("stable multipart request boundary preserves 400/413 static errors without payload leakage or publication")
     checks.append("unknown ordinary stable extensions drain without retention or score/replay authority and preserve auth/checksum/retry")
+    checks.append("stable ASCII-space version flags preserve checksum receipt and replay while normalized version stays bounded")
     checks.extend(["raw CP932 ZIP names decode before separators and preserve stable/lazer filename selectors",
                    "CP932 package same-owner retry IDs and original .osz/.osu download bytes",
                    "all duplicate raw ZIP records and invalid flagged UTF-8 reject without publication"])

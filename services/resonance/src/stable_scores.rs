@@ -6,7 +6,7 @@ use axum::{
 };
 use chrono::Utc;
 use resonance_protocol::{
-    stable as wire,
+    ProtocolError, stable as wire,
     submission::{StableSubmission, decrypt_score_field, validate_compressed_frames},
 };
 use serde_json::{Value, json};
@@ -592,6 +592,46 @@ fn require_replay_identity(
     Ok(())
 }
 
+fn parse_score_submission(decoded: &str) -> Result<StableSubmission, ApiError> {
+    StableSubmission::parse(decoded).map_err(|error| {
+        // Report only fixed categories and lengths. The decrypted envelope may
+        // contain account names and arbitrary client-controlled text.
+        let parse_reason = match error {
+            ProtocolError::Limit("score envelope") => "envelope_limit",
+            ProtocolError::Invalid("score field count") => "field_count",
+            ProtocolError::Invalid("score digest") => "digest",
+            ProtocolError::Invalid("score username") => "username",
+            ProtocolError::Invalid("score hit counts") => "hit_counts",
+            ProtocolError::Invalid("score total") => "total",
+            ProtocolError::Invalid("score combo") => "combo",
+            ProtocolError::Invalid("score boolean") => "boolean",
+            ProtocolError::Invalid("score grade") => "grade",
+            ProtocolError::Invalid("score mods") => "mods",
+            ProtocolError::Invalid("score mode") => "mode",
+            ProtocolError::Invalid("score timestamp") => "timestamp",
+            ProtocolError::Invalid("score client version") => "client_version",
+            _ => "other",
+        };
+        let envelope_field_count = decoded.split(':').count();
+        let client_version = if envelope_field_count == 18 {
+            decoded.rsplit(':').next()
+        } else {
+            None
+        };
+        tracing::warn!(
+            parse_reason,
+            envelope_field_count,
+            envelope_bytes = decoded.len(),
+            client_version_raw_bytes = client_version.map(str::len),
+            client_version_normalized_bytes = client_version.map(|value| value.trim().len()),
+            client_flag_spaces =
+                client_version.map(|value| value.len() - value.trim_end_matches(' ').len()),
+            "stable score envelope rejected"
+        );
+        ApiError(StatusCode::BAD_REQUEST, "invalid_score_envelope")
+    })
+}
+
 async fn submit_inner(state: AppState, multipart: Multipart) -> Result<Response, ApiError> {
     let ScoreUpload {
         fields,
@@ -618,8 +658,7 @@ async fn submit_inner(state: AppState, multipart: Multipart) -> Result<Response,
         version,
     )
     .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_score_envelope_cipher"))?;
-    let submission = StableSubmission::parse(&decoded)
-        .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_score_envelope"))?;
+    let submission = parse_score_submission(&decoded)?;
     let client_hash = decrypt_score_field(required("s")?, iv, version)
         .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_score_client_hash_cipher"))?;
     let player = common::authenticate(

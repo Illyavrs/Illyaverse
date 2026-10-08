@@ -15,7 +15,7 @@
 | 權限與不同角色區域 | 伺服器檢查權限，網站呈現相應管理區；有角色、帳號限制、圖譜／成績管理與稽核。見 [網站功能的權限驗證](website-features.md)。隱藏入口本身不作為授權證據。 |
 | 聊天系統 | 已有網站公開／私人對話、好友／封鎖及跨協定隔離整合證據。見 [聊天](website-chat.md)。原生遊戲的聊天畫面與重連仍待實機驗證。 |
 | 官方與社群圖譜 | 已有共享官方節流、metadata／整包匯入、本地 `.osu`／`.osz` 上傳、下載、難度切換及下架。見 [圖譜搜尋](map-discovery.md)、[官方圖譜包](official-beatmap-archives.md)、[本地圖譜包](local-map-packages.md)。 |
-| Score、Replay、rosu-pp、RX | 已有持久化、驗證／私密政策、Replay 綁定、PP 計算與獨立 Normal／RX 分區。隔離協定與資料庫證據見 [驗證紀錄](verification.md)。實際 stable 送分仍有已觀察的 413，尚無成功的真人成績／Replay 證據。 |
+| Score、Replay、rosu-pp、RX | 已有持久化、驗證／私密政策、Replay 綁定、PP 計算與獨立 Normal／RX 分區。隔離協定與資料庫證據見 [驗證紀錄](verification.md)。最新真人 stable 重試已通過先前 413 的 multipart 階段，但在 envelope parsing 收到 400，尚無成功的真人成績／Replay 證據。 |
 | stable 與 lazer 連線 | 已有 stable `-devserver` 協定及固定端點的 stock lazer 原創橋接，並有 HTTP／DTO／即時協定測試。見 [協定相容性](protocol-compatibility.md)。實機登入、遊玩、送分、Replay 播放及重連尚未通過完整清單。 |
 | 專用啟動器、禁止官方 fallback、退出移除 DLL | 已有必須先載入的外掛、固定服務、相容性拒絕、監護程序與復原清理。見 [Kaleidoscope](kaleidoscope-launcher.md)。真實遊戲的啟動／重新啟動／退出清理仍待玩家驗證；外掛只允許已驗證的 client 版本。 |
 | Landing 與連線教學 | 已有實際伺服器資料、功能入口、註冊／連線步驟及各客戶端操作指南。見 [網站功能](website-features.md) 與 [連線](connection.md)。 |
@@ -32,9 +32,11 @@
 
 其後 stable 附加欄位排空修正的 Resonance 映像 `sha256:d2d4252932a7833ebb8ce1e3baa283c961ee13ae78c0f42015b0d5d793ebb8c9` 通過 25 個 multipart tests、Clippy 及一輪全新的 461 HTTP／56 類隔離加密協定回歸；runner、環境還原及擁有者清理均 exit 0。兩套本機服務已於 2026-10-08 09:36 UTC（台灣 17:36）更新 Resonance，十個容器健康、其餘八個容器與原有資料 ID／schema 保留。更新時 client 有四十五個難度，兩套都仍為零成績／Replay；實際送分成功待新重試確認。確切來源、備份範圍與實機狀態另記在 [附加欄位修正證據](stable-ancillary-evidence.json)，不覆寫早期 checkpoint 的結果。
 
+最新的版本欄位 ASCII 空格旗標修正完成 7 個核心 tests、診斷隱私測試與 Clippy，最終 Resonance 映像 `sha256:bcd541bbdd0a154ae7082136b042d851f69713218b2a46937eb6bf0fe27345cd` 通過一次 465 HTTP／57 類隔離協定 gate。兩套本機服務在 2026-10-08 10:00 UTC（台灣 18:00）完成更新，仍有十個健康容器；只重新建立兩個 Resonance，schema 22、其餘容器與原有資料 ID 保留。部署時兩套都仍為零成績／Replay。此次 source 與備份範圍另記在 [版本旗標證據](stable-version-flags-evidence.json)，實機成功尚未確認。
+
 ## 尚需完成
 
-1. 確認真人 stable 在未知普通 multipart 附加欄位排空修正後能成功保存成績與 Replay；2026-10-08 的新診斷已排除大小寫解析問題，25 個 parser regression 已通過。附加欄位不參與成績驗證，不被猜測為 Replay，其 bytes 仍計入原有總量限制。部署後實機確認仍待完成。見 [原生成績提交](native-score-submission.md)。
+1. 確認真人 stable 能成功保存成績與 Replay；2026-10-08 09:38 UTC 的三次重試已通過 multipart／解密，但在 envelope parsing 收到 400。已修正版本欄位尾端 ASCII 空格旗標的長度判斷，並加入不含值的固定 parser failure category；實際成因與修正後成功仍待新診斷確認。見 [原生成績提交](native-score-submission.md)。
 2. 由玩家執行 [原生 release checklist](protocol-compatibility.md#native-client-release-checklist)，記錄 client 版本、時間與結果，涵蓋 stable／lazer 登入、聊天、官方／本地圖譜、各模式、RX、成績、Replay 與重連。
 3. 由玩家確認 Kaleidoscope 的真實啟動／關閉並重新啟動，以及遊戲結束後外掛清理；異常中斷後依復原流程檢查。
 

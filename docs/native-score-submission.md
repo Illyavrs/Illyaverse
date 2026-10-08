@@ -33,3 +33,9 @@ Multer 3.1 的內建參數辨識區分大小寫，會漏認 `Name`／`FileName`�
 附加欄位修正另完成一輪 461 次 HTTP／56 類最終映像協定測試，其中新的第十四項 opaque 附加資料仍取得原有 score receipt、Replay bytes；錯誤密碼與 checksum 依然拒絕。兩套本機 Resonance 已在 2026-10-08 台灣 17:36 更新，備份與 schema 22 核對通過。實機修正後送分成功仍待確認；確切來源、映像與部署範圍見 [修正證據](stable-ancillary-evidence.json)。
 
 同日 09:38:19／27／42 UTC 的三次真人重試已通過 multipart 與解密，改於 `StableSubmission::parse` 回覆 400 `invalid_score_envelope`；資料庫仍為零成績／Replay。這確認前述 413 阻擋已清除，但不代表完整送分成功。下一項是取得不含值的固定 parser failure category，以區分欄位數、版本、時間及其他 envelope 格式檢查。
+
+成績最後一欄可包含版本與尾端 ASCII 空格旗標；[bancho.py 的提交資料模型](https://github.com/osuAkatsuki/bancho.py/blob/master/app/objects/score.py) 記錄了此格式。[旗標定義](https://github.com/osuAkatsuki/bancho.py/blob/master/app/constants/clientflags.py) 包含 128／256／512，因此含這些尾端空格的正常版本會被原先「整欄最多 128 bytes」誤拒絕。原創 Rust parser 現在先移除這個 ASCII 空格後綴，再套用原有版本長度限制與正常化；完整 envelope 的 16 KiB 上限保留，非空格 padding 未放寬。這是由 wire 格式支持的相容性修正，尚未證明是上述真人 400 的實際原因。
+
+Envelope 拒絕診斷只輸出白名單固定 `parse_reason`、欄位數、總 bytes，以及欄位數為 18 時最後欄的原始／正常化長度和尾端 ASCII 空格數。公開回應維持 400 `invalid_score_envelope`。不輸出 parser error 原始字串、解密內容、版本值、玩家名稱或任何成績欄位值。
+
+此版本完成 7 個核心 submission tests、原有 25 個 multipart tests、新的診斷隱私測試及 Clippy；新的隱私 fixture 一度誤把合法空格後綴當成超長版本，修正 fixture 後單獨通過，未重跑已通過的 reader tests。最終映像另通過一輪 465 HTTP／57 類隔離協定檢查，包含獨立加密 128／256／512 空格後綴重試、原 receipt／Replay 一致及超長版本拒絕。兩套本機 Resonance 已在 2026-10-08 台灣 18:00 更新，schema 22、其他八個容器與原有資料 ID 保留；更新時仍無原生成績／Replay。新的 source、映像、備份及驗證範圍見 [版本旗標修正證據](stable-version-flags-evidence.json)。真人成功依然需要對應請求與持久化證據。
