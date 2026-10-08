@@ -6,6 +6,7 @@ import { useFormatter, useTranslations } from 'next-intl';
 import useSWR, { useSWRConfig } from 'swr';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { FieldSelect } from '@/components/ui/field-select';
 import { Loading } from '@/components/common';
 import { useSession } from '@/components/providers';
 import { ApiError, fetcher } from '@/lib/api';
@@ -31,8 +32,8 @@ export type RankHistoryResponse = {
 };
 type Metric = 'global' | 'country';
 const dayMilliseconds = 86_400_000;
-const plotTop = 14;
-const plotBottom = 190;
+const plotTop = 20;
+const plotBottom = 178;
 
 function utcDate(value: string) {
   return new Date(`${value}T00:00:00Z`);
@@ -111,36 +112,38 @@ export function RankHistoryPanel({
   return (
     <section
       className="rank-history-panel glass"
+      data-material="section"
       id="profile-rank-history"
       aria-labelledby="rank-history-title"
     >
       <header className="rank-history-header">
         <h2 id="rank-history-title">{t('title')}</h2>
         <div className="rank-history-controls">
-          <label>
+          <label htmlFor="rank-history-placement">
             <span>{t('placement')}</span>
-            <select
-              className="native-select"
+            <FieldSelect
+              id="rank-history-placement"
+              aria-label={t('placement')}
               value={metric}
-              onChange={(event) => selectControl('rank_metric', event.target.value)}
-            >
-              <option value="global">{t('global')}</option>
-              <option value="country">{t('country')}</option>
-            </select>
+              onValueChange={(value) => selectControl('rank_metric', value)}
+              options={[
+                { value: 'global', label: t('global') },
+                { value: 'country', label: t('country') },
+              ]}
+            />
           </label>
-          <label>
+          <label htmlFor="rank-history-period">
             <span>{t('period')}</span>
-            <select
-              className="native-select"
-              value={days}
-              onChange={(event) => selectControl('rank_days', event.target.value)}
-            >
-              {[30, 90, 180].map((value) => (
-                <option key={value} value={value}>
-                  {t('days', { days: value })}
-                </option>
-              ))}
-            </select>
+            <FieldSelect
+              id="rank-history-period"
+              aria-label={t('period')}
+              value={String(days)}
+              onValueChange={(value) => selectControl('rank_days', value)}
+              options={[30, 90, 180].map((value) => ({
+                value: String(value),
+                label: t('days', { days: value }),
+              }))}
+            />
           </label>
         </div>
       </header>
@@ -266,12 +269,19 @@ function RankHistoryContent({
   const padding = Math.max(1, Math.ceil((worst - best) * 0.12));
   const upper = Math.max(1, best - padding);
   const lower = worst + padding;
+  const observedStart = data.points[0].date;
+  const observedEnd = data.points[data.points.length - 1].date;
+  const observedDuration = utcDate(observedEnd).getTime() - utcDate(observedStart).getTime();
+  // Fit genuine observations, rather than allocating an empty plot to uncaptured dates.
+  // Missing dates inside this extent still retain their true distance and break the line.
   const x = (point: RankHistoryPoint) =>
-    4 +
-    ((utcDate(point.date).getTime() - utcDate(data.start_date).getTime()) /
-      ((days - 1) * dayMilliseconds)) *
-      992;
+    observedDuration === 0
+      ? 500
+      : 16 +
+        ((utcDate(point.date).getTime() - utcDate(observedStart).getTime()) / observedDuration) *
+          968;
   const y = (rank: number) => plotTop + ((rank - upper) / (lower - upper)) * (plotBottom - plotTop);
+  const ticks = ranked.length ? [...new Set([best, Math.round((best + worst) / 2), worst])] : [];
   const selectionText = (point: RankHistoryPoint) =>
     t('pointDescription', {
       date: formatDate(point.date),
@@ -338,8 +348,8 @@ function RankHistoryContent({
         >
           <div className="rank-history-axis" aria-hidden="true">
             {ranked.length ? (
-              [upper, Math.round((upper + lower) / 2), lower].map((rank, tick) => (
-                <span key={tick} style={{ top: `${(y(rank) / 220) * 100}%` }}>
+              ticks.map((rank) => (
+                <span key={rank} style={{ top: `${(y(rank) / 220) * 100}%` }}>
                   {rankText(rank)}
                 </span>
               ))
@@ -353,14 +363,14 @@ function RankHistoryContent({
             aria-hidden="true"
             onPointerDown={handlePointer}
           >
-            {[plotTop, (plotTop + plotBottom) / 2, plotBottom].map((value) => (
+            {ticks.map((rank) => (
               <line
-                key={value}
+                key={rank}
                 className="rank-history-grid"
                 x1="0"
                 x2="1000"
-                y1={value}
-                y2={value}
+                y1={y(rank)}
+                y2={y(rank)}
                 vectorEffect="non-scaling-stroke"
               />
             ))}
@@ -372,11 +382,27 @@ function RankHistoryContent({
                 previous &&
                 utcDate(point.date).getTime() - utcDate(previous.date).getTime() ===
                   dayMilliseconds;
-              return rank !== null &&
+              const continuous =
+                rank !== null &&
                 previousRank !== null &&
                 previousRank !== undefined &&
                 adjacent &&
-                (metric !== 'country' || previous.country === point.country) ? (
+                (metric !== 'country' || previous.country === point.country);
+              if (!continuous)
+                return previous && !adjacent ? (
+                  <line
+                    key={point.date}
+                    className="rank-history-gap"
+                    data-start-date={previous.date}
+                    data-end-date={point.date}
+                    x1={x(previous)}
+                    x2={x(point)}
+                    y1="205"
+                    y2="205"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ) : null;
+              return (
                 <line
                   key={point.date}
                   className="rank-history-segment"
@@ -384,18 +410,18 @@ function RankHistoryContent({
                   data-end-date={point.date}
                   x1={x(previous)}
                   x2={x(point)}
-                  y1={y(previousRank)}
-                  y2={y(rank)}
+                  y1={y(previousRank!)}
+                  y2={y(rank!)}
                   vectorEffect="non-scaling-stroke"
                 />
-              ) : null;
+              );
             })}
             <line
               className="rank-history-selection"
               x1={x(selected)}
               x2={x(selected)}
-              y1="0"
-              y2="220"
+              y1="8"
+              y2="205"
               vectorEffect="non-scaling-stroke"
             />
             {data.points.map((point) => {
@@ -407,8 +433,8 @@ function RankHistoryContent({
                   data-date={point.date}
                   x1={x(point)}
                   x2={x(point)}
-                  y1="209"
-                  y2="217"
+                  y1="201"
+                  y2="209"
                   vectorEffect="non-scaling-stroke"
                 />
               ) : (
@@ -418,7 +444,7 @@ function RankHistoryContent({
                   data-date={point.date}
                   cx={x(point)}
                   cy={y(rank)}
-                  r={point.date === selected.date ? 4 : 2}
+                  r={point.date === selected.date ? 4.5 : 2.5}
                   vectorEffect="non-scaling-stroke"
                 />
               );
@@ -426,22 +452,32 @@ function RankHistoryContent({
           </svg>
         </div>
         <div className="rank-history-dates" aria-hidden="true">
-          <time dateTime={data.start_date}>{formatDate(data.start_date)}</time>
-          <time dateTime={data.end_date}>{formatDate(data.end_date)}</time>
+          <time dateTime={observedStart}>{formatDate(observedStart)}</time>
+          {observedStart !== observedEnd && (
+            <time dateTime={observedEnd}>{formatDate(observedEnd)}</time>
+          )}
         </div>
         <figcaption id="rank-history-caption">
           {data.points.length === 1 ? `${t('singleDay')} ` : ''}
-          {t(metric === 'country' ? 'countryGaps' : 'gaps')}
+          <span className="sr-only">{t(metric === 'country' ? 'countryGaps' : 'gaps')}</span>
         </figcaption>
       </figure>
       <p className="hint rank-history-keyboard" id="rank-history-keyboard">
         {t('keyboard')}
       </p>
-      <p className="hint rank-history-cadence">
-        {t('cadence', { minutes: data.collection_interval_seconds / 60 })} {captureHint}
-      </p>
       <details className="rank-history-details">
         <summary>{t('dailyTable', { count: data.points.length })}</summary>
+        <div className="rank-history-observation-notes">
+          <p className="rank-history-requested-period">
+            {t('period')}: <time dateTime={data.start_date}>{formatDate(data.start_date)}</time>
+            {' – '}
+            <time dateTime={data.end_date}>{formatDate(data.end_date)}</time>
+          </p>
+          <p>{t(metric === 'country' ? 'countryGaps' : 'gaps')}</p>
+          <p className="rank-history-cadence">
+            {t('cadence', { minutes: data.collection_interval_seconds / 60 })} {captureHint}
+          </p>
+        </div>
         <div
           className="rank-history-table-scroll"
           tabIndex={0}

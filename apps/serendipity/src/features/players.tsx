@@ -56,6 +56,19 @@ function bannerPosition(value: unknown): number {
     : 50;
 }
 
+// Absolute placements are available from this server; population percentiles are not.
+// Each inclusive boundary represents another order of magnitude, never a claimed percentile.
+function profileRankTier(rank: number | null | undefined, pp: number) {
+  if (!Number.isSafeInteger(rank) || !rank || rank < 1 || !Number.isFinite(pp) || pp <= 0)
+    return 'unranked';
+  if (rank === 1) return 'first';
+  if (rank <= 10) return 'top-ten';
+  if (rank <= 100) return 'top-hundred';
+  if (rank <= 1_000) return 'top-thousand';
+  if (rank <= 10_000) return 'top-ten-thousand';
+  return 'ranked';
+}
+
 export function RankingsPage() {
   const t = useTranslations('rankings');
   const c = useTranslations('common');
@@ -361,6 +374,7 @@ export function PlayerPage({ id }: { id: number }) {
           <>
             <section
               className={`profile-masthead glass${player.banner_url ? ' has-banner' : ' no-banner'}`}
+              data-material="identity"
               id="profile-overview"
               aria-label={t('title')}
             >
@@ -383,13 +397,15 @@ export function PlayerPage({ id }: { id: number }) {
                     {player.country} <span className="dot">·</span> {t('joined')}{' '}
                     {f.dateTime(new Date(player.joined_at), { dateStyle: 'medium' })}
                   </p>
-                  <div className="map-tags">
-                    {player.roles.map((role) => (
-                      <Badge variant="secondary" key={role}>
-                        {role}
-                      </Badge>
-                    ))}
-                  </div>
+                  {player.roles.length > 0 && (
+                    <div className="map-tags">
+                      {player.roles.map((role) => (
+                        <Badge variant="secondary" key={role}>
+                          {role}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="profile-owner-actions">
                   {user?.id === id && (
@@ -417,30 +433,51 @@ export function PlayerPage({ id }: { id: number }) {
               </div>
               <div className="profile-rank-band">
                 <dl className="profile-stats">
-                  <div>
+                  <div className="profile-performance-value">
                     <dt>pp</dt>
                     <dd>
                       {f.number(player.pp, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </dd>
                   </div>
-                  <div>
+                  <div
+                    className="profile-placement"
+                    data-rank-tier={profileRankTier(player.statistics?.rank, player.pp)}
+                  >
                     <dt>{t('globalRank')}</dt>
                     <dd>
-                      {player.statistics?.rank ? `#${f.number(player.statistics.rank)}` : '—'}
+                      {profileRankTier(player.statistics?.rank, player.pp) !== 'unranked' ? (
+                        <span className="profile-rank-number">
+                          #{f.number(player.statistics!.rank!)}
+                        </span>
+                      ) : (
+                        <span aria-label={rankHistory('unranked')}>—</span>
+                      )}
                     </dd>
                   </div>
-                  <div>
+                  <div
+                    className="profile-placement"
+                    data-rank-tier={profileRankTier(player.statistics?.country_rank, player.pp)}
+                  >
                     <dt>{t('countryRank', { country: player.country })}</dt>
                     <dd>
-                      {player.statistics?.country_rank
-                        ? `#${f.number(player.statistics.country_rank)}`
-                        : '—'}
+                      {profileRankTier(player.statistics?.country_rank, player.pp) !==
+                      'unranked' ? (
+                        <span className="profile-rank-number">
+                          #{f.number(player.statistics!.country_rank!)}
+                        </span>
+                      ) : (
+                        <span aria-label={rankHistory('unranked')}>—</span>
+                      )}
                     </dd>
                   </div>
                 </dl>
               </div>
             </section>
-            <nav className="profile-section-nav" aria-label={t('sections')}>
+            <nav
+              className="profile-section-nav"
+              data-material="navigation"
+              aria-label={t('sections')}
+            >
               {[
                 ['profile-overview', t('stats')],
                 ['profile-rank-history', rankHistory('title')],
@@ -459,7 +496,7 @@ export function PlayerPage({ id }: { id: number }) {
               ))}
             </nav>
             <div className="profile-layout">
-              <div className="profile-performance glass">
+              <div className="profile-performance glass" data-material="section">
                 <RankHistoryPanel id={id} mode={mode} variant={variant} />
                 <section className="profile-statistics" aria-labelledby="profile-statistics-title">
                   <h2 id="profile-statistics-title">{t('stats')}</h2>
@@ -554,6 +591,7 @@ export function PlayerPage({ id }: { id: number }) {
               </div>
               <section
                 className="profile-about glass"
+                data-material="section"
                 id="profile-about"
                 aria-labelledby="profile-about-heading"
               >
@@ -562,6 +600,7 @@ export function PlayerPage({ id }: { id: number }) {
               </section>
               <section
                 className="content-panel glass profile-scores"
+                data-material="section"
                 id="profile-scores"
                 aria-labelledby="profile-scores-title"
               >
@@ -603,6 +642,7 @@ export function PlayerPage({ id }: { id: number }) {
               </section>
               <section
                 className="content-panel glass profile-uploads"
+                data-material="section"
                 id="profile-uploads"
                 aria-labelledby="profile-uploads-title"
               >

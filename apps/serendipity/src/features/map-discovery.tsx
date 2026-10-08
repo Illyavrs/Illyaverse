@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { FieldSelect } from '@/components/ui/field-select';
 import { PageHeading } from '@/components/common';
 import { useSession } from '@/components/providers';
 import { api, ApiError, hasPermission } from '@/lib/api';
@@ -512,98 +513,86 @@ export function MapDiscoveryPage() {
   const outOfRange = data && page > Math.max(1, Math.ceil(data.total / data.page_size));
   return (
     <div className="page-container map-discovery">
-      <PageHeading title={maps('title')} description={t('description')}>
-        {user && hasPermission(user.permissions, 'beatmaps.upload') && (
-          <Button asChild>
-            <Link href="/beatmaps/upload">
-              <Plus aria-hidden="true" />
-              {maps('upload')}
-            </Link>
-          </Button>
-        )}
-        {user && hasPermission(user.permissions, 'beatmaps.import') && (
-          <Button asChild variant="outline">
-            <Link href="/beatmaps/import">{maps('import')}</Link>
-          </Button>
-        )}
-      </PageHeading>
-      <section className="discovery-controls" aria-label={t('filters')}>
-        <SearchField key={search} value={search} onSearch={(value) => update('q', value)} />
-        <div className="discovery-filter-row">
-          <div className="field">
-            <label htmlFor="discovery-mode">{t('modeLabel')}</label>
-            <select
-              id="discovery-mode"
-              className="native-select"
-              value={mode}
-              onChange={(event) => update('mode', event.target.value)}
-            >
-              <option value="all">{t('allModes')}</option>
-              {modes.map((name, index) => (
-                <option key={name} value={index}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="discovery-status">{t('statusLabel')}</label>
-            <select
-              id="discovery-status"
-              className="native-select"
-              value={status}
-              onChange={(event) => update('status', event.target.value)}
-            >
-              <option value="all">{t('allStatuses')}</option>
-              {statuses.map((value) => (
-                <option key={value} value={value}>
-                  {t(`status.${value}`)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="discovery-source">{t('sourceLabel')}</label>
-            <select
-              id="discovery-source"
-              className="native-select"
-              value={source}
-              onChange={(event) => update('source', event.target.value)}
-            >
-              <option value="all">{t('allSources')}</option>
-              {sources.map((value) => (
-                <option key={value} value={value}>
-                  {t(`source.${value}`)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="discovery-sort">{t('sortLabel')}</label>
-            <select
-              id="discovery-sort"
-              className="native-select"
-              value={sort}
-              onChange={(event) => update('sort', event.target.value)}
-            >
-              {sorts.map((value) => (
-                <option key={value} value={value}>
-                  {t(`sort.${value}`)}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-        {uploader && (
-          <div className="discovery-uploader">
-            <span>{t('uploaderFilter', { id: uploader })}</span>
-            <Button variant="ghost" type="button" onClick={() => update('uploaded_by', null)}>
-              <X aria-hidden="true" />
-              {t('clearUploader')}
+      <div className="discovery-reading-ground">
+        <PageHeading title={maps('title')} description={t('description')}>
+          {user && hasPermission(user.permissions, 'beatmaps.upload') && (
+            <Button asChild>
+              <Link href="/beatmaps/upload">
+                <Plus aria-hidden="true" />
+                {maps('upload')}
+              </Link>
             </Button>
+          )}
+          {user && hasPermission(user.permissions, 'beatmaps.import') && (
+            <Button asChild variant="outline">
+              <Link href="/beatmaps/import">{maps('import')}</Link>
+            </Button>
+          )}
+        </PageHeading>
+        <section className="discovery-controls" aria-label={t('filters')}>
+          <SearchField key={search} value={search} onSearch={(value) => update('q', value)} />
+          <div className="discovery-filter-row">
+            <div className="field">
+              <label htmlFor="discovery-mode">{t('modeLabel')}</label>
+              <FieldSelect
+                id="discovery-mode"
+                className="native-select"
+                value={mode}
+                onValueChange={(value) => update('mode', value)}
+                options={[
+                  { value: 'all', label: t('allModes') },
+                  ...modes.map((label, index) => ({ value: String(index), label })),
+                ]}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="discovery-status">{t('statusLabel')}</label>
+              <FieldSelect
+                id="discovery-status"
+                className="native-select"
+                value={status}
+                onValueChange={(value) => update('status', value)}
+                options={[
+                  { value: 'all', label: t('allStatuses') },
+                  ...statuses.map((value) => ({ value, label: t(`status.${value}`) })),
+                ]}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="discovery-source">{t('sourceLabel')}</label>
+              <FieldSelect
+                id="discovery-source"
+                className="native-select"
+                value={source}
+                onValueChange={(value) => update('source', value)}
+                options={[
+                  { value: 'all', label: t('allSources') },
+                  ...sources.map((value) => ({ value, label: t(`source.${value}`) })),
+                ]}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="discovery-sort">{t('sortLabel')}</label>
+              <FieldSelect
+                id="discovery-sort"
+                className="native-select"
+                value={sort}
+                onValueChange={(value) => update('sort', value)}
+                options={sorts.map((value) => ({ value, label: t(`sort.${value}`) }))}
+              />
+            </div>
           </div>
-        )}
-      </section>
+          {uploader && (
+            <div className="discovery-uploader">
+              <span>{t('uploaderFilter', { id: uploader })}</span>
+              <Button variant="ghost" type="button" onClick={() => update('uploaded_by', null)}>
+                <X aria-hidden="true" />
+                {t('clearUploader')}
+              </Button>
+            </div>
+          )}
+        </section>
+      </div>
       <div className="discovery-result-bar">
         <div className="discovery-result-count" role="status" aria-live="polite">
           {loading ? t('loading') : !error && data ? t('setCount', { count: data.total }) : ''}

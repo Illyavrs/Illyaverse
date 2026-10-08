@@ -91,6 +91,9 @@
 }
 .profile-page .profile-masthead {
   overflow: hidden;
+  border-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 .profile-page .profile-cover {
   border: 0;
@@ -99,30 +102,34 @@
   height: auto;
 }
 .profile-page .profile-identity {
+  --profile-avatar-size: 108px;
+  --profile-identity-inset: 24px;
   position: relative;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  padding: 24px 28px;
-  gap: 20px;
+  display: grid;
+  grid-template-columns: var(--profile-avatar-size) minmax(0, 1fr) auto;
+  align-items: start;
+  padding: var(--profile-identity-inset) 28px;
+  gap: 16px 24px;
   border: 0;
   border-radius: 0;
   background: transparent;
   backdrop-filter: none;
 }
 .profile-page .profile-identity > .avatar {
-  width: 80px;
-  height: 80px;
-  font-size: 32px;
+  width: var(--profile-avatar-size);
+  height: var(--profile-avatar-size);
+  font-size: 42px;
   border-radius: calc(var(--radius) * 0.8);
+  grid-column: 1;
+  grid-row: 1;
 }
 .profile-page .has-banner .profile-identity > .avatar {
-  margin-top: -60px;
-  outline: 5px solid var(--background);
+  margin-top: calc(var(--profile-avatar-size) / -2 - var(--profile-identity-inset));
+  outline: 4px solid var(--background);
 }
 .profile-page .profile-player-name {
-  flex: 1;
-  min-width: 160px;
+  grid-column: 2;
+  min-width: 0;
 }
 .profile-page .profile-player-name h1 {
   overflow-wrap: anywhere;
@@ -139,12 +146,17 @@
   gap: 6px;
 }
 .profile-page .profile-owner-actions {
+  grid-column: 3;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 10px;
-  max-width: 45%;
+  max-width: 360px;
+  padding-top: 4px;
+}
+.profile-page .profile-owner-actions:empty {
+  display: none;
 }
 .profile-page .profile-owner-actions .relationship-actions,
 .profile-page .profile-owner-actions [data-slot='button'] {
@@ -187,7 +199,7 @@
   font-size: 12px;
 }
 .profile-page .profile-rank-band {
-  padding: 20px 28px;
+  padding: 19px 28px 21px;
 }
 .profile-page .profile-stats {
   display: grid;
@@ -198,9 +210,10 @@
 .profile-page .profile-stats > div {
   min-width: 0;
   display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 6px 16px;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 3px;
 }
 .profile-page .profile-stats > div + div {
   padding-left: 24px;
@@ -214,24 +227,94 @@
   margin: 0;
   font-size: clamp(22px, 2.5vw, 30px);
   line-height: 1.25;
-  color: var(--readable-accent);
+  color: var(--foreground);
   font-weight: 900;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.025em;
   overflow-wrap: anywhere;
+}
+.profile-page .profile-performance-value dd {
+  color: var(--readable-accent);
+}
+/* Original placement colors, separate from the public profile accent. */
+.profile-placement {
+  --rank-from: #b9c8d4;
+  --rank-to: #e4e8ed;
+}
+.profile-placement[data-rank-tier='first'] {
+  --rank-from: #ffd99a;
+  --rank-to: #ffaecc;
+}
+.profile-placement[data-rank-tier='top-ten'] {
+  --rank-from: #9eead9;
+  --rank-to: #dfb9f5;
+}
+.profile-placement[data-rank-tier='top-hundred'] {
+  --rank-from: #abbcf8;
+  --rank-to: #efb4d4;
+}
+.profile-placement[data-rank-tier='top-thousand'] {
+  --rank-from: #94cee9;
+  --rank-to: #b3e0ca;
+}
+.profile-placement[data-rank-tier='top-ten-thousand'] {
+  --rank-from: #b1d7ac;
+  --rank-to: #dfd39e;
+}
+.profile-rank-number {
+  color: var(--rank-from);
+  background: linear-gradient(110deg, var(--rank-from), var(--rank-to));
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.profile-placement[data-rank-tier='unranked'] dd {
+  color: var(--secondary-text);
+}
+.light .profile-placement {
+  --rank-from: #465d70;
+  --rank-to: #626079;
+}
+.light .profile-placement[data-rank-tier='first'] {
+  --rank-from: #8d5a19;
+  --rank-to: #a43e69;
+}
+.light .profile-placement[data-rank-tier='top-ten'] {
+  --rank-from: #25655d;
+  --rank-to: #815093;
+}
+.light .profile-placement[data-rank-tier='top-hundred'] {
+  --rank-from: #485aa4;
+  --rank-to: #993e70;
+}
+.light .profile-placement[data-rank-tier='top-thousand'] {
+  --rank-from: #28678b;
+  --rank-to: #386d56;
+}
+.light .profile-placement[data-rank-tier='top-ten-thousand'] {
+  --rank-from: #486c40;
+  --rank-to: #7d641d;
+}
+@media (forced-colors: active) {
+  .profile-rank-number {
+    background: none;
+    -webkit-text-fill-color: CanvasText;
+  }
 }
 .profile-section-nav {
   position: sticky;
   top: var(--profile-navigation-top);
   z-index: 20;
   display: flex;
-  gap: 28px;
+  gap: 26px;
   overflow-x: auto;
-  padding: 0 4px;
-  margin-top: 12px;
+  padding: 0 28px;
+  margin: 0;
+  border-inline: 1px solid var(--border);
   border-bottom: 1px solid var(--divider-strong);
-  background: var(--surface-strong);
-  backdrop-filter: blur(var(--panel-blur, 8px));
+  background: var(--surface-subtle);
+  backdrop-filter: blur(var(--material-blur));
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
 }
 .profile-section-nav a {
   flex-shrink: 0;
@@ -252,7 +335,7 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
-  margin-top: 24px;
+  margin-top: 0;
 }
 .profile-page .profile-layout section,
 .profile-page .profile-masthead {
@@ -262,6 +345,9 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) 294px;
   overflow: hidden;
+  border-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
 }
 .profile-page .profile-performance .rank-history-panel {
   min-width: 0;
@@ -294,7 +380,7 @@
   flex-direction: column;
   gap: 4px;
 }
-.profile-performance .rank-history-controls .native-select {
+.profile-performance .rank-history-controls [data-slot='select-trigger'] {
   min-width: 102px;
   background: var(--surface-subtle);
 }
@@ -618,6 +704,9 @@
   }
   .profile-page .profile-owner-actions {
     max-width: 100%;
+    grid-column: 2 / -1;
+    justify-content: flex-start;
+    padding-top: 0;
   }
 }
 @media (max-width: 800px) {
@@ -642,28 +731,25 @@
     aspect-ratio: 12 / 5;
   }
   .profile-page .profile-identity {
-    padding: 20px 18px;
+    --profile-avatar-size: 80px;
+    --profile-identity-inset: 18px;
+    grid-template-columns: var(--profile-avatar-size) minmax(0, 1fr);
+    padding: var(--profile-identity-inset) 18px 20px;
     gap: 14px;
-    align-items: center;
   }
   .profile-page .profile-identity > .avatar {
-    width: 64px;
-    height: 64px;
-    font-size: 26px;
-  }
-  .profile-page .has-banner .profile-identity > .avatar {
-    align-self: flex-start;
-    margin-top: -40px;
+    font-size: 31px;
   }
   .profile-page .profile-player-name {
     min-width: 0;
   }
   .profile-page .profile-owner-actions {
     width: 100%;
+    grid-column: 1 / -1;
     justify-content: flex-start;
   }
   .profile-page .profile-player-name h1 {
-    font-size: 25px;
+    font-size: clamp(21px, 6vw, 26px);
   }
   .profile-page .profile-mode-rail {
     padding: 0 8px;
@@ -696,12 +782,12 @@
     font-size: 10px;
   }
   .profile-page .profile-stats dd {
-    font-size: 22px;
+    font-size: clamp(19px, 5.7vw, 24px);
   }
   .profile-section-nav {
     top: var(--profile-navigation-top);
     gap: 22px;
-    margin-top: 8px;
+    padding-inline: 18px;
   }
   .profile-section-nav a {
     padding-block: 13px 11px;
@@ -709,7 +795,7 @@
   }
   .profile-page .profile-layout {
     gap: 20px;
-    margin-top: 20px;
+    margin-top: 0;
   }
   .profile-page .profile-performance .rank-history-panel,
   .profile-statistics,

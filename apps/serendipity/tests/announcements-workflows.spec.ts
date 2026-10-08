@@ -1,3 +1,4 @@
+import { selectField } from './helpers/field-select';
 import { expect, test, request as apiRequest, type Page } from '@playwright/test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -550,7 +551,7 @@ test('admin pagination and status filters preserve the open editor', async ({ pa
   await expect(page.getByLabel('Body', { exact: true })).toHaveValue(
     'Keep this local draft while browsing.',
   );
-  await page.getByLabel('Publication status', { exact: true }).selectOption('draft');
+  await selectField(page.getByLabel('Publication status', { exact: true }), 'draft');
   await expect(page.locator('.announcement-admin-rows > li')).toHaveCount(1);
   await expect(page).toHaveURL(/status=draft/);
   expect(new URL(page.url()).searchParams.has('page')).toBe(false);

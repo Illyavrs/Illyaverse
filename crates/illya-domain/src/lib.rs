@@ -65,6 +65,7 @@ pub struct Preferences {
     pub background_dim: f32,
     pub panel_blur: u8,
     pub panel_opacity: f32,
+    pub glass_level: u8,
     pub border_radius: u8,
 }
 
@@ -80,6 +81,7 @@ impl Default for Preferences {
             background_dim: 0.76,
             panel_blur: 8,
             panel_opacity: 0.55,
+            glass_level: 100,
             border_radius: 14,
         }
     }
@@ -98,6 +100,7 @@ impl Preferences {
         }
         if self.background_blur > 48
             || self.panel_blur > 48
+            || self.glass_level > 100
             || self.border_radius > 40
             || !self.background_dim.is_finite()
             || !(0.0..=1.0).contains(&self.background_dim)
@@ -182,6 +185,7 @@ mod tests {
         assert_eq!(p.border_radius, 20);
         assert_eq!(p.panel_blur, 8);
         assert_eq!(p.panel_opacity, 0.55);
+        assert_eq!(p.glass_level, 100);
         assert!(!p.pm_friends_only);
     }
     #[test]
@@ -222,6 +226,33 @@ mod tests {
                 serde_json::from_value(serde_json::to_value(&p).unwrap()).unwrap();
             assert_eq!(restored.panel_blur, panel_blur);
             assert_eq!(restored.panel_opacity, panel_opacity);
+        }
+    }
+    #[test]
+    fn glass_coverage_is_bounded_and_round_trips_without_changing_other_controls() {
+        for glass_level in [0, 25, 50, 75, 100] {
+            let p = Preferences {
+                glass_level,
+                panel_blur: 17,
+                panel_opacity: 0.42,
+                ..Preferences::default()
+            };
+            assert!(p.validate().is_ok());
+            let restored: Preferences =
+                serde_json::from_value(serde_json::to_value(&p).unwrap()).unwrap();
+            assert_eq!(restored.glass_level, glass_level);
+            assert_eq!(restored.panel_blur, 17);
+            assert_eq!(restored.panel_opacity, 0.42);
+        }
+        let invalid = Preferences {
+            glass_level: 101,
+            ..Preferences::default()
+        };
+        assert!(invalid.validate().is_err());
+        for value in [serde_json::json!(-1), serde_json::json!(50.5), serde_json::json!(256)] {
+            assert!(serde_json::from_value::<Preferences>(serde_json::json!({
+                "glass_level": value
+            })).is_err());
         }
     }
     #[test]

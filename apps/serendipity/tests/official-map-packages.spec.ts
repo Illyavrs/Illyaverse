@@ -1,3 +1,4 @@
+import { selectField } from './helpers/field-select';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -224,7 +225,7 @@ async function openDifficultyDetails(panel: Locator, label: string) {
   await expect(disclosure).toHaveAttribute('open', '');
 }
 async function selectArchive(page: Page, id = String(setId)) {
-  await page.locator('#official-import-kind').selectOption('archive');
+  await selectField(page.locator('#official-import-kind'), 'archive');
   await page.locator('#official_set_id').fill(id);
   await page.locator('#official_archive_file').setInputFiles(archiveFile);
 }
@@ -293,11 +294,11 @@ test('single-ID JSON import remains the default and switching retains both draft
 }) => {
   const state = await fixtures(page);
   await page.goto('/beatmaps/import');
-  await expect(page.locator('#official-import-kind')).toHaveValue('difficulty');
+  await expect(page.locator('#official-import-kind')).toHaveAttribute('data-value', 'difficulty');
   await expect(page.locator('#official_set_id')).toBeHidden();
   await page.locator('#official_id').fill('96300');
   await selectArchive(page);
-  await page.locator('#official-import-kind').selectOption('difficulty');
+  await selectField(page.locator('#official-import-kind'), 'difficulty');
   await expect(page.locator('#official_id')).toHaveValue('96300');
   await page
     .getByRole('button', { name: state.copy.maps.importDifficultyAction, exact: true })
@@ -305,7 +306,7 @@ test('single-ID JSON import remains the default and switching retains both draft
   await expect(page.getByRole('status')).toHaveText(state.copy.maps.importSuccess);
   expect(state.singles).toEqual([{ official_id: 96300 }]);
   expect(state.archives).toHaveLength(0);
-  await page.locator('#official-import-kind').selectOption('archive');
+  await selectField(page.locator('#official-import-kind'), 'archive');
   await expect(page.getByRole('status')).toHaveCount(0);
   await expect(page.locator('#official_set_id')).toHaveValue(String(setId));
   expect(
@@ -438,6 +439,10 @@ test('busy official archive controls and submit ref reject duplicate submissions
     .click();
   await expect.poll(() => state.archives.length).toBe(1);
   await expect(page.locator('#official-import-kind')).toBeDisabled();
+  await expect(page.locator('#official-import-kind')).toHaveAttribute('data-value', 'archive');
+  await expect(page.locator('#official-import-kind')).toHaveAttribute('aria-expanded', 'false');
+  await page.locator('#official-import-kind').press('ArrowDown');
+  await expect(page.getByRole('listbox')).toHaveCount(0);
   await expect(page.locator('#official_set_id')).toBeDisabled();
   await expect(page.locator('#official_archive_file')).toBeDisabled();
   await page
@@ -449,6 +454,11 @@ test('busy official archive controls and submit ref reject duplicate submissions
   hold.release();
   await expect(page.getByRole('status')).toHaveText(state.copy.maps.importArchiveSuccess);
   await expect(page.locator('#official-import-kind')).toBeEnabled();
+  await page.locator('#official-import-kind').focus();
+  await page.locator('#official-import-kind').press('Enter');
+  await expect(page.getByRole('listbox')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#official-import-kind')).toBeFocused();
   assertClean(state);
 });
 
@@ -573,7 +583,7 @@ for (const [name, guest, permissions, allowed] of [
     await page.goto('/beatmaps/import');
     if (allowed) {
       await expect(page.locator('#official-import-kind')).toBeVisible();
-      await page.locator('#official-import-kind').selectOption('archive');
+      await selectField(page.locator('#official-import-kind'), 'archive');
       await expect(page.locator('#official_set_id')).toBeVisible();
     } else {
       await expect(page.locator('form.upload-form')).toHaveCount(0);

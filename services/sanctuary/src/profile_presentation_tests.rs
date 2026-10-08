@@ -218,7 +218,7 @@ async fn fixture_checks(db: PgPool, application: String) {
         sqlx::raw_sql(&migration.sql).execute(&db).await.unwrap();
     }
     let owner = player(&db, "PresentationOwner").await;
-    let preferences = json!({"locale":"ja","mode":"light","accent_color":"#abcdef","background_url":"/media/background/private.webp","background_dim":0.5,"background_blur":12,"panel_blur":8,"panel_opacity":0.625,"border_radius":18,"pm_friends_only":true});
+    let preferences = json!({"locale":"ja","mode":"light","accent_color":"#abcdef","background_url":"/media/background/private.webp","background_dim":0.5,"background_blur":12,"panel_blur":8,"panel_opacity":0.625,"glass_level":100,"border_radius":18,"pm_friends_only":true});
     sqlx::query("UPDATE users SET bio='Original biography',country='AU',accent_color='#123456',avatar_url='/media/avatar/retained.webp',banner_url='/media/banner/retained.webp',email_verified_at=now(),preferences=$2 WHERE id=$1")
         .bind(owner).bind(&preferences).execute(&db).await.unwrap();
     let upgrade = migrator

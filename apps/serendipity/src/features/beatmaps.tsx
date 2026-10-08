@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { FieldSelect } from '@/components/ui/field-select';
 import { Badge } from '@/components/ui/badge';
 import {
   PageHeading,
@@ -712,19 +713,20 @@ export function MapUploadPage({ official = false }: { official?: boolean }) {
             <>
               <div className="field">
                 <label htmlFor="official-import-kind">{t('importKind')}</label>
-                <select
+                <FieldSelect
                   id="official-import-kind"
                   className="native-select"
                   value={importKind}
                   disabled={busy}
-                  onChange={(e) => {
-                    setImportKind(e.target.value as 'difficulty' | 'archive');
+                  onValueChange={(value) => {
+                    setImportKind(value as 'difficulty' | 'archive');
                     clearFeedback();
                   }}
-                >
-                  <option value="difficulty">{t('importDifficultyMode')}</option>
-                  <option value="archive">{t('importArchiveMode')}</option>
-                </select>
+                  options={[
+                    { value: 'difficulty', label: t('importDifficultyMode') },
+                    { value: 'archive', label: t('importArchiveMode') },
+                  ]}
+                />
               </div>
               <div hidden={archiveImport}>
                 <div className="field">

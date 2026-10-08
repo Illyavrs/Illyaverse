@@ -1,3 +1,4 @@
+import { selectField } from './helpers/field-select';
 import { test, expect, type Page } from '@playwright/test';
 import type { Beatmap } from '../src/lib/types';
 import type { DiscoverySet } from '../src/features/map-discovery';
@@ -446,10 +447,10 @@ test('filtered last-page moderation preserves failed choice and refreshes the co
   const rows = page.locator('.admin-map-table tbody tr');
   await expect(rows).toHaveCount(1);
   const action = rows.first().locator('.admin-map-actions');
-  await action.locator('select').selectOption('ranked');
+  await selectField(action.locator('[data-slot="select-trigger"]'), 'ranked');
   await action.getByRole('button', { name: 'Update status', exact: true }).click();
   await expect(action.getByRole('alert')).toBeVisible();
-  await expect(action.locator('select')).toHaveValue('ranked');
+  await expect(action.locator('[data-slot="select-trigger"]')).toHaveAttribute('data-value', 'ranked');
   expect(state.writes).toHaveLength(0);
   state.failWrite = false;
   await action.getByRole('button', { name: 'Update status', exact: true }).click();
@@ -470,7 +471,7 @@ test('map search, filter history, review return links and empty Japanese mobile 
   const filters = page.locator('.map-review-filters');
   await filters.locator('input[name=q]').fill('超難');
   await filters.locator('button[type=submit]').click();
-  await filters.locator('select[name=mode]').selectOption('2');
+  await selectField(filters.locator('[data-slot="select-trigger"][data-field-name=mode]'), '2');
   await expect(page.locator('.admin-map-table tbody tr')).toHaveCount(1);
   const returnUrl = page.url();
   await page.locator('.admin-map-table .score-title').click();
@@ -480,7 +481,7 @@ test('map search, filter history, review return links and empty Japanese mobile 
   );
   await page.getByRole('link', { name: '管理一覧へ戻る', exact: true }).click();
   await expect(filters.locator('input[name=q]')).toHaveValue('超難');
-  await filters.locator('select[name=source]').selectOption('official');
+  await selectField(filters.locator('[data-slot="select-trigger"][data-field-name=source]'), 'official');
   await expect(page.locator('.admin-map-table')).toHaveCount(0);
   await expect(page.getByText('条件に一致する譜面がありません', { exact: true })).toBeVisible();
   await capture(page, 'admin-mobile-light-ja-empty');
@@ -494,7 +495,7 @@ test('map search, filter history, review return links and empty Japanese mobile 
   });
   await page.goBack();
   await returnedQueue;
-  await expect(filters.locator('select[name=source]')).toHaveValue('all');
+  await expect(filters.locator('[data-slot="select-trigger"][data-field-name=source]')).toHaveAttribute('data-value', 'all');
   await expect(page.locator('.admin-map-table tbody tr')).toHaveCount(1);
   await filters.locator('input[name=q]').fill('難'.repeat(40));
   const before = state.queries.length;
@@ -508,7 +509,7 @@ test('public source selection and board use supplied rank and comparison values'
 }) => {
   const state = await mapFixture(page, 'en', 'dark', false);
   await page.goto('/beatmaps');
-  await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('local');
+  await selectField(page.getByRole('combobox', { name: 'Source', exact: true }), 'local');
   await expect
     .poll(() =>
       state.queries.some(

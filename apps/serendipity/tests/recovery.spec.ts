@@ -1,3 +1,4 @@
+import { selectField } from './helpers/field-select';
 import { test, expect, type Page } from '@playwright/test';
 
 // Browser-only fixtures: no mail is sent and no real community account is changed.
@@ -60,7 +61,7 @@ test('forgot password has an honest unavailable state and a generic accepted res
 
   available = true;
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByLabel('語言', { exact: true }).selectOption('en');
+  await selectField(page.locator('.language-select'), 'en');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Reset your password');
   await page.reload();
   await page.getByLabel('Email', { exact: true }).fill('fixture@example.test');

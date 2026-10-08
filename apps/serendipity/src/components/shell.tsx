@@ -6,6 +6,7 @@ import { Disc3, Menu, Palette, ArrowUpRight, LogOut, Sun, Moon } from 'lucide-re
 import { useTheme } from 'next-themes';
 import { useState } from 'react';
 import { Button } from './ui/button';
+import { FieldSelect } from './ui/field-select';
 import {
   Sheet,
   SheetContent,
@@ -70,19 +71,20 @@ export function Shell({ children }: { children: React.ReactNode }) {
             </span>
           </Link>
           <div className="header-tools">
-            <select
+            <FieldSelect
               aria-label={t('language')}
               value={locale}
-              onChange={(e) => {
-                if (isLocale(e.target.value))
-                  setLocale(e.target.value).catch(() => setError(common('serviceError')));
+              onValueChange={(value) => {
+                if (isLocale(value))
+                  setLocale(value).catch(() => setError(common('serviceError')));
               }}
               className="language-select"
-            >
-              <option value="zh-TW">繁中</option>
-              <option value="en">EN</option>
-              <option value="ja">日本語</option>
-            </select>
+              options={[
+                { value: 'zh-TW', label: '繁中' },
+                { value: 'en', label: 'EN' },
+                { value: 'ja', label: '日本語' },
+              ]}
+            />
             <Button
               variant="ghost"
               size="icon"

@@ -11,7 +11,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
-  backdrop-filter: blur(var(--panel-blur));
+  backdrop-filter: blur(var(--material-blur));
   scrollbar-width: thin;
   scrollbar-color: var(--divider-strong) transparent;
 }
@@ -652,5 +652,604 @@
 @media (prefers-reduced-motion: reduce) {
   .score-record-table .score-table tbody tr {
     transition: none;
+  }
+}
+
+/* Profile performances stay a compact record: identity, result, contribution. */
+.profile-page .profile-score-list {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 12px 12px;
+}
+
+.profile-page .profile-score-row {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: 38px minmax(160px, 1fr) 96px 218px 132px 44px;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 46px;
+  padding: 1px 12px;
+  border: 0;
+  border-radius: calc(var(--radius) * 0.65);
+  background: var(--surface);
+  backdrop-filter: blur(var(--material-blur));
+}
+
+.profile-page .profile-best-score-list .profile-score-row {
+  grid-template-columns: 70px minmax(160px, 1fr) 96px 218px 132px 44px;
+}
+
+.profile-page .profile-score-result {
+  display: contents;
+}
+
+.profile-page .profile-score-row > :not(.profile-score-artwork),
+.profile-page .profile-score-result > * {
+  position: relative;
+  z-index: 1;
+}
+
+.profile-page .profile-score-row:hover,
+.profile-page .profile-score-row:focus-within {
+  background: var(--surface-raised);
+}
+
+.profile-page .profile-score-artwork {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+  mask-image: linear-gradient(to right, #000 0%, #000 20%, transparent 74%);
+}
+
+.profile-page .profile-score-artwork img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 48%;
+  opacity: 0.22;
+}
+
+html[data-theme='light'] .profile-page .profile-score-artwork img,
+html.light .profile-page .profile-score-artwork img {
+  opacity: 0.13;
+}
+
+.profile-page .profile-score-leading {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.profile-page .profile-score-position {
+  min-width: 22px;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1;
+  text-align: right;
+  color: var(--secondary-text);
+}
+
+.profile-page .profile-score-grade {
+  display: grid;
+  place-items: center;
+  flex: 0 0 34px;
+  height: 30px;
+  border-radius: calc(var(--radius) * 0.42);
+  background: color-mix(in srgb, var(--status-success) 14%, var(--solid-surface));
+  color: var(--status-success);
+  font-size: 17px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.035em;
+}
+
+.profile-page .profile-score-grade:is([data-grade='ssh'], [data-grade='xh'], [data-grade='sh']) {
+  background: color-mix(in srgb, var(--grade-silver) 14%, var(--solid-surface));
+  color: var(--grade-silver);
+}
+
+.profile-page .profile-score-grade:is([data-grade='ss'], [data-grade='x'], [data-grade='s']) {
+  background: color-mix(in srgb, var(--grade-gold) 14%, var(--solid-surface));
+  color: var(--grade-gold);
+}
+
+.profile-page .profile-score-grade:is([data-grade='b'], [data-grade='c'], [data-grade='d']) {
+  background: color-mix(in srgb, var(--status-info) 14%, var(--solid-surface));
+  color: var(--status-info);
+}
+
+.profile-page .profile-score-grade[data-grade='f'] {
+  background: color-mix(in srgb, var(--destructive) 14%, var(--solid-surface));
+  color: var(--destructive);
+}
+
+.profile-page .profile-score-symbol {
+  width: 28px;
+  height: 28px;
+  margin-inline: 3px;
+  flex-shrink: 0;
+  color: var(--secondary-text);
+  stroke-width: 1.5;
+}
+
+.profile-page .profile-score-main .score-title {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  overflow-wrap: normal;
+}
+
+.profile-page .profile-score-main .score-title strong {
+  display: block;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-page .profile-score-main .score-title:hover strong {
+  color: var(--readable-accent);
+}
+
+.profile-page .profile-score-artist {
+  color: var(--secondary-text);
+  font-weight: 600;
+}
+
+.profile-page .profile-score-meta {
+  flex-wrap: nowrap;
+  gap: 7px;
+  min-width: 0;
+  margin-top: 1px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.profile-page .profile-score-stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  color: var(--difficulty-extreme);
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.profile-page .profile-score-stars svg {
+  width: 10px;
+  height: 10px;
+  fill: currentColor;
+  stroke-width: 1.5;
+}
+
+.profile-page .profile-score-stars[data-tier='easy'] {
+  color: var(--difficulty-easy);
+}
+.profile-page .profile-score-stars[data-tier='normal'] {
+  color: var(--difficulty-normal);
+}
+.profile-page .profile-score-stars[data-tier='hard'] {
+  color: var(--difficulty-hard);
+}
+.profile-page .profile-score-stars[data-tier='insane'] {
+  color: var(--difficulty-insane);
+}
+.profile-page .profile-score-stars[data-tier='expert'] {
+  color: var(--difficulty-expert);
+}
+
+.profile-page .profile-score-version {
+  min-width: 24px;
+  overflow: hidden;
+  color: var(--foreground);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-page .profile-score-meta time {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.profile-page .profile-score-failed,
+.profile-page .profile-score-meta .profile-score-verification {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.profile-page .profile-score-failed {
+  color: var(--destructive);
+}
+
+.profile-page .profile-score-mods {
+  justify-content: flex-end;
+  gap: 3px;
+  max-height: 42px;
+  overflow: hidden;
+}
+
+.profile-page .profile-score-mods > .profile-score-mod {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 100%;
+  padding: 2px 5px;
+  border-radius: calc(var(--radius) * 0.3);
+  background: color-mix(in srgb, var(--foreground) 7%, var(--solid-surface));
+  color: var(--foreground);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-page .profile-score-mod svg {
+  width: 11px;
+  height: 11px;
+  stroke-width: 2;
+}
+
+.profile-page .profile-score-statistics {
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.profile-page .profile-score-details {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 18px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.profile-page .profile-score-details dd {
+  white-space: nowrap;
+}
+.profile-page .profile-score-details small {
+  font-size: 10px;
+  font-weight: 600;
+}
+.profile-page .profile-score-combo dd span {
+  color: var(--secondary-text);
+  font-weight: 600;
+}
+
+.profile-page .profile-score-hits {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 1px 0 0;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.profile-page .profile-score-hits > div {
+  display: flex;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.profile-page .profile-score-hits dt {
+  color: var(--secondary-text);
+  font-weight: 600;
+}
+.profile-page .profile-score-hits dd {
+  margin: 0;
+  color: var(--foreground);
+  font-weight: 800;
+}
+.profile-page .profile-score-hits [data-judgement='nmiss'] dt {
+  color: var(--destructive);
+}
+
+.profile-page .profile-score-performance {
+  gap: 1px;
+  min-width: 0;
+  padding-inline-start: 8px;
+  border-inline-start: 1px solid var(--border);
+}
+
+.profile-page .profile-score-performance .pp-value {
+  font-size: 20px;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+
+.profile-page .profile-score-performance .pp-value small {
+  margin-inline-start: 3px;
+  font-size: 10px;
+}
+
+.profile-page .profile-score-contribution {
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 5px;
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.profile-page .profile-score-contribution > div {
+  gap: 0;
+}
+.profile-page .profile-score-contribution > div + div::before {
+  content: '·';
+  margin-inline-end: 5px;
+  color: var(--secondary-text);
+}
+.profile-page .profile-score-contribution .score-weighted-pp {
+  color: var(--secondary-text);
+  font-weight: 600;
+}
+.profile-page .profile-score-performance > small {
+  font-size: 11px;
+  line-height: 1.5;
+}
+.profile-page .profile-score-replay {
+  grid-column: auto;
+  margin: 0;
+}
+.profile-page .profile-score-replay button {
+  width: 44px;
+  height: 44px;
+  color: var(--secondary-text);
+}
+.profile-page .profile-score-replay button:hover,
+.profile-page .profile-score-replay button[data-state='open'] {
+  color: var(--foreground);
+  background: var(--surface-subtle);
+}
+
+.profile-page .profile-score-row a:focus-visible {
+  outline: 2px solid var(--readable-accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.profile-score-menu {
+  width: min(280px, calc(100vw - 24px));
+  color: var(--foreground);
+  font-size: 12px;
+}
+.profile-score-menu [data-slot='dropdown-menu-item'] {
+  min-height: 40px;
+}
+.profile-score-menu [data-disabled] > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.profile-score-menu-facts {
+  margin: 6px 4px 2px;
+  padding: 9px 6px 3px;
+  border-top: 1px solid var(--border);
+}
+.profile-score-menu-facts > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 3px 0;
+}
+.profile-score-menu-facts dt {
+  color: var(--secondary-text);
+}
+.profile-score-menu-facts dd {
+  margin: 0;
+  text-align: right;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.profile-score-menu-hits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 8px 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 10px;
+}
+.profile-score-menu-hits > div {
+  display: flex;
+  gap: 4px;
+}
+.profile-score-menu-hits dt {
+  color: var(--secondary-text);
+}
+.profile-score-menu-hits dd {
+  margin: 0;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.profile-score-menu-note {
+  margin: 8px 10px;
+  color: var(--secondary-text);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+@media (max-width: 1050px) {
+  .profile-page .profile-score-row {
+    grid-template-columns: 34px minmax(0, 1fr) 70px 164px 116px 44px;
+    gap: 8px;
+  }
+  .profile-page .profile-best-score-list .profile-score-row {
+    grid-template-columns: 62px minmax(0, 1fr) 70px 164px 116px 44px;
+  }
+  .profile-page .profile-score-details {
+    gap: 10px;
+  }
+  .profile-page .profile-score-hits {
+    gap: 5px;
+  }
+  .profile-page .profile-score-performance .pp-value {
+    font-size: 20px;
+  }
+}
+
+@media (max-width: 800px) {
+  .profile-page .profile-score-list {
+    padding: 7px 8px 10px;
+  }
+  .profile-page .profile-score-row,
+  .profile-page .profile-best-score-list .profile-score-row {
+    grid-template-columns: 32px minmax(0, 1fr) 44px;
+    grid-template-rows: auto auto;
+    gap: 4px 8px;
+    min-height: 88px;
+    padding: 6px 8px;
+  }
+  .profile-page .profile-score-leading {
+    grid-column: 1;
+    grid-row: 1;
+    flex-direction: column-reverse;
+    gap: 4px;
+    justify-content: center;
+  }
+  .profile-page .profile-score-position {
+    min-width: 0;
+    font-size: 11px;
+    text-align: center;
+  }
+  .profile-page .profile-score-grade {
+    flex-basis: auto;
+    width: 32px;
+    height: 27px;
+    font-size: 16px;
+  }
+  .profile-page .profile-score-main {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+  }
+  .profile-page .profile-score-main .score-title strong {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    font-size: 13px;
+    line-height: 1.35;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .profile-page .profile-score-artist {
+    display: none;
+  }
+  .profile-page .profile-score-meta {
+    flex-wrap: wrap;
+    gap: 3px 6px;
+    font-size: 11px;
+  }
+  .profile-page .profile-score-meta time {
+    display: none;
+  }
+  .profile-page .profile-score-meta .profile-score-verification {
+    font-size: 11px;
+  }
+  .profile-page .profile-score-result {
+    display: grid;
+    grid-column: 1 / 3;
+    grid-row: 2;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 2px 8px;
+    min-width: 0;
+  }
+  .profile-page .profile-score-mods {
+    grid-column: 1;
+    grid-row: 1;
+    justify-content: flex-start;
+    align-self: end;
+    margin: 0;
+    max-height: 22px;
+    flex-wrap: nowrap;
+  }
+  .profile-page .profile-score-mods > .profile-score-mod {
+    font-size: 11px;
+    padding: 1px 4px;
+  }
+  .profile-page .profile-score-mod svg {
+    width: 11px;
+    height: 11px;
+  }
+  .profile-page .profile-score-statistics {
+    grid-column: 1;
+    grid-row: 2;
+    align-self: start;
+  }
+  .profile-page .profile-score-details {
+    justify-content: flex-start;
+    gap: 8px;
+    font-size: 12px;
+  }
+  .profile-page .profile-score-details small {
+    font-size: 11px;
+  }
+  .profile-page .profile-score-combo dd span {
+    display: none;
+  }
+  .profile-page .profile-score-hits {
+    display: none;
+  }
+  .profile-page .profile-score-performance {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    align-self: center;
+    padding: 0;
+    border: 0;
+  }
+  .profile-page .profile-score-performance .pp-value {
+    font-size: 20px;
+  }
+  .profile-page .profile-score-performance .pp-value small {
+    font-size: 11px;
+  }
+  .profile-page .profile-score-contribution {
+    gap: 4px;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+  .profile-page .profile-score-replay {
+    grid-column: 3;
+    grid-row: 1 / 3;
+  }
+}
+
+@media (max-width: 420px) {
+  .profile-page .profile-score-row,
+  .profile-page .profile-best-score-list .profile-score-row {
+    grid-template-columns: 28px minmax(0, 1fr) 44px;
+    gap: 4px 6px;
+    padding-inline: 7px;
+  }
+  .profile-page .profile-score-grade {
+    width: 28px;
+    height: 25px;
+    font-size: 15px;
+  }
+  .profile-page .profile-score-symbol {
+    width: 24px;
+    height: 24px;
+    margin: 0;
   }
 }

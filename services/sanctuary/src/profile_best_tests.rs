@@ -5,7 +5,7 @@ use axum::{
     body::{Body, to_bytes},
     http::{Method, Request, StatusCode, header},
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 use sqlx::PgPool;
 use tower::ServiceExt;
 
@@ -116,6 +116,127 @@ fn rows(value: &Value) -> &[Value] {
 
 fn near(actual: f64, expected: f64) {
     assert!((actual - expected).abs() < 1e-9, "{actual} != {expected}");
+}
+
+#[tokio::test]
+#[ignore = "requires ILLYA_TEST_DATABASE_URL; owned disposable PostgreSQL 17"]
+async fn score_presentation_records_grades_and_embeds_map_metadata() {
+    let fixture = MutationFixture::new("score_presentation", "http://127.0.0.1:1".into()).await;
+    let state = fixture.state.clone();
+    let app = fixture.app.clone();
+    let result = tokio::spawn(async move {
+        let (user, _, _, _) = actor(&state, "RecordedGrades", &[]).await;
+        let official: i64 = sqlx::query_scalar(
+            "INSERT INTO beatmaps(official_id,official_set_id,title,artist,creator,version,mode,status,source,stars,max_combo,md5,osu_path)
+             VALUES(12346,12345,'Recorded native','Official fixture','Illyaverse','Test difficulty',0,'ranked','official',4.25,900,$1,'private-official.osu') RETURNING id",
+        )
+        .bind(format!("{:x}", md5::compute("Recorded native")))
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+        let mut expected = Vec::new();
+        for (index, source) in ["native", "token", "audit", "missing", "unknown", "failed"]
+            .into_iter()
+            .enumerate()
+        {
+            let map = if source == "native" {
+                official
+            } else {
+                let map = map(&state.db, &format!("Recorded {source}"), "ranked").await;
+                sqlx::query("UPDATE beatmaps SET stars=2.75,max_combo=345 WHERE id=$1")
+                    .bind(map)
+                    .execute(&state.db)
+                    .await
+                    .unwrap();
+                map
+            };
+            let id = score(
+                &state.db,
+                user,
+                map,
+                Play {
+                    accuracy: if matches!(source, "missing" | "unknown" | "failed") {
+                        100.0
+                    } else {
+                        95.0
+                    },
+                    passed: source != "failed",
+                    client: if matches!(source, "native" | "token" | "unknown" | "failed") {
+                        "lazer"
+                    } else {
+                        "stable"
+                    },
+                    replay: Some("private-presentation.osr"),
+                    ..Play::pp(600.0 - index as f64 * 100.0)
+                },
+            )
+            .await;
+            if matches!(source, "native" | "unknown" | "failed") {
+                sqlx::query("UPDATE scores SET native_submission=$2 WHERE id=$1")
+                    .bind(id)
+                    .bind(json!({"rank":if source == "unknown" { "SSS" } else { "X" }}))
+                    .execute(&state.db)
+                    .await
+                    .unwrap();
+            }
+            if matches!(source, "native" | "token" | "unknown") {
+                for rank in ["A", if source == "unknown" { "X" } else { "XH" }] {
+                    sqlx::query("INSERT INTO lazer_score_tokens(user_id,beatmap_id,ruleset_id,version_hash,expires_at,score_id,submission) VALUES($1,$2,0,'fixture',now()+interval '1 hour',$3,$4)")
+                        .bind(user).bind(map).bind(id).bind(json!({"rank":rank})).execute(&state.db).await.unwrap();
+                }
+            }
+            if matches!(source, "native" | "token" | "audit") {
+                for rank in ["B", if source == "audit" { "S" } else { "D" }] {
+                    sqlx::query("INSERT INTO audit_events(action,target_type,target_id,details) VALUES('scores.stable_ingest','score',$1,$2)")
+                        .bind(id.to_string()).bind(json!({"rank":rank})).execute(&state.db).await.unwrap();
+                }
+            }
+            let grade = match source {
+                "native" => json!("SS"),
+                "token" => json!("SSH"),
+                "audit" => json!("S"),
+                "failed" => json!("F"),
+                _ => Value::Null,
+            };
+            expected.push((id, map, grade));
+        }
+
+        let (status, recent) = request(&app, &format!("/api/v1/scores?user_id={user}"), None).await;
+        assert_eq!(status, StatusCode::OK, "{recent}");
+        assert_eq!(recent["total"], 6);
+        let (status, best) = request(&app, &format!("/api/v1/users/{user}/scores/best"), None).await;
+        assert_eq!(status, StatusCode::OK, "{best}");
+        assert_eq!(best["total"], 5);
+        for (id, map, grade) in expected {
+            let (status, detail) = request(&app, &format!("/api/v1/scores/{id}"), None).await;
+            assert_eq!(status, StatusCode::OK, "{detail}");
+            let recent_row = rows(&recent).iter().find(|row| row["id"] == id).unwrap();
+            let best_row = rows(&best).iter().find(|row| row["id"] == id);
+            assert_eq!(best_row.is_some(), grade != "F");
+            for row in [Some(recent_row), Some(&detail), best_row].into_iter().flatten() {
+                assert_eq!(row["grade"], grade, "{row}");
+                assert_eq!(row["hit_counts"], json!({"n300":100}));
+                assert_eq!(row["max_combo"], 100);
+                assert_eq!(row["version"], "Test difficulty");
+                assert_eq!(row["artist"], if map == official { "Official fixture" } else { "Best fixture" });
+                assert_eq!(row["beatmapset_id"], if map == official { json!(12345) } else { Value::Null });
+                near(row["stars"].as_f64().unwrap(), if map == official { 4.25 } else { 2.75 });
+                assert_eq!(row["beatmap_max_combo"], if map == official { 900 } else { 345 });
+                assert_eq!(row["has_replay"], true);
+                for private in ["replay_path", "ingestion_key", "osu_path", "archive_path"] {
+                    assert!(row.get(private).is_none(), "unexpected {private}: {row}");
+                }
+            }
+            for private in ["osu_path", "archive_path"] {
+                assert!(detail["beatmap"].get(private).is_none(), "{detail}");
+            }
+        }
+        let (status, profile) = request(&app, &format!("/api/v1/users/{user}"), None).await;
+        assert_eq!(status, StatusCode::OK, "{profile}");
+        assert_eq!(profile["statistics"]["grade_counts"], json!({"ss":1,"ssh":1,"s":1,"sh":0,"a":0,"b":0,"c":0,"d":0,"f":1}));
+    })
+    .await;
+    fixture.finish(result).await;
 }
 
 #[tokio::test]

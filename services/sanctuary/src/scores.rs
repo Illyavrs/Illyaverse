@@ -35,6 +35,28 @@ pub struct BestForUserQuery {
     variant: Option<ScoreVariant>,
 }
 
+fn normalize_score_grade(score: &mut Value) {
+    // A recorded client rank is authoritative. Accuracy and partial judgements
+    // cannot establish a grade, including for a displayed 100% accuracy.
+    let grade = if score["passed"] == false {
+        Some("F")
+    } else {
+        match score["grade"].as_str() {
+            Some("X" | "SS") => Some("SS"),
+            Some("XH" | "SSH") => Some("SSH"),
+            Some("S") => Some("S"),
+            Some("SH") => Some("SH"),
+            Some("A") => Some("A"),
+            Some("B") => Some("B"),
+            Some("C") => Some("C"),
+            Some("D") => Some("D"),
+            Some("F") => Some("F"),
+            _ => None,
+        }
+    };
+    score["grade"] = json!(grade);
+}
+
 pub async fn best_for_user(
     State(state): State<AppState>,
     Path(user_id): Path<i64>,
@@ -55,7 +77,8 @@ pub async fn best_for_user(
         "WITH public_player AS (
             SELECT id,username FROM users WHERE id=$1 AND NOT is_restricted
         ),eligible AS (
-            SELECT s.*,u.username,b.title,b.version
+            SELECT s.*,u.username,b.title,b.version,b.artist,
+                b.official_set_id beatmapset_id,b.stars,b.max_combo beatmap_max_combo
             FROM scores s JOIN public_player u ON u.id=s.user_id
             JOIN active_beatmaps b ON b.id=s.beatmap_id
             WHERE s.mode=$2 AND s.score_variant=$3 AND s.verification='verified'
@@ -68,7 +91,7 @@ pub async fn best_for_user(
         ),weighted AS (
             SELECT *,power(0.95,position-1) pp_weight,
                 pp*power(0.95,position-1) weighted_pp FROM positioned
-        ),paged AS (
+        ),paged AS MATERIALIZED (
             SELECT * FROM weighted ORDER BY position LIMIT $4 OFFSET $5
         )
         SELECT jsonb_build_object(
@@ -76,8 +99,11 @@ pub async fn best_for_user(
             'items',COALESCE((SELECT jsonb_agg(
                 to_jsonb(p)-'replay_path'-'ingestion_key'||jsonb_build_object(
                     'has_replay',p.replay_path IS NOT NULL,
-                    'accuracy_source',CASE WHEN p.client='lazer' THEN 'client_reported' ELSE 'judgements' END
-                ) ORDER BY p.position) FROM paged p),'[]'::jsonb)
+                    'accuracy_source',CASE WHEN p.client='lazer' THEN 'client_reported' ELSE 'judgements' END,
+                    'grade',COALESCE(p.native_submission->>'rank',t.submission->>'rank',a.details->>'rank')
+                ) ORDER BY p.position) FROM paged p
+                LEFT JOIN LATERAL(SELECT submission FROM lazer_score_tokens WHERE score_id=p.id ORDER BY id DESC LIMIT 1)t ON true
+                LEFT JOIN LATERAL(SELECT details FROM audit_events WHERE action='scores.stable_ingest' AND target_id=p.id::text ORDER BY id DESC LIMIT 1)a ON true),'[]'::jsonb)
         ) FROM public_player",
     )
     .bind(user_id)
@@ -88,6 +114,9 @@ pub async fn best_for_user(
     .fetch_optional(&state.db)
     .await?
     .ok_or_else(ApiError::missing)?;
+    if let Some(items) = response["items"].as_array_mut() {
+        items.iter_mut().for_each(normalize_score_grade);
+    }
     response["page"] = json!(p);
     response["page_size"] = json!(size);
     response["mode"] = json!(mode);
@@ -135,8 +164,9 @@ pub async fn list(
     let all = moderator;
     let total:i64=sqlx::query_scalar("SELECT count(*) FROM scores s JOIN users u ON u.id=s.user_id WHERE ($1::bigint IS NULL OR user_id=$1) AND ($2::bigint IS NULL OR beatmap_id=$2) AND ($3::smallint IS NULL OR mode=$3) AND ($4::text IS NULL OR verification=$4) AND (verification='verified' OR user_id=$5 OR $6) AND (NOT u.is_restricted OR $6) AND ($7::text IS NULL OR s.score_variant=$7)")
         .bind(query.user_id).bind(query.beatmap_id).bind(mode).bind(&query.verification).bind(own_id).bind(all).bind(variant.map(ScoreVariant::as_str)).fetch_one(&state.db).await?;
-    let items=sqlx::query_scalar::<_,Value>("SELECT to_jsonb(s)-'replay_path'-'ingestion_key' || jsonb_build_object('username',u.username,'title',b.title,'version',b.version,'has_replay',s.replay_path IS NOT NULL,'accuracy_source',CASE WHEN s.client='lazer' THEN 'client_reported' ELSE 'judgements' END) FROM scores s JOIN users u ON u.id=s.user_id JOIN beatmaps b ON b.id=s.beatmap_id WHERE ($1::bigint IS NULL OR user_id=$1) AND ($2::bigint IS NULL OR beatmap_id=$2) AND ($3::smallint IS NULL OR s.mode=$3) AND ($4::text IS NULL OR verification=$4) AND (verification='verified' OR user_id=$5 OR $6) AND (NOT u.is_restricted OR $6) AND ($9::text IS NULL OR s.score_variant=$9) ORDER BY s.created_at DESC,s.id DESC LIMIT $7 OFFSET $8")
+    let mut items=sqlx::query_scalar::<_,Value>("WITH paged AS MATERIALIZED (SELECT s.*,u.username,b.title,b.version,b.artist,b.official_set_id beatmapset_id,b.stars,b.max_combo beatmap_max_combo FROM scores s JOIN users u ON u.id=s.user_id JOIN beatmaps b ON b.id=s.beatmap_id WHERE ($1::bigint IS NULL OR user_id=$1) AND ($2::bigint IS NULL OR beatmap_id=$2) AND ($3::smallint IS NULL OR s.mode=$3) AND ($4::text IS NULL OR verification=$4) AND (verification='verified' OR user_id=$5 OR $6) AND (NOT u.is_restricted OR $6) AND ($9::text IS NULL OR s.score_variant=$9) ORDER BY s.created_at DESC,s.id DESC LIMIT $7 OFFSET $8) SELECT to_jsonb(p)-'replay_path'-'ingestion_key' || jsonb_build_object('has_replay',p.replay_path IS NOT NULL,'accuracy_source',CASE WHEN p.client='lazer' THEN 'client_reported' ELSE 'judgements' END,'grade',COALESCE(p.native_submission->>'rank',t.submission->>'rank',a.details->>'rank')) FROM paged p LEFT JOIN LATERAL(SELECT submission FROM lazer_score_tokens WHERE score_id=p.id ORDER BY id DESC LIMIT 1)t ON true LEFT JOIN LATERAL(SELECT details FROM audit_events WHERE action='scores.stable_ingest' AND target_id=p.id::text ORDER BY id DESC LIMIT 1)a ON true ORDER BY p.created_at DESC,p.id DESC")
         .bind(query.user_id).bind(query.beatmap_id).bind(mode).bind(query.verification).bind(own_id).bind(all).bind(size).bind(offset).bind(variant.map(ScoreVariant::as_str)).fetch_all(&state.db).await?;
+    items.iter_mut().for_each(normalize_score_grade);
     let mut response = page(items, total, p, size).0;
     response["mode"] = json!(mode);
     response["score_variant"] = json!(variant);
@@ -152,7 +182,8 @@ pub async fn detail(
         .as_ref()
         .is_some_and(|user| has_permission(&user.permissions, "scores.moderate"));
     let own_id = viewer.map(|user| user.id);
-    let value=sqlx::query_scalar::<_,Value>("SELECT to_jsonb(s)-'replay_path'-'ingestion_key' || jsonb_build_object('username',u.username,'title',b.title,'version',b.version,'has_replay',s.replay_path IS NOT NULL,'accuracy_source',CASE WHEN s.client='lazer' THEN 'client_reported' ELSE 'judgements' END,'replay_url',CASE WHEN s.replay_path IS NOT NULL THEN '/api/v1/scores/'||s.id||'/replay' ELSE NULL END,'user',jsonb_build_object('id',u.id,'username',u.username,'country',u.country,'avatar_url',u.avatar_url),'beatmap',to_jsonb(b)-'osu_path'-'archive_path') FROM scores s JOIN users u ON u.id=s.user_id JOIN beatmaps b ON b.id=s.beatmap_id WHERE s.id=$1 AND (s.verification='verified' OR s.user_id=$2 OR $3) AND (NOT u.is_restricted OR $3)").bind(id).bind(own_id).bind(moderator).fetch_optional(&state.db).await?.ok_or_else(ApiError::missing)?;
+    let mut value=sqlx::query_scalar::<_,Value>("SELECT to_jsonb(s)-'replay_path'-'ingestion_key' || jsonb_build_object('username',u.username,'title',b.title,'version',b.version,'artist',b.artist,'beatmapset_id',b.official_set_id,'stars',b.stars,'beatmap_max_combo',b.max_combo,'grade',COALESCE(s.native_submission->>'rank',t.submission->>'rank',a.details->>'rank'),'has_replay',s.replay_path IS NOT NULL,'accuracy_source',CASE WHEN s.client='lazer' THEN 'client_reported' ELSE 'judgements' END,'replay_url',CASE WHEN s.replay_path IS NOT NULL THEN '/api/v1/scores/'||s.id||'/replay' ELSE NULL END,'user',jsonb_build_object('id',u.id,'username',u.username,'country',u.country,'avatar_url',u.avatar_url),'beatmap',to_jsonb(b)-'osu_path'-'archive_path') FROM scores s JOIN users u ON u.id=s.user_id JOIN beatmaps b ON b.id=s.beatmap_id LEFT JOIN LATERAL(SELECT submission FROM lazer_score_tokens WHERE score_id=s.id ORDER BY id DESC LIMIT 1)t ON true LEFT JOIN LATERAL(SELECT details FROM audit_events WHERE action='scores.stable_ingest' AND target_id=s.id::text ORDER BY id DESC LIMIT 1)a ON true WHERE s.id=$1 AND (s.verification='verified' OR s.user_id=$2 OR $3) AND (NOT u.is_restricted OR $3)").bind(id).bind(own_id).bind(moderator).fetch_optional(&state.db).await?.ok_or_else(ApiError::missing)?;
+    normalize_score_grade(&mut value);
     Ok(Json(value))
 }
 #[derive(Deserialize)]
@@ -275,7 +306,7 @@ pub(crate) async fn statistics(
         .fetch_optional(&state.db)
         .await?
         .ok_or_else(ApiError::missing)?;
-    let grades:Value=sqlx::query_scalar("WITH played AS (SELECT CASE WHEN NOT s.passed THEN 'F' ELSE COALESCE(s.native_submission->>'rank',t.submission->>'rank',a.details->>'rank',CASE WHEN s.accuracy=100 THEN CASE WHEN (s.mods & 1032)=0 THEN 'X' ELSE 'XH' END END) END grade FROM scores s LEFT JOIN LATERAL(SELECT submission FROM lazer_score_tokens WHERE score_id=s.id ORDER BY id DESC LIMIT 1)t ON true LEFT JOIN LATERAL(SELECT details FROM audit_events WHERE action='scores.stable_ingest' AND target_id=s.id::text ORDER BY id DESC LIMIT 1)a ON true WHERE s.user_id=$1 AND s.mode=$2 AND s.score_variant=$3 AND s.verification='verified') SELECT jsonb_build_object('ss',count(*) FILTER(WHERE grade='X'),'ssh',count(*) FILTER(WHERE grade='XH'),'s',count(*) FILTER(WHERE grade='S'),'sh',count(*) FILTER(WHERE grade='SH'),'a',count(*) FILTER(WHERE grade='A'),'b',count(*) FILTER(WHERE grade='B'),'c',count(*) FILTER(WHERE grade='C'),'d',count(*) FILTER(WHERE grade='D'),'f',count(*) FILTER(WHERE grade='F')) FROM played")
+    let grades:Value=sqlx::query_scalar("WITH played AS (SELECT CASE WHEN NOT s.passed THEN 'F' ELSE COALESCE(s.native_submission->>'rank',t.submission->>'rank',a.details->>'rank') END grade FROM scores s LEFT JOIN LATERAL(SELECT submission FROM lazer_score_tokens WHERE score_id=s.id ORDER BY id DESC LIMIT 1)t ON true LEFT JOIN LATERAL(SELECT details FROM audit_events WHERE action='scores.stable_ingest' AND target_id=s.id::text ORDER BY id DESC LIMIT 1)a ON true WHERE s.user_id=$1 AND s.mode=$2 AND s.score_variant=$3 AND s.verification='verified') SELECT jsonb_build_object('ss',count(*) FILTER(WHERE grade IN('X','SS')),'ssh',count(*) FILTER(WHERE grade IN('XH','SSH')),'s',count(*) FILTER(WHERE grade='S'),'sh',count(*) FILTER(WHERE grade='SH'),'a',count(*) FILTER(WHERE grade='A'),'b',count(*) FILTER(WHERE grade='B'),'c',count(*) FILTER(WHERE grade='C'),'d',count(*) FILTER(WHERE grade='D'),'f',count(*) FILTER(WHERE grade='F')) FROM played")
         .bind(user_id).bind(mode).bind(variant.as_str()).fetch_one(&state.db).await?;
     let pp = stats.get::<f64, _>("pp");
     let plays = stats.get::<i64, _>("play_count");
@@ -1348,6 +1379,60 @@ mod score_mutation_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn score_presentation_grade_normalizes_only_recorded_ranks() {
+        for (recorded, expected) in [
+            ("X", "SS"),
+            ("XH", "SSH"),
+            ("SS", "SS"),
+            ("SSH", "SSH"),
+            ("S", "S"),
+            ("SH", "SH"),
+            ("A", "A"),
+            ("B", "B"),
+            ("C", "C"),
+            ("D", "D"),
+            ("F", "F"),
+        ] {
+            let mut score = json!({"passed":true,"grade":recorded});
+            normalize_score_grade(&mut score);
+            assert_eq!(score["grade"], expected);
+        }
+        for recorded in [
+            Value::Null,
+            json!(""),
+            json!("x"),
+            json!(" SS"),
+            json!("unknown"),
+            json!(100),
+            json!({"rank":"X"}),
+        ] {
+            let mut score = json!({"passed":true,"grade":recorded});
+            normalize_score_grade(&mut score);
+            assert!(score["grade"].is_null(), "{score}");
+        }
+    }
+
+    #[test]
+    fn score_presentation_grade_does_not_guess_from_accuracy_or_judgements() {
+        for hits in [
+            json!({}),
+            json!({"n300":100}),
+            json!({"geki":100}),
+            json!({"n300":100,"misses":1}),
+        ] {
+            let mut score =
+                json!({"passed":true,"accuracy":100,"hit_counts":hits,"max_combo":100,"mods":8});
+            normalize_score_grade(&mut score);
+            assert!(score["grade"].is_null(), "{score}");
+        }
+        for recorded in [Value::Null, json!("X"), json!("unknown")] {
+            let mut score = json!({"passed":false,"grade":recorded,"accuracy":100});
+            normalize_score_grade(&mut score);
+            assert_eq!(score["grade"], "F");
+        }
+    }
 
     fn supplied_mania_performance(mods: Value, state: rosu_pp::mania::ManiaScoreState) -> f64 {
         let native = ValidatedMods::parse(3, &mods).unwrap();

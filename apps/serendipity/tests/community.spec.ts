@@ -1,3 +1,4 @@
+import { selectField } from './helpers/field-select';
 import { test, expect, request as apiRequest } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -36,7 +37,7 @@ test('public pages, pure black default, multilingual cookie and mobile navigatio
     .poll(() => page.evaluate(() => getComputedStyle(document.body).backgroundColor))
     .toBe('rgb(0, 0, 0)');
   await expect(page.locator('.global-scene')).toHaveCSS('background-image', 'none');
-  await page.getByLabel('語言', { exact: true }).selectOption('en');
+  await selectField(page.locator('.language-select'), 'en');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Illyaverse');
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
@@ -91,7 +92,7 @@ test('registration, persistent locale/theme/profile, chat draft and server RBAC'
   });
   await expect(page.locator('.global-scene')).not.toHaveCSS('background-image', 'none');
   await page.getByRole('tab', { name: '帳號', exact: true }).click();
-  await page.locator('#account-locale').selectOption('ja');
+  await selectField(page.locator('#account-locale'), 'ja');
   await expect(page.locator('html')).toHaveAttribute('lang', 'ja');
   await expect(page.locator('.global-scene')).not.toHaveCSS('background-image', 'none');
   await page.reload();

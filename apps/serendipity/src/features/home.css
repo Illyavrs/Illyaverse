@@ -49,7 +49,7 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   background: var(--surface);
-  backdrop-filter: blur(var(--panel-blur));
+  backdrop-filter: blur(var(--material-blur));
   border: 1px solid var(--border);
   border-top: 0;
   border-radius: 0 0 var(--radius) var(--radius);
@@ -147,7 +147,7 @@
   border: 1px solid var(--border);
   border-bottom: 0;
   border-radius: var(--radius) var(--radius) 0 0;
-  backdrop-filter: blur(var(--panel-blur));
+  backdrop-filter: blur(var(--material-blur));
   margin: 0;
 }
 .home-community .home-section-heading h2,

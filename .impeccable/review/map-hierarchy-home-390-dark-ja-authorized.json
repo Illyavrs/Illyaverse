@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-10-08T15:47:45.714Z",
+  "captured_at": "2026-10-08T17:25:01.168Z",
   "route": "/",
   "viewport": {
     "width": 390,
@@ -12,18 +12,18 @@
     "scrollY": 0,
     "documentOverflow": false,
     "panelBlur": "8px",
-    "surface": "rgb(24 24 27/0.55)",
-    "raised": "rgb(46 46 52/0.55)"
+    "surface": "rgb(24 24 27 / 0.55)",
+    "raised": "rgb(46 46 52 / 0.55)"
   },
   "state": "Signed-in upload-only account; import/admin hidden; public verified activity.",
   "data": "Synthetic QA fixtures intercepted at existing public API routes; no native-client or live activity claims.",
   "sources": {
     "src/features/home.tsx": "9eac409e94b2d5a61e95a5536b13c168e8a1c0da714f1128909a6fb12fd1f520",
-    "src/features/home.css": "f6acab22cc3c7b632e20839f94352b998ca3ac98d7fd2833ebc4ca5b6c10a408",
-    "src/app/globals.css": "a4b4c5fdbf5e59643baa74bc6b0a5519d3604a5cad533315e6f686bf371980fc",
-    "src/app/layout.tsx": "861753bb73037d20cc21175af45d08ba626db6c9d8265f87d28b8adfa1265235",
-    "messages/zh-TW.json": "3d0f21bb91c7db558274cc200fa31ba17a4db78b2e10b83e88da18f26c833ff4",
-    "messages/en.json": "085a58330d51e9752ca565e4834982e5f7c955c743985b24b3df3cbb3a666dec",
-    "messages/ja.json": "86ed87bc2a7b3c9061393118cb24bec60b78748ac9dfebdd675ca892c528948e"
+    "src/features/home.css": "5900981ec35c55aedd78da847aefaa11019a63bcbe28263e831132f0b4dbdf0b",
+    "src/app/globals.css": "2f183c43f235ba97f3dae9c6c5a3a713f98008906c9a83f30e8da6975166fa24",
+    "src/app/layout.tsx": "4d53cd72ace7d9e2a1b5285d278a0092ea24683d2a77d68a578a9daf4a5a35cc",
+    "messages/zh-TW.json": "189f5b8d3536126fc2817ed7e960c13fdbc4d85e3db1f6f3d3b096fb36764583",
+    "messages/en.json": "4d0a33f369140d70cd1755499871d621ab9d934d8e3f58a84abd11e638aba2dc",
+    "messages/ja.json": "2f6ed3650692d6486155176fa5b5ca2aaa2b373c8c6e7aa3a8da997521099770"
   }
 }

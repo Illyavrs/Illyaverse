@@ -263,21 +263,27 @@ test('mobile banner crop matches profile settings and score rows keep all values
   const cover = await page.locator('.profile-cover').boundingBox();
   const avatar = await page.locator('.profile-identity > .avatar').boundingBox();
   expect(cover!.width / cover!.height).toBeCloseTo(12 / 5, 1);
-  expect(avatar!.y).toBeLessThan(cover!.y + cover!.height);
+  expect(cover!.y + cover!.height - avatar!.y).toBeCloseTo(avatar!.height / 2, 0);
   await expect(page.locator('html')).toHaveClass(/light/);
   const row = page.locator('.profile-score-row').first();
-  await expect(row).toContainText('9,543,123');
-  await expect(row).toContainText('HD DT');
+  await expect(row.locator('.profile-score-mod')).toHaveText(['HD', 'DT']);
   await expect(row).toContainText('99.25%');
   await expect(row).toContainText('923x');
   await expect(row.locator('.score-weight')).toHaveText('100.00%');
   await expect(row.locator('.score-weighted-pp')).toHaveText('234.56');
   await row.locator('a.score-title').focus();
   await expect(row.locator('a.score-title')).toBeFocused();
-  const replay = row.getByRole('link', { name: /^Download replay:/ });
-  await replay.focus();
+  const actions = row.locator('[data-slot="dropdown-menu-trigger"]');
+  await actions.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('menu')).toContainText('9,543,123');
+  const replay = page.getByRole('menuitem', { name: /^Download replay:/ });
+  await page.keyboard.press('ArrowDown');
   await expect(replay).toBeFocused();
   await expect(replay).toHaveAttribute('href', '/api/v1/scores/989611/replay');
+  await page.keyboard.press('Escape');
+  await expect(actions).toBeFocused();
+  await capture(page, 'mobile-light-en-banner');
 });
 
 test('Relax exposes unavailable totals honestly and preserves the selected mode through section jumps', async ({
@@ -318,7 +324,7 @@ test('missing optional statistics stay unknown and an upload-list failure retrie
 
 for (const viewport of [
   { width: 1440, height: 1000 },
-  { width: 1254, height: 900 },
+  { width: 1254, height: 714 },
 ]) {
   test(`populated Traditional Chinese desktop profile retains the chosen banner at ${viewport.width}px`, async ({
     page,
@@ -330,6 +336,12 @@ for (const viewport of [
     await expect(page.locator('.profile-grade-strip dd')).toHaveCount(9);
     await expect(page.locator('#profile-uploads .map-row')).toHaveCount(1);
     await expect(page.locator('.profile-cover')).toHaveCSS('background-position', '25% 80%');
+    const cover = await page.locator('.profile-cover').boundingBox();
+    const avatar = await page.locator('.profile-identity > .avatar').boundingBox();
+    const masthead = await page.locator('.profile-masthead').boundingBox();
+    const rail = await page.locator('.profile-section-nav').boundingBox();
+    expect(cover!.y + cover!.height - avatar!.y).toBeCloseTo(avatar!.height / 2, 0);
+    expect(rail!.y).toBeCloseTo(masthead!.y + masthead!.height, 0);
     await capture(page, `desktop-${viewport.width}-dark-zh-banner`);
   });
 }
@@ -359,4 +371,49 @@ test('English mobile profile uses a compact header when no banner is uploaded', 
   expect(gradeBounds.left).toBeGreaterThanOrEqual(gradeBounds.parentLeft);
   expect(gradeBounds.right).toBeLessThanOrEqual(gradeBounds.parentRight);
   await capture(page, 'mobile-light-en-no-banner');
+});
+
+test('placement gradients follow absolute-rank boundaries independently and never color an unranked value', async ({
+  page,
+}) => {
+  const state = await fixture(page);
+  const placement = page.locator('.profile-placement');
+  const cases = [
+    [1, 'first'],
+    [2, 'top-ten'],
+    [10, 'top-ten'],
+    [11, 'top-hundred'],
+    [100, 'top-hundred'],
+    [101, 'top-thousand'],
+    [1_000, 'top-thousand'],
+    [1_001, 'top-ten-thousand'],
+    [10_000, 'top-ten-thousand'],
+    [10_001, 'ranked'],
+  ] as const;
+  for (const [index, [rank, tier]] of cases.entries()) {
+    state.player.statistics!.rank = rank;
+    state.player.statistics!.country_rank = 1;
+    await page.goto(`/players/${playerId}?mode=${index % 4}&variant=vanilla`);
+    await expect(placement.first()).toHaveAttribute('data-rank-tier', tier);
+    await expect(placement.first().locator('dd')).toHaveText(`#${rank.toLocaleString('en')}`);
+    await expect(placement.last()).toHaveAttribute('data-rank-tier', 'first');
+    await expect(placement.first().locator('.profile-rank-number')).toHaveCSS(
+      'background-image',
+      /linear-gradient/,
+    );
+  }
+  state.player.pp = 0;
+  state.player.statistics!.rank = 1;
+  await page.goto(`/players/${playerId}?mode=2`);
+  await expect(placement.first()).toHaveAttribute('data-rank-tier', 'unranked');
+  await expect(placement.last()).toHaveAttribute('data-rank-tier', 'unranked');
+  await expect(placement.locator('.profile-rank-number')).toHaveCount(0);
+  await expect(placement.locator('dd')).toHaveText(['—', '—']);
+  state.player.pp = 10;
+  for (const [index, rank] of [null, 0, -1, 1.5].entries()) {
+    state.player.statistics!.rank = rank;
+    await page.goto(`/players/${playerId}?mode=${index % 4}`);
+    await expect(placement.first()).toHaveAttribute('data-rank-tier', 'unranked');
+    await expect(placement.first().locator('dd')).toHaveText('—');
+  }
 });

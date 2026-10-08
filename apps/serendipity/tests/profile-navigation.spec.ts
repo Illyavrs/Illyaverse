@@ -1,3 +1,4 @@
+import { selectField } from './helpers/field-select';
 import { test, expect } from '@playwright/test';
 
 // Original, intercepted fixtures; never alter a community account or send a message.
@@ -70,7 +71,7 @@ test('catalogue preserves profile uploader identity through filters and can clea
   });
   await page.goto('/beatmaps?uploaded_by=989802&source=local');
   const source = page.getByRole('combobox', { name: 'Source', exact: true });
-  await expect(source).toHaveValue('local');
+  await expect(source).toHaveAttribute('data-value', 'local');
   await expect(page.getByText('Uploaded by player #989802', { exact: true })).toBeVisible();
   await expect.poll(() => queries.at(-1)?.get('uploaded_by')).toBe('989802');
   const beforeSearch = queries.length;
@@ -83,12 +84,12 @@ test('catalogue preserves profile uploader identity through filters and can clea
   await expect.poll(() => queries.at(-1)?.get('q')).toBe('星降り');
   expect(queries.at(-1)?.get('uploaded_by')).toBe('989802');
   expect(queries.at(-1)?.get('source')).toBe('local');
-  await source.selectOption('official');
+  await selectField(source, 'official');
   await expect.poll(() => queries.at(-1)?.get('source')).toBe('official');
   expect(queries.at(-1)?.get('uploaded_by')).toBe('989802');
   expect(queries.at(-1)?.get('q')).toBe('星降り');
   await page.goBack();
-  await expect(source).toHaveValue('local');
+  await expect(source).toHaveAttribute('data-value', 'local');
   await expect.poll(() => queries.at(-1)?.get('source')).toBe('local');
   expect(queries.at(-1)?.get('uploaded_by')).toBe('989802');
   expect(queries.at(-1)?.get('q')).toBe('星降り');

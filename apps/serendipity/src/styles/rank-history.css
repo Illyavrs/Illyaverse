@@ -10,7 +10,8 @@
   flex-wrap: wrap;
 }
 .rank-history-header h2 {
-  font-size: 1.4rem;
+  font-size: 19px;
+  font-weight: 900;
   margin: 0;
 }
 .rank-history-controls {
@@ -25,28 +26,29 @@
   font-size: 12px;
   color: var(--secondary-text);
 }
-.rank-history-controls .native-select {
+.rank-history-controls [data-slot='select-trigger'] {
   width: auto;
-  min-height: 36px;
-  padding: 6px 28px 6px 10px;
-  font-size: 13px;
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 12px;
 }
 .rank-history-summary {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px 36px;
-  margin: 24px 0 18px;
+  gap: 12px 28px;
+  margin: 20px 0 12px;
   font-variant-numeric: tabular-nums;
 }
 .rank-history-summary dt {
   color: var(--secondary-text);
   font-size: 12px;
-  margin-bottom: 3px;
+  margin-bottom: 2px;
 }
 .rank-history-summary dd {
   margin: 0;
-  font-size: 16px;
-  font-weight: 800;
+  font-size: 18px;
+  line-height: 1.4;
+  font-weight: 900;
 }
 .rank-history-summary > div {
   min-width: 0;
@@ -55,19 +57,28 @@
 .rank-history-summary > div:first-child {
   margin-right: auto;
 }
+.rank-history-summary > div:first-child dd {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.95;
+}
 .rank-history-figure {
   margin: 0;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
 }
 .rank-history-chart {
+  --rank-axis-width: 64px;
   position: relative;
-  height: 220px;
-  outline-offset: 5px;
-  border-radius: 4px;
+  height: 182px;
+  outline-offset: 4px;
+  border-radius: calc(var(--radius) * 0.3);
+  font-variant-numeric: tabular-nums;
 }
 .rank-history-chart svg {
   position: absolute;
-  left: 64px;
-  width: calc(100% - 64px);
+  left: var(--rank-axis-width);
+  width: calc(100% - var(--rank-axis-width));
   height: 100%;
   touch-action: pan-y;
   cursor: crosshair;
@@ -76,7 +87,7 @@
 .rank-history-axis {
   position: absolute;
   inset: 0 auto 0 0;
-  width: 54px;
+  width: calc(var(--rank-axis-width) - 10px);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: var(--secondary-text);
@@ -85,7 +96,7 @@
   position: absolute;
   right: 0;
   max-width: 100%;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
   transform: translateY(-50%);
 }
 .rank-history-axis .rank-history-unranked-axis {
@@ -96,25 +107,33 @@
 .rank-history-grid {
   stroke: var(--border);
   stroke-width: 1;
+  stroke-dasharray: 2 5;
 }
 .rank-history-segment {
   stroke: var(--readable-accent);
-  stroke-width: 2;
+  stroke-width: 2.25;
+  stroke-linecap: round;
+}
+.rank-history-gap {
+  stroke: var(--secondary-text);
+  stroke-width: 1;
+  stroke-dasharray: 2 5;
+  opacity: 0.5;
 }
 .rank-history-selection {
   stroke: var(--secondary-text);
   stroke-width: 1;
-  stroke-dasharray: 3 5;
-  opacity: 0.65;
+  stroke-dasharray: 3 4;
+  opacity: 0.5;
 }
 .rank-history-point {
   fill: var(--readable-accent);
   stroke: var(--readable-accent);
-  stroke-width: 3;
+  stroke-width: 1.5;
 }
 .rank-history-point.is-selected {
-  fill: var(--card);
-  stroke-width: 4;
+  fill: var(--background);
+  stroke-width: 2.5;
 }
 .rank-history-null {
   stroke: var(--secondary-text);
@@ -132,6 +151,7 @@
   font-size: 11px;
   color: var(--secondary-text);
   font-variant-numeric: tabular-nums;
+  padding-top: 4px;
 }
 .rank-history-dates time:last-child {
   text-align: right;
@@ -140,33 +160,64 @@
   color: var(--secondary-text);
   font-size: 12px;
   line-height: 1.7;
-  margin-top: 14px;
+  margin-top: 6px;
   max-width: 75ch;
 }
+.rank-history-figure figcaption:has(> .sr-only:only-child) {
+  margin: 0;
+}
 .rank-history-keyboard {
-  margin-top: 6px;
-  font-size: 12px;
+  position: static;
+  width: auto;
+  height: auto;
+  padding: 0;
+  margin: 8px 0 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.rank-history-figure:focus-within + .rank-history-keyboard {
+  position: static;
+  width: auto;
+  height: auto;
+  clip-path: none;
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
 }
 .rank-history-cadence {
-  margin: 14px 0 0;
+  margin: 6px 0 0;
   font-size: 12px;
   max-width: 75ch;
 }
 .rank-history-details {
-  margin-top: 20px;
+  margin-top: 12px;
   border-top: 1px solid var(--border);
-  padding-top: 14px;
+  padding-top: 4px;
 }
 .rank-history-details > summary {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
   cursor: pointer;
   width: fit-content;
   max-width: 100%;
-  padding: 4px 0;
+  padding: 8px 0;
 }
 .rank-history-details > summary::marker {
   color: var(--readable-accent);
+}
+.rank-history-observation-notes {
+  color: var(--secondary-text);
+  font-size: 12px;
+  line-height: 1.7;
+  max-width: 75ch;
+  padding: 4px 0 0;
+}
+.rank-history-requested-period {
+  margin-bottom: 6px;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
 }
 .rank-history-table-scroll {
   max-width: 100%;
@@ -209,17 +260,17 @@
   background: var(--muted);
 }
 .rank-history-state {
-  padding: 28px 0 10px;
-  font-size: 14px;
+  padding: 20px 0 8px;
+  font-size: 13px;
   line-height: 1.75;
 }
 .rank-history-state p {
-  max-width: 75ch;
+  max-width: 60ch;
 }
 .rank-history-state .rank-history-empty-title {
   color: var(--foreground);
   font-weight: 800;
-  margin-bottom: 4px;
+  margin-bottom: 5px;
 }
 .rank-history-state button {
   margin-top: 12px;
@@ -229,7 +280,7 @@
     padding: 20px 18px;
   }
   .rank-history-header {
-    gap: 14px;
+    gap: 12px;
   }
   .rank-history-controls {
     width: 100%;
@@ -242,32 +293,37 @@
     gap: 4px;
     min-width: 0;
   }
-  .rank-history-controls .native-select {
+  .rank-history-controls [data-slot='select-trigger'] {
     width: 100%;
   }
   .rank-history-summary {
-    gap: 14px 24px;
-    margin-top: 20px;
+    gap: 10px 22px;
+    margin-top: 16px;
   }
   .rank-history-summary > div:first-child {
     flex-basis: 100%;
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px 8px;
   }
   .rank-history-summary dd {
-    font-size: 15px;
+    font-size: 17px;
   }
   .rank-history-chart {
-    height: 180px;
+    --rank-axis-width: 54px;
+    height: 160px;
   }
   .rank-history-chart svg {
-    left: 50px;
-    width: calc(100% - 50px);
+    left: var(--rank-axis-width);
+    width: calc(100% - var(--rank-axis-width));
   }
   .rank-history-axis {
-    width: 43px;
+    width: calc(var(--rank-axis-width) - 8px);
     font-size: 10px;
   }
   .rank-history-dates {
-    padding-left: 50px;
+    padding-left: 54px;
     font-size: 10px;
     gap: 8px;
   }

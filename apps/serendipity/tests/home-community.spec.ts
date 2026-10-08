@@ -169,6 +169,7 @@ function preferences(locale: string, theme: 'dark' | 'light'): Preferences {
     background_dim: 0.76,
     panel_blur: 8,
     panel_opacity: 0.55,
+    glass_level: 100,
     border_radius: 14,
   };
 }

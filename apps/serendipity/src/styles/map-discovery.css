@@ -20,6 +20,20 @@
   --difficulty-expert: #6848a2;
   --difficulty-extreme: #9c4436;
 }
+/* One reading ground protects the heading and labels without changing the
+   fields' section material or adding another layer of backdrop blur. */
+.discovery-reading-ground {
+  position: relative;
+  isolation: isolate;
+}
+.discovery-reading-ground::before {
+  content: '';
+  position: absolute;
+  inset: -12px -16px 0;
+  z-index: -1;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--background) 92%, transparent);
+}
 .map-discovery .page-heading {
   margin-bottom: 28px;
 }

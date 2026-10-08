@@ -67,6 +67,7 @@ export type Preferences = {
   background_dim: number;
   panel_blur: number;
   panel_opacity: number;
+  glass_level: number;
   border_radius: number;
   locale?: string;
   pm_friends_only?: boolean;
@@ -124,6 +125,12 @@ export type Score = {
   beatmap_id: number;
   title: string;
   version: string;
+  artist?: string | null;
+  beatmapset_id?: number | null;
+  stars?: number | null;
+  grade?: 'SS' | 'SSH' | 'S' | 'SH' | 'A' | 'B' | 'C' | 'D' | 'F' | null;
+  hit_counts?: Record<string, number> | null;
+  beatmap_max_combo?: number | null;
   mode: number;
   score_variant?: ScoreVariant;
   score: number;

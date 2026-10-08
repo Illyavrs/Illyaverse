@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { RankHistoryPoint, RankHistoryResponse } from '../src/features/rank-history';
+import { selectField } from './helpers/field-select';
 
 // Intercepted synthetic observations only. The parent task verifies the actual collector/API separately.
 const playerId = 991801;
@@ -289,13 +290,23 @@ test('actual observation gaps and unranked days interrupt lines; the full UTC wi
   );
   const first = panel(page).locator('.rank-history-point[data-date="2026-10-01"]');
   const last = panel(page).locator(`.rank-history-point[data-date="${end}"]`);
-  expect(Number(await first.getAttribute('cx'))).toBeGreaterThan(850);
+  expect(Number(await first.getAttribute('cx'))).toBe(16);
+  expect(Number(await last.getAttribute('cx'))).toBe(984);
   expect(Number(await last.getAttribute('cy'))).toBeLessThan(
     Number(await first.getAttribute('cy')),
   );
   await expect(panel(page).locator('.rank-history-dates time').first()).toHaveAttribute(
     'datetime',
-    response(0, 'vanilla', 90).start_date,
+    '2026-10-01',
+  );
+  await expect(panel(page).locator('.rank-history-gap')).toHaveCount(1);
+  await expect(panel(page).locator('.rank-history-gap')).toHaveAttribute(
+    'data-start-date',
+    '2026-10-02',
+  );
+  await expect(panel(page).locator('.rank-history-gap')).toHaveAttribute(
+    'data-end-date',
+    '2026-10-04',
   );
   await expect(panel(page).locator('.rank-history-summary time')).toHaveAttribute('datetime', end);
   expect(state.queries.at(-1)).toMatchObject({ mode: 0, variant: 'vanilla', days: 90 });
@@ -317,9 +328,10 @@ test('country selection uses sampled countries, breaks a country change, and pro
   const state = await fixture(page);
   await page.goto(`/players/${playerId}`);
   await loaded(page);
-  await panel(page)
-    .getByRole('combobox', { name: 'Placement', exact: true })
-    .selectOption('country');
+  await selectField(
+    panel(page).getByRole('combobox', { name: 'Placement', exact: true }),
+    'country',
+  );
   await expect(panel(page).locator('.rank-history-summary dt').nth(1)).toHaveText(
     'Country rank · JP',
   );
@@ -334,6 +346,10 @@ test('country selection uses sampled countries, breaks a country change, and pro
   await chart.press('End');
   await chart.press('ArrowLeft');
   await expect(chart).toHaveAttribute('aria-valuenow', '6');
+  const disclosureBefore = await panel(page).locator('summary').boundingBox();
+  await chart.blur();
+  const disclosureAfter = await panel(page).locator('summary').boundingBox();
+  expect(disclosureAfter!.y).toBeCloseTo(disclosureBefore!.y, 0);
   await panel(page).locator('summary').click();
   const table = panel(page).getByRole('table');
   await expect(table.getByRole('row')).toHaveCount(8);
@@ -352,18 +368,19 @@ test('timeframe and mode/RX partitions fetch separately without showing previous
   const state = await fixture(page);
   await page.goto(`/players/${playerId}`);
   await loaded(page);
-  await panel(page).getByRole('combobox', { name: 'Period', exact: true }).selectOption('30');
+  await selectField(panel(page).getByRole('combobox', { name: 'Period', exact: true }), '30');
   await expect.poll(() => state.queries.at(-1)?.days).toBe(30);
   await loaded(page);
   await expect(panel(page).locator('.rank-history-dates time').first()).toHaveAttribute(
     'datetime',
-    response(0, 'vanilla', 30).start_date,
+    '2026-10-01',
   );
-  await panel(page).getByRole('combobox', { name: 'Period', exact: true }).selectOption('180');
+  await selectField(panel(page).getByRole('combobox', { name: 'Period', exact: true }), '180');
   await expect.poll(() => state.queries.at(-1)?.days).toBe(180);
   await loaded(page);
   await page.goBack();
-  await expect(panel(page).getByRole('combobox', { name: 'Period', exact: true })).toHaveValue(
+  await expect(panel(page).getByRole('combobox', { name: 'Period', exact: true })).toHaveAttribute(
+    'data-value',
     '30',
   );
   await loaded(page);
@@ -405,9 +422,10 @@ test('empty collection and one ranked observation show no invented history or tr
   await expect(panel(page).getByRole('slider')).toHaveCount(0);
   await expect(panel(page).getByText('No capture yet.', { exact: false })).toBeVisible();
   state.shape = 'single';
-  await panel(page).getByRole('combobox', { name: 'Period', exact: true }).selectOption('30');
+  await selectField(panel(page).getByRole('combobox', { name: 'Period', exact: true }), '30');
   await loaded(page);
   await expect(panel(page).locator('.rank-history-point')).toHaveCount(1);
+  await expect(panel(page).locator('.rank-history-point')).toHaveAttribute('cx', '500');
   await expect(panel(page).locator('.rank-history-segment')).toHaveCount(0);
   await expect(panel(page).locator('figcaption')).toContainText(
     'One day recorded. There is no trend line yet.',
@@ -503,14 +521,14 @@ test.describe('touch and compact localized profiles', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/players/${playerId}?rank_days=30&rank_metric=country`);
     await loaded(page);
-    const chart = panel(page).locator('svg');
+    const chart = panel(page).locator('.rank-history-chart > svg');
     await chart.scrollIntoViewIfNeeded();
     const bounds = await chart.boundingBox();
     expect(bounds).not.toBeNull();
     await page.touchscreen.tap(bounds!.x + bounds!.width * 0.75, bounds!.y + bounds!.height / 2);
     await expect(panel(page).getByRole('slider')).toHaveAttribute(
       'aria-valuetext',
-      /Oct 1, 2026, TW, #10/,
+      /Oct 6, 2026, TW, #7/,
     );
     await panel(page).locator('summary').click();
     await expect(panel(page).getByRole('table')).toBeVisible();
@@ -520,7 +538,7 @@ test.describe('touch and compact localized profiles', () => {
     await capture(page, '390-light-en-country-touch', {
       days: 30,
       metric: 'country',
-      selectedDate: '2026-10-01',
+      selectedDate: '2026-10-06',
       selectedCountry: 'TW',
       profileUsername: 'Synthetic long player name',
       observationCount: 7,

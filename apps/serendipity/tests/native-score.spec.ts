@@ -1,3 +1,4 @@
+import { selectField } from './helpers/field-select';
 import { test, expect, type Locator, type Page } from '@playwright/test';
 
 // These responses exist only in the browser test; no community rows are created.
@@ -115,7 +116,7 @@ test('native score keeps raw and Classic values distinct with settings and eligi
   await capture(page, 'native-desktop-zh-TW');
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByLabel('語言', { exact: true }).selectOption('ja');
+  await selectField(page.locator('.language-select'), 'ja');
   await assertNativeScale('ja');
   await expect(page.getByRole('heading', { name: 'Mod 設定' })).toBeVisible();
   await expect(page.getByText('DT · 再生速度', { exact: true })).toBeVisible();
@@ -164,7 +165,7 @@ test('legacy estimate preserves the raw result and explains the missing judgemen
   await assertEstimate('zh-TW');
   await capture(page, 'estimated-desktop-zh-TW');
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByLabel('語言', { exact: true }).selectOption('ja');
+  await selectField(page.locator('.language-select'), 'ja');
   await assertEstimate('ja');
   await capture(page, 'estimated-mobile-ja');
   expect(errors).toEqual([]);
@@ -208,7 +209,7 @@ test('unavailable conversion excludes misleading comparison values in both local
   await assertUnavailable('zh-TW');
   await capture(page, 'unavailable-desktop-zh-TW');
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByLabel('語言', { exact: true }).selectOption('ja');
+  await selectField(page.locator('.language-select'), 'ja');
   await assertUnavailable('ja');
   await capture(page, 'unavailable-mobile-ja');
   expect(errors).toEqual([]);

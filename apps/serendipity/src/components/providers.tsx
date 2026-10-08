@@ -27,6 +27,7 @@ const defaults: Preferences = {
   background_dim: 0.76,
   panel_blur: 8,
   panel_opacity: 0.55,
+  glass_level: 100,
   border_radius: 14,
   locale: 'zh-TW',
 };
@@ -94,6 +95,7 @@ function validate(value: Partial<Preferences>): Preferences {
     background_dim: number(value.background_dim, 0, 1, 0.76),
     panel_blur: Math.round(number(value.panel_blur, 0, 48, defaults.panel_blur)),
     panel_opacity: number(value.panel_opacity, 0, 1, defaults.panel_opacity),
+    glass_level: Math.round(number(value.glass_level, 0, 100, defaults.glass_level)),
     border_radius: number(value.border_radius, 0, 40, 14),
     locale: isLocale(value.locale) ? value.locale : 'zh-TW',
   };
@@ -195,6 +197,15 @@ function AppearanceProvider({ children }: { children: ReactNode }) {
     root.style.setProperty('--scene-dim', String(preferences.background_dim));
     root.style.setProperty('--panel-blur', `${preferences.panel_blur}px`);
     root.style.setProperty('--panel-opacity', String(preferences.panel_opacity));
+    root.dataset.glassTier =
+      preferences.glass_level >= 75
+        ? 'content'
+        : preferences.glass_level >= 50
+          ? 'section'
+          : preferences.glass_level >= 25
+            ? 'identity'
+            : 'navigation';
+    root.dataset.glassLevel = String(preferences.glass_level);
     localStorage.setItem('illya_appearance', JSON.stringify(preferences));
   }, [preferences]);
   const update = useCallback(
@@ -234,6 +245,7 @@ function AppearanceProvider({ children }: { children: ReactNode }) {
       background_dim: p.background_dim,
       panel_blur: p.panel_blur,
       panel_opacity: p.panel_opacity,
+      glass_level: p.glass_level,
       border_radius: p.border_radius,
     };
     await runOperation({ operation: 'save' }, async () => {

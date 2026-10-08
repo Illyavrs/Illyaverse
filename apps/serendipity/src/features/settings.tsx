@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { ImagePlus, RotateCcw, Check, LoaderCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { FieldSelect } from '@/components/ui/field-select';
 import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -79,6 +80,42 @@ export function AppearanceControls({ compact = false }: { compact?: boolean }) {
             ))}
           </div>
         </div>
+      </div>
+      <div className="field slider-field glass-coverage-field">
+        <div>
+          <label htmlFor={`${compact ? 'quick-' : ''}glass_level`}>{t('glassLevel')}</label>
+          <output>{p.glass_level}%</output>
+        </div>
+        <Slider
+          id={`${compact ? 'quick-' : ''}glass_level`}
+          min={0}
+          max={100}
+          step={1}
+          value={[p.glass_level]}
+          disabled={busy}
+          onValueChange={([value]) => update({ glass_level: value })}
+          aria-label={t('glassLevel')}
+          aria-valuetext={`${p.glass_level}%`}
+          aria-describedby={`${compact ? 'quick-' : ''}glass-level-hint`}
+        />
+        <div className="glass-coverage-endpoints" aria-hidden="true">
+          <span>{t('glassMinimum')}</span>
+          <span>{t('glassMaximum')}</span>
+        </div>
+        <p className="hint" id={`${compact ? 'quick-' : ''}glass-level-hint`}>
+          {t('glassHint')}
+        </p>
+        <p className="glass-coverage-current">
+          {t(
+            p.glass_level >= 75
+              ? 'glassContent'
+              : p.glass_level >= 50
+                ? 'glassSections'
+                : p.glass_level >= 25
+                  ? 'glassIdentity'
+                  : 'glassNavigation',
+          )}
+        </p>
       </div>
       <div className="field">
         <label>{t('background')}</label>
@@ -635,19 +672,20 @@ function SettingsContent() {
             <EmailVerificationControls key={user?.id} />
             <div className="field">
               <label htmlFor="account-locale">{t('locale')}</label>
-              <select
+              <FieldSelect
                 id="account-locale"
                 value={current}
-                onChange={(e) => {
-                  if (isLocale(e.target.value))
-                    locale(e.target.value).catch(() => setLocaleError(true));
+                onValueChange={(value) => {
+                  if (isLocale(value))
+                    locale(value).catch(() => setLocaleError(true));
                 }}
                 className="native-select"
-              >
-                <option value="zh-TW">繁體中文</option>
-                <option value="en">English</option>
-                <option value="ja">日本語</option>
-              </select>
+                options={[
+                  { value: 'zh-TW', label: '繁體中文' },
+                  { value: 'en', label: 'English' },
+                  { value: 'ja', label: '日本語' },
+                ]}
+              />
               <p className="hint">{t('localeHint')}</p>
               {localeError && (
                 <p className="form-error" role="alert">

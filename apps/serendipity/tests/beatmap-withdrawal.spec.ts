@@ -1,3 +1,4 @@
+import { selectField } from './helpers/field-select';
 import { test, expect, type Page } from '@playwright/test';
 
 // Synthetic browser fixtures. Real publication/retention policy is checked by owned PG tests.
@@ -230,7 +231,7 @@ test('whole-set withdrawal preserves failed reason and independent ranking statu
     { setId: 990700, withdrawn: true, expected_revision: 0, reason: '管理測試：保留成績與 Replay' },
   ]);
   expect(state.items.slice(0, 2).map((map) => map.status)).toEqual(['ranked', 'loved']);
-  await page.locator('select[name=availability]').selectOption('withdrawn');
+  await selectField(page.locator('[data-slot="select-trigger"][data-field-name=availability]'), 'withdrawn');
   await expect(page.locator('.admin-map-table tbody tr')).toHaveCount(2);
   await expect(row).toContainText('已下架');
 });
@@ -328,7 +329,7 @@ test('last-page withdrawal clamps page and live filter changes preserve independ
   const state = await fixture(page);
   await page.goto('/admin?tab=beatmaps&source=local&status=ranked&page=2');
   // Loved remains independent: select all ranking states to expose the 25th row.
-  await page.locator('select[name=status]').selectOption('all');
+  await selectField(page.locator('[data-slot="select-trigger"][data-field-name=status]'), 'all');
   await page.goto('/admin?tab=beatmaps&source=local&page=2');
   await expect(page.locator('.admin-map-table tbody tr')).toHaveCount(1);
   await page
@@ -340,13 +341,13 @@ test('last-page withdrawal clamps page and live filter changes preserve independ
   await dialog.getByRole('button', { name: 'Confirm withdrawal', exact: true }).click();
   await expect.poll(() => Number(new URL(page.url()).searchParams.get('page') ?? 1)).toBe(1);
   await expect(page.locator('.admin-map-table tbody tr')).toHaveCount(24);
-  await page.locator('select[name=availability]').selectOption('all');
-  await page.locator('select[name=status]').selectOption('ranked');
+  await selectField(page.locator('[data-slot="select-trigger"][data-field-name=availability]'), 'all');
+  await selectField(page.locator('[data-slot="select-trigger"][data-field-name=status]'), 'ranked');
   expect(new URL(page.url()).searchParams.get('availability')).toBe('all');
   expect(new URL(page.url()).searchParams.get('source')).toBe('local');
   await page.goBack();
-  await expect(page.locator('select[name=status]')).toHaveValue('all');
-  await expect(page.locator('select[name=availability]')).toHaveValue('all');
+  await expect(page.locator('[data-slot="select-trigger"][data-field-name=status]')).toHaveAttribute('data-value', 'all');
+  await expect(page.locator('[data-slot="select-trigger"][data-field-name=availability]')).toHaveAttribute('data-value', 'all');
   expect(state.writes).toHaveLength(1);
 });
 

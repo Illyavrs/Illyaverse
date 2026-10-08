@@ -16,6 +16,7 @@ import Link from 'next/link';
 import { LoaderCircle, ShieldCheck, Plus, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { FieldSelect } from '@/components/ui/field-select';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -796,7 +797,7 @@ export function BeatmapAvailabilityAction({
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="map-availability-overlay" />
-        <Dialog.Content className="map-availability-dialog glass" aria-busy={busy}>
+        <Dialog.Content className="map-availability-dialog glass" data-material="floating" aria-busy={busy}>
           <Dialog.Title asChild>
             <h2>{t(target ? 'withdrawTitle' : 'restoreTitle')}</h2>
           </Dialog.Title>
@@ -949,20 +950,15 @@ function MapModerationRow({
               }}
             >
               <div className="actions">
-                <select
+                <FieldSelect
                   className="native-select"
                   aria-label={t('statusFor', { title: map.title })}
                   aria-describedby={error ? `map-status-${map.id}-error` : undefined}
                   value={status}
                   disabled={disabled}
-                  onChange={(event) => setChosen(event.target.value as MapStatus)}
-                >
-                  {mapStatuses.map((value) => (
-                    <option key={value} value={value}>
-                      {c(value)}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={(value) => setChosen(value as MapStatus)}
+                  options={mapStatuses.map((value) => ({ value, label: c(value) }))}
+                />
                 <Button
                   type="submit"
                   size="sm"
@@ -1172,71 +1168,63 @@ function MapModeration() {
         <div className="admin-map-filters admin-map-availability-filters">
           <div className="field">
             <label htmlFor="admin-map-mode">{c('mode')}</label>
-            <select
+            <FieldSelect
               id="admin-map-mode"
               name="mode"
               className="native-select"
               value={filters.mode}
               disabled={busy !== null}
-              onChange={(event) => select({ mode: event.target.value })}
-            >
-              <option value="all">{c('all')}</option>
-              {mapModes.map((label, mode) => (
-                <option key={mode} value={mode}>
-                  {label}
-                </option>
-              ))}
-            </select>
+              onValueChange={(value) => select({ mode: value })}
+              options={[
+                { value: 'all', label: c('all') },
+                ...mapModes.map((label, mode) => ({ value: String(mode), label })),
+              ]}
+            />
           </div>
           <div className="field">
             <label htmlFor="admin-map-source">{t('source')}</label>
-            <select
+            <FieldSelect
               id="admin-map-source"
               name="source"
               className="native-select"
               value={filters.source}
               disabled={busy !== null}
-              onChange={(event) => select({ source: event.target.value })}
-            >
-              <option value="all">{c('all')}</option>
-              <option value="local">{c('local')}</option>
-              <option value="official">{c('official')}</option>
-            </select>
+              onValueChange={(value) => select({ source: value })}
+              options={[
+                { value: 'all', label: c('all') },
+                { value: 'local', label: c('local') },
+                { value: 'official', label: c('official') },
+              ]}
+            />
           </div>
           <div className="field">
             <label htmlFor="admin-map-status">{c('status')}</label>
-            <select
+            <FieldSelect
               id="admin-map-status"
               name="status"
               className="native-select"
               value={filters.status}
               disabled={busy !== null}
-              onChange={(event) => select({ status: event.target.value })}
-            >
-              <option value="all">{c('all')}</option>
-              {mapStatuses.map((status) => (
-                <option key={status} value={status}>
-                  {c(status)}
-                </option>
-              ))}
-            </select>
+              onValueChange={(value) => select({ status: value })}
+              options={[
+                { value: 'all', label: c('all') },
+                ...mapStatuses.map((value) => ({ value, label: c(value) })),
+              ]}
+            />
           </div>
           <div className="field">
             <label htmlFor="admin-map-availability">{availability('label')}</label>
-            <select
+            <FieldSelect
               id="admin-map-availability"
               name="availability"
               className="native-select"
               value={filters.availability}
               disabled={busy !== null}
-              onChange={(event) => select({ availability: event.target.value })}
-            >
-              {['active', 'withdrawn', 'all'].map((value) => (
-                <option key={value} value={value}>
-                  {value === 'all' ? c('all') : availability(value)}
-                </option>
-              ))}
-            </select>
+              onValueChange={(value) => select({ availability: value })}
+              options={['active', 'withdrawn', 'all'].map((value) => ({
+                value, label: value === 'all' ? c('all') : availability(value),
+              }))}
+            />
           </div>
           {filtered && (
             <Button

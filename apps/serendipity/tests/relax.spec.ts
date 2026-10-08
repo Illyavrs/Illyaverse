@@ -1,3 +1,4 @@
+import { selectField } from './helpers/field-select';
 import { test, expect, type Page } from '@playwright/test';
 
 // Browser-only fixtures: no accounts, maps or scores are written to a community database.
@@ -120,7 +121,7 @@ async function capturePair(page: Page, name: string) {
     fullPage: true,
   });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByLabel('語言', { exact: true }).selectOption('ja');
+  await selectField(page.locator('.language-select'), 'ja');
   await expect(page.getByLabel('言語', { exact: true })).toBeVisible();
   await page.screenshot({ path: `../../data-relax-review/${name}-mobile-ja.png`, fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

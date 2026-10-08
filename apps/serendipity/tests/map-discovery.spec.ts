@@ -1,3 +1,4 @@
+import { selectField } from './helpers/field-select';
 import { test, expect, type Page, type Route } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -45,12 +46,13 @@ async function fixture(page: Page, locale = 'en', theme = 'dark') {
     locale,
     mode: theme,
     accent_color: '#f28eb6',
-    background_url: null,
+    background_url: null as string | null,
     background_blur: 0,
     background_dim: 0.76,
     panel_blur: 8,
     panel_opacity: 0.55,
     border_radius: 14,
+    glass_level: 100,
   };
   await page
     .context()
@@ -62,6 +64,7 @@ async function fixture(page: Page, locale = 'en', theme = 'dark') {
     appearance,
   );
   const state = {
+    appearance,
     maps: Array.from({ length: 30 }, (_, set) =>
       Array.from({ length: set === 0 ? 28 : 2 }, (_, index) => difficulty(index, set)),
     ).flat(),
@@ -254,7 +257,13 @@ async function noOverflow(page: Page) {
     .toBe(true);
 }
 
-async function capture(page: Page, name: string, locale: string, theme: string) {
+async function capture(
+  page: Page,
+  name: string,
+  locale: string,
+  theme: string,
+  viewportOnly = false,
+) {
   // Native focus scrolling follows html's smooth-scroll preference too. Keep
   // review captures deterministic before the mobile keyboard navigation check.
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -289,7 +298,9 @@ async function capture(page: Page, name: string, locale: string, theme: string) 
   const output = path.resolve(process.cwd(), '../../.impeccable/review');
   await mkdir(output, { recursive: true });
   const imagePath = path.join(output, `map-discovery-${name}.png`);
-  await page.screenshot({ path: imagePath, fullPage: true, animations: 'disabled' });
+  if (viewportOnly) await expect(page.getByRole('listbox')).toBeVisible();
+  await page.screenshot({ path: imagePath, fullPage: !viewportOnly, animations: 'disabled' });
+  if (viewportOnly) await expect(page.getByRole('listbox')).toBeVisible();
   const metadata = await page.evaluate(() => ({
     width: innerWidth,
     height: innerHeight,
@@ -344,7 +355,7 @@ test('set results show matched and stored counts, eight previews and server page
   await expect(page).toHaveURL(/page=2/);
   await expect(page.locator('.discovery-set')).toHaveCount(6);
   expect(state.setQueries.at(-1)?.get('page')).toBe('2');
-  await page.getByLabel('Game mode', { exact: true }).selectOption('3');
+  await selectField(page.getByLabel('Game mode', { exact: true }), '3');
   await expect(page).not.toHaveURL(/page=2/);
   await expect(
     page.locator('.discovery-set').first().getByText('7 matching · 28 stored difficulties'),
@@ -352,6 +363,119 @@ test('set results show matched and stored counts, eight previews and server page
   await expect(page.locator('.discovery-set').first().locator('.discovery-status')).toHaveText([
     'Unranked',
   ]);
+});
+
+test('isolated catalogue fields and opened Select follow coverage on a background in both themes', async ({
+  page,
+}) => {
+  const state = await fixture(page);
+  state.staff = true;
+  state.appearance.background_url = '/media/material-control-fixture.png';
+  state.appearance.background_dim = 0.3;
+  // Original geometric test pixels, unrelated to player artwork or the default canvas.
+  await page.route('**/media/material-control-fixture.png', (route) =>
+    route.fulfill({
+      contentType: 'image/png',
+      body: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAPklEQVR4nGM4s3MmVuQSXYgVkaqeYdSCUQuGgAXUMgiX+lELRi0YChbQPKONWjBqwRCwgOYZbdSCUQsGvwUAGpBcW8YKdfIAAAAASUVORK5CYII=',
+        'base64',
+      ),
+    }),
+  );
+  for (const [width, theme] of [
+    [1440, 'dark'],
+    [390, 'light'],
+  ] as const) {
+    await page.setViewportSize({ width, height: 1000 });
+    state.appearance.mode = theme;
+    await page.goto('/beatmaps');
+    await expect(page.locator('.global-scene')).toHaveCSS(
+      'background-image',
+      /material-control-fixture\.png/,
+    );
+    for (const level of [0, 50, 100]) {
+      await page
+        .locator('.header-tools button')
+        .filter({ has: page.locator('svg.lucide-palette') })
+        .click();
+      const coverage = page.locator('#quick-glass_level').getByRole('slider');
+      await coverage.focus();
+      await page.keyboard.press('Home');
+      for (let value = 0; value < level / 10; value++) await page.keyboard.press('PageUp');
+      await page.keyboard.press('Escape');
+      await expect(page.locator('html')).toHaveAttribute('data-glass-level', String(level));
+      const mode = page.locator('#discovery-mode');
+      const search = page.getByLabel('Search', { exact: true });
+      for (const control of [mode, search]) {
+        await expect(control).toHaveCSS('backdrop-filter', level === 0 ? 'blur(0px)' : 'blur(8px)');
+        const color = await control.evaluate(
+          (element) => getComputedStyle(element).backgroundColor,
+        );
+        expect(color).toBe(
+          level === 0
+            ? theme === 'dark'
+              ? 'rgb(16, 16, 19)'
+              : 'rgb(252, 252, 252)'
+            : theme === 'dark'
+              ? 'rgba(16, 16, 19, 0.55)'
+              : 'rgba(252, 252, 252, 0.55)',
+        );
+      }
+      await expect(page.locator('.discovery-controls')).toHaveCSS('backdrop-filter', 'none');
+      await expect(page.locator('.discovery-reading-ground')).toHaveCSS('backdrop-filter', 'none');
+      const contrastSamples = await page.locator('.discovery-reading-ground').evaluate((ground) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 1;
+        const context = canvas.getContext('2d')!;
+        const luminance = (channels: Uint8ClampedArray) => {
+          const linear = Array.from(channels.slice(0, 3), (channel) => {
+            const value = channel / 255;
+            return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+          });
+          return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+        };
+        const background = getComputedStyle(ground, '::before').backgroundColor;
+        return [
+          ...ground.querySelectorAll(
+            '.page-heading p, .discovery-search > label, .discovery-filter-row label',
+          ),
+        ].map((copy) => {
+          context.clearRect(0, 0, 1, 1);
+          context.fillStyle = getComputedStyle(copy).color;
+          context.fillRect(0, 0, 1, 1);
+          const text = luminance(context.getImageData(0, 0, 1, 1).data);
+          // Black and white bound every uploaded scene, including with no dim.
+          const contrast = ['#000000', '#ffffff'].map((scene) => {
+            context.fillStyle = scene;
+            context.fillRect(0, 0, 1, 1);
+            context.fillStyle = background;
+            context.fillRect(0, 0, 1, 1);
+            const surface = luminance(context.getImageData(0, 0, 1, 1).data);
+            return (Math.max(text, surface) + 0.05) / (Math.min(text, surface) + 0.05);
+          });
+          return { label: copy.textContent, minimum: Math.min(...contrast) };
+        });
+      });
+      expect(contrastSamples).toHaveLength(6);
+      for (const sample of contrastSamples)
+        expect(sample.minimum, `${theme} glass ${level}: ${sample.label}`).toBeGreaterThanOrEqual(
+          4.5,
+        );
+      expect(
+        await page.locator('html').evaluate((root) => ({
+          sceneBlur: root.style.getPropertyValue('--scene-blur'),
+          sceneDim: root.style.getPropertyValue('--scene-dim'),
+          panelBlur: root.style.getPropertyValue('--panel-blur'),
+          panelOpacity: root.style.getPropertyValue('--panel-opacity'),
+        })),
+      ).toEqual({ sceneBlur: '0px', sceneDim: '0.3', panelBlur: '8px', panelOpacity: '0.55' });
+      await mode.click();
+      await expect(page.getByRole('listbox')).toHaveCSS('backdrop-filter', 'blur(8px)');
+      await capture(page, `${width}-${theme}-glass-${level}-filter-popup`, 'en', theme, true);
+      await page.keyboard.press('Escape');
+      await expect(mode).toBeFocused();
+    }
+  }
 });
 
 test('filter URLs restore through history; uploader clearing and layout keep other parameters', async ({
@@ -362,7 +486,7 @@ test('filter URLs restore through history; uploader clearing and layout keep oth
     '/beatmaps?q=fixture&mode=1&status=loved&source=official&sort=title&uploaded_by=990501&page=2&view=list&context=profile',
   );
   await expect(page.getByLabel('Search', { exact: true })).toHaveValue('fixture');
-  await expect(page.getByLabel('Game mode', { exact: true })).toHaveValue('1');
+  await expect(page.getByLabel('Game mode', { exact: true })).toHaveAttribute('data-value', '1');
   await expect(page.locator('.discovery-results')).toHaveClass(/view-list/);
   await expect(page.getByRole('button', { name: 'First page', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Clear uploader', exact: true }).click();
@@ -383,11 +507,11 @@ test('filter URLs restore through history; uploader clearing and layout keep oth
   await page.getByRole('button', { name: 'Grid', exact: true }).click();
   await expect(page.locator('.discovery-results')).toHaveClass(/view-grid/);
   expect(state.setQueries).toHaveLength(requests);
-  await page.getByLabel('Status', { exact: true }).selectOption('ranked');
-  await expect(page.getByLabel('Status', { exact: true })).toHaveValue('ranked');
+  await selectField(page.getByLabel('Status', { exact: true }), 'ranked');
+  await expect(page.getByLabel('Status', { exact: true })).toHaveAttribute('data-value', 'ranked');
   await expect(page.locator('.discovery-set')).toHaveCount(0);
   await page.goBack();
-  await expect(page.getByLabel('Status', { exact: true })).toHaveValue('loved');
+  await expect(page.getByLabel('Status', { exact: true })).toHaveAttribute('data-value', 'loved');
   await expect(page.locator('.discovery-set')).toHaveCount(15);
   await page.goBack();
   await expect(page.locator('.discovery-results')).toHaveClass(/view-list/);
@@ -521,11 +645,11 @@ test('returning to an earlier URL while requests are pending waits for fresh dat
   await page.goto('/beatmaps');
   await expect(page.locator('.discovery-set')).toHaveCount(24);
   state.holdSets = true;
-  await page.getByLabel('Game mode', { exact: true }).selectOption('1');
+  await selectField(page.getByLabel('Game mode', { exact: true }), '1');
   await expect.poll(() => state.setQueries.at(-1)?.get('mode')).toBe('1');
   await expect(page.locator('.discovery-set')).toHaveCount(0);
   await page.goBack();
-  await expect(page.getByLabel('Game mode', { exact: true })).toHaveValue('all');
+  await expect(page.getByLabel('Game mode', { exact: true })).toHaveAttribute('data-value', 'all');
   await expect.poll(() => state.setQueries.at(-1)?.get('mode')).toBe(null);
   await expect(page.locator('.discovery-set')).toHaveCount(0);
   await expect(page.locator('.discovery-skeleton')).toBeVisible();
@@ -563,7 +687,10 @@ test('difficulty navigation retains catalogue filters and RX; native mania force
   await expect(page.getByRole('button', { name: 'Relax (RX)', exact: true })).toBeDisabled();
   await page.locator('.back-link').click();
   await expect(page).toHaveURL(`${catalogue.origin}${returnTo}`);
-  await expect(page.getByLabel('Source', { exact: true })).toHaveValue('official');
+  await expect(page.getByLabel('Source', { exact: true })).toHaveAttribute(
+    'data-value',
+    'official',
+  );
   await expect(page.locator('.discovery-results')).toHaveClass(/view-list/);
   await expect(page.locator('.discovery-set')).toHaveCount(15);
 });

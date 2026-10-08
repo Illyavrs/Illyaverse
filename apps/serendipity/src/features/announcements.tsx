@@ -10,6 +10,7 @@ import { Avatar, Empty, Loading, PageHeading, Pagination } from '@/components/co
 import { useSession } from '@/components/providers';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { FieldSelect } from '@/components/ui/field-select';
 import { Textarea } from '@/components/ui/textarea';
 import { api, ApiError, fetcher, hasPermission } from '@/lib/api';
 import type { Announcement, AnnouncementStatus, Page } from '@/lib/types';
@@ -683,20 +684,17 @@ function AnnouncementWorkbench({ registerNavigationGuard }: AdminAnnouncementPro
           <div className="announcement-list-controls">
             <div className="field">
               <label htmlFor="announcement-status-filter">{t('statusFilter')}</label>
-              <select
+              <FieldSelect
                 id="announcement-status-filter"
                 className="native-select"
                 value={status}
                 disabled={busy}
-                onChange={(event) => select({ status: event.target.value })}
-              >
-                <option value="all">{c('all')}</option>
-                {statuses.map((value) => (
-                  <option key={value} value={value}>
-                    {t(value)}
-                  </option>
-                ))}
-              </select>
+                onValueChange={(value) => select({ status: value })}
+                options={[
+                  { value: 'all', label: c('all') },
+                  ...statuses.map((value) => ({ value, label: t(value) })),
+                ]}
+              />
             </div>
             {data && !loadError && (
               <p className="hint" role="status">

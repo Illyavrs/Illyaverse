@@ -1,3 +1,4 @@
+import { selectField } from './helpers/field-select';
 import { test, expect, type Page } from '@playwright/test';
 
 // Synthetic intercepted settings; never edits a real player's account or media.
@@ -5,7 +6,7 @@ async function fixture(page: Page, locale = 'zh-TW', mode = 'dark', guest = fals
   const preferences = {
     locale, mode, accent_color: '#f28eb6', background_url: null as string | null,
     background_blur: 0, background_dim: 0.76, panel_blur: 8, panel_opacity: 0.55,
-    border_radius: 14,
+    border_radius: 14, glass_level: 100,
   };
   const user = {
     id: 98631, username: 'Appearance state fixture', email: 'appearance@example.test',
@@ -15,7 +16,7 @@ async function fixture(page: Page, locale = 'zh-TW', mode = 'dark', guest = fals
   };
   const state = {
     preferences, writes: [] as Record<string, unknown>[], uploads: 0,
-    failSave: false, failUpload: false,
+    failSave: false, failUpload: false, legacyPreferences: false,
     gate: null as Promise<void> | null,
   };
   await page.context().addCookies([{ name: 'illya_locale', value: locale, url: test.info().project.use.baseURL! }]);
@@ -25,8 +26,11 @@ async function fixture(page: Page, locale = 'zh-TW', mode = 'dark', guest = fals
     if (pathname === '/api/v1/me') return guest
       ? route.fulfill({ status: 401, json: { error: { code: 'unauthorized' } } })
       : route.fulfill({ json: user });
-    if (pathname === '/api/v1/me/preferences' && request.method() === 'GET')
-      return route.fulfill({ json: preferences });
+    if (pathname === '/api/v1/me/preferences' && request.method() === 'GET') {
+      const legacy = { ...preferences } as Record<string, unknown>;
+      delete legacy.glass_level;
+      return route.fulfill({ json: state.legacyPreferences ? legacy : preferences });
+    }
     if (pathname === '/api/v1/me/preferences' && request.method() === 'PATCH') {
       const body = request.postDataJSON() as Record<string, unknown>;
       state.writes.push(body);
@@ -94,7 +98,7 @@ test('delayed appearance publication locks shared controls and keeps language wr
   await capture(page, 'desktop-dark-zhTW-pending-sheet', false);
   await page.keyboard.press('Escape');
   // Language selection has its own PATCH; the pending appearance snapshot omits locale.
-  await page.locator('.language-select').selectOption('en');
+  await selectField(page.locator('.language-select'), 'en');
   await expect.poll(() => state.writes.some((write) => write.locale === 'en')).toBe(true);
   expect(state.writes[0]).not.toHaveProperty('locale');
   release();
@@ -103,7 +107,7 @@ test('delayed appearance publication locks shared controls and keeps language wr
   expect(state.preferences.locale).toBe('en');
   expect(state.preferences.accent_color).toBe('#767676');
   await page.reload();
-  await expect(page.locator('.language-select')).toHaveValue('en');
+  await expect(page.locator('.language-select')).toHaveAttribute('data-value', 'en');
   await expect(page.locator('#accent')).toHaveValue('#767676');
 });
 
@@ -113,7 +117,7 @@ test('appearance reset preserves English, failure keeps draft and retry saves on
   await page.goto('/settings');
   const controls = page.locator('.appearance-controls:not(.compact)');
   await controls.getByRole('button', { name: 'Reset appearance', exact: true }).click();
-  await expect(page.locator('.language-select')).toHaveValue('en');
+  await expect(page.locator('.language-select')).toHaveAttribute('data-value', 'en');
   await page.locator('#accent').fill('#777777');
   await controls.getByRole('button', { name: 'Light', exact: true }).click();
   await expect(controls.locator('.form-success')).toHaveCount(0);
@@ -121,7 +125,7 @@ test('appearance reset preserves English, failure keeps draft and retry saves on
   await controls.getByRole('button', { name: 'Save changes', exact: true }).click();
   await expect(controls.getByRole('alert')).toBeVisible();
   await expect(page.locator('#accent')).toHaveValue('#777777');
-  await expect(page.locator('.language-select')).toHaveValue('en');
+  await expect(page.locator('.language-select')).toHaveAttribute('data-value', 'en');
   await capture(page, 'mobile-light-en-save-error');
   state.failSave = false;
   await controls.getByRole('button', { name: 'Save changes', exact: true }).click();
@@ -130,7 +134,7 @@ test('appearance reset preserves English, failure keeps draft and retry saves on
   for (const write of state.writes) expect(write).not.toHaveProperty('locale');
   expect(state.preferences.locale).toBe('en');
   await page.reload();
-  await expect(page.locator('.language-select')).toHaveValue('en');
+  await expect(page.locator('.language-select')).toHaveAttribute('data-value', 'en');
   await expect(page.locator('#accent')).toHaveValue('#777777');
 });
 
@@ -142,11 +146,11 @@ test('guest reset with no appearance cache preserves Japanese cookie and reload'
   await expect(page.locator('#accent')).toBeVisible();
   await page.locator('#accent').fill('#000000');
   await controls.getByRole('button', { name: '外観をリセット', exact: true }).click();
-  await expect(page.locator('.language-select')).toHaveValue('ja');
+  await expect(page.locator('.language-select')).toHaveAttribute('data-value', 'ja');
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('illya_appearance')!).locale)).toBe('ja');
   await capture(page, 'mobile-dark-ja-guest-reset');
   await page.reload();
-  await expect(page.locator('.language-select')).toHaveValue('ja');
+  await expect(page.locator('.language-select')).toHaveAttribute('data-value', 'ja');
   await expect(page.locator('#accent')).toHaveValue('#f28eb6');
   expect(state.writes).toHaveLength(0);
 });
@@ -213,4 +217,142 @@ test('failed background upload retains appearance draft and retries the same fil
   await expect(controls.locator('.background-preview')).toHaveCSS('background-image', /appearance-state-fixture\.png/);
   await controls.locator('input[type=file]').setInputFiles(file);
   await expect.poll(() => state.uploads).toBe(3);
+});
+
+test('glass coverage previews solid and glass roles without changing blur or opacity', async ({ page }) => {
+  await fixture(page, 'en');
+  await page.goto('/settings');
+  const slider = page.locator('#glass_level').getByRole('slider');
+  await expect(slider).toHaveAttribute('aria-valuenow', '100');
+  await page.evaluate(() => {
+    for (const material of ['identity', 'section', 'content']) {
+      const surface = document.createElement('div');
+      surface.className = 'glass';
+      surface.dataset.material = material;
+      surface.dataset.testid = `material-${material}`;
+      document.body.append(surface);
+    }
+  });
+  const roles = ['identity', 'section', 'content'] as const;
+  for (const mode of ['Dark', 'Light']) {
+    await page.locator('.appearance-controls:not(.compact)').getByRole('button', { name: mode, exact: true }).click();
+    for (const [level, tier, activeRoles] of [
+      [0, 'navigation', 0], [25, 'identity', 1], [50, 'section', 2], [75, 'content', 3], [100, 'content', 3],
+    ] as const) {
+      await slider.focus();
+      await page.keyboard.press('Home');
+      for (let value = 0; value < Math.floor(level / 10); value++) await page.keyboard.press('PageUp');
+      for (let value = 0; value < level % 10; value++) await page.keyboard.press('ArrowRight');
+      await expect(page.locator('html')).toHaveAttribute('data-glass-tier', tier);
+      await expect(slider).toHaveAttribute('aria-valuenow', String(level));
+      for (const [index, material] of roles.entries()) {
+        const surface = page.getByTestId(`material-${material}`);
+        await expect(surface).toHaveCSS('backdrop-filter', index < activeRoles ? 'blur(8px)' : 'blur(0px)');
+        const color = await surface.evaluate((element) => getComputedStyle(element).backgroundColor);
+        if (index < activeRoles) expect(color).toMatch(/0\.55\)$/);
+        else expect(color).toBe(mode === 'Dark' ? 'rgb(24, 24, 27)' : 'rgb(255, 255, 255)');
+      }
+      await expect(page.locator('.site-header')).toHaveCSS('backdrop-filter', 'blur(8px)');
+      const values = await page.evaluate(() => {
+        const style = getComputedStyle(document.documentElement);
+        return [style.getPropertyValue('--panel-blur').trim(), style.getPropertyValue('--panel-opacity').trim()];
+      });
+      expect(values).toEqual(['8px', '0.55']);
+    }
+  }
+  await slider.focus();
+  await page.keyboard.press('Home');
+  await page.locator('.header-tools button').filter({ has: page.locator('svg.lucide-palette') }).click();
+  const sheet = page.locator('.appearance-sheet');
+  await expect(sheet).toHaveCSS('backdrop-filter', 'blur(8px)');
+  await expect(page.locator('#quick-glass_level').getByRole('slider')).toHaveAttribute('aria-valuenow', '0');
+});
+
+test('glass coverage survives guest reload and upgrades an older local preference', async ({ page }) => {
+  await fixture(page, 'en', 'dark', true);
+  await page.addInitScript(() => {
+    if (!localStorage.getItem('illya_appearance')) localStorage.setItem('illya_appearance', JSON.stringify({
+      mode: 'light', accent_color: '#7dd8c5', panel_blur: 17, panel_opacity: 0.42, border_radius: 20,
+    }));
+  });
+  await page.goto('/settings');
+  const slider = page.locator('#glass_level').getByRole('slider');
+  await expect(slider).toHaveAttribute('aria-valuenow', '100');
+  await expect(page.locator('#panel_blur').getByRole('slider')).toHaveAttribute('aria-valuenow', '17');
+  await expect(page.locator('#panel_opacity').getByRole('slider')).toHaveAttribute('aria-valuenow', '42');
+  await slider.focus();
+  await page.keyboard.press('Home');
+  await page.reload();
+  await expect(page.locator('#glass_level').getByRole('slider')).toHaveAttribute('aria-valuenow', '0');
+  await expect(page.locator('html')).toHaveAttribute('data-glass-tier', 'navigation');
+  await expect(page.locator('#panel_blur').getByRole('slider')).toHaveAttribute('aria-valuenow', '17');
+  await expect(page.locator('#panel_opacity').getByRole('slider')).toHaveAttribute('aria-valuenow', '42');
+});
+
+test('old account preferences gain coverage default and save failure preserves its retry draft', async ({ page }) => {
+  const state = await fixture(page, 'en');
+  state.legacyPreferences = true;
+  await page.goto('/settings');
+  const controls = page.locator('.appearance-controls:not(.compact)');
+  const slider = page.locator('#glass_level').getByRole('slider');
+  await expect(slider).toHaveAttribute('aria-valuenow', '100');
+  await slider.focus();
+  await page.keyboard.press('Home');
+  state.failSave = true;
+  await controls.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(controls.getByRole('alert')).toBeVisible();
+  await expect(slider).toHaveAttribute('aria-valuenow', '0');
+  expect(state.writes[0]).toMatchObject({ glass_level: 0, panel_blur: 8, panel_opacity: 0.55 });
+  state.failSave = false;
+  state.legacyPreferences = false;
+  await controls.getByRole('button', { name: 'Try again', exact: true }).click();
+  await expect(controls.locator('.form-success')).toBeVisible();
+  await page.reload();
+  await expect(page.locator('#glass_level').getByRole('slider')).toHaveAttribute('aria-valuenow', '0');
+  expect(state.writes).toHaveLength(2);
+});
+
+test('language Select supports keyboard selection, Escape focus and bounded menus in both themes', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 844 });
+  const state = await fixture(page, 'en');
+  await page.goto('/settings');
+  const language = page.locator('.language-select');
+  const controls = page.locator('.appearance-controls:not(.compact)');
+  for (const theme of ['Dark', 'Light']) {
+    await controls.getByRole('button', { name: theme, exact: true }).click();
+    await language.focus();
+    await language.press('Enter');
+    const listbox = page.getByRole('listbox');
+    await expect(listbox).toBeVisible();
+    await expect(listbox.getByRole('option')).toHaveCount(3);
+    await expect(listbox.getByRole('option', { name: 'EN', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(listbox).toHaveCSS('backdrop-filter', 'blur(8px)');
+    const bounds = await listbox.boundingBox();
+    expect(bounds?.x).toBeGreaterThanOrEqual(0);
+    expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(320);
+    await capture(page, `mobile-${theme.toLowerCase()}-en-language-popup`, false);
+    await page.keyboard.press('Escape');
+    await expect(listbox).toHaveCount(0);
+    await expect(language).toBeFocused();
+    await expect(language).toHaveAttribute('data-value', 'en');
+  }
+  await language.press('Enter');
+  await expect(page.getByRole('listbox')).toBeVisible();
+  await expect(page.getByRole('option', { name: 'EN', exact: true })).toBeFocused();
+  await page.keyboard.press('End');
+  await expect(page.getByRole('option', { name: '日本語', exact: true })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(language).toHaveAttribute('data-value', 'ja');
+  await expect.poll(() => state.writes.some((write) => write.locale === 'ja')).toBe(true);
+  await language.focus();
+  await language.press('Enter');
+  await expect(page.getByRole('listbox')).toBeVisible();
+  await expect(page.getByRole('option', { name: '日本語', exact: true })).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(page.getByRole('option', { name: '繁中', exact: true })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('option', { name: 'EN', exact: true })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(language).toHaveAttribute('data-value', 'en');
+  await expect(language).toBeFocused();
 });
