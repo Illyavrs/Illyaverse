@@ -22,7 +22,7 @@ They do not invent comparable PP or common-score conversion for unavailable
 contexts such as RX.
 
 `ResultsReady` remains a room lifecycle signal, independent of score processing
-and global moderator verification. The requirements below are the contract and
+and global publication. The requirements below are the contract and
 verification checklist for the implementation; synthetic checks do not certify
 a native client session.
 
@@ -104,13 +104,15 @@ records the link, without creating another score. Revoked, expired or mismatched
 attempts cannot expose another result; a consumed token still permits an exact
 authenticated retry.
 
-Define room processing separately from global moderator verification. The
-implemented room policy lets frozen round participants view each other's processed
-results through the exact authorized room/item binding, even while global
-verification remains pending. Mark them unranked and retain their verification
-state. Keep unrelated viewers excluded, and retain owner/moderator access under
-the existing policy. Leaving, kicking and restart must not erase the binding or
-silently make room history public. Rejected/restricted scores must obey the
+Define room processing separately from global publication. The implemented room
+policy lets frozen round participants view each other's processed results through
+the exact authorized room/item binding while a complete bound replay capture may
+still be pending. Validated passed native lazer scores publish automatically when
+that capture completes; incomplete/interrupted captures and any explicit
+`scores.verify` administrator decision retain their state. Pending room results
+remain unranked. Keep unrelated viewers excluded, and retain owner/moderator access
+under the existing policy. Leaving, kicking and restart must not erase the binding
+or silently make room history public. Rejected/restricted scores must obey the
 documented result visibility rules rather than enter verified global rankings.
 
 Each visible score requires the exact shared frozen round, score ownership, or
@@ -140,7 +142,7 @@ expects 13 total-score bins: ten 100,000-wide bins from 0 through 999,999,
 two more bins for 1,000,000–1,199,999, and a final open bin for 1,200,000 or
 more. Distribution and cumulative totals cover all passing processed attempts,
 not only user highs. Failed, rejected, structurally invalid or duplicate scores
-do not enter that distribution. Global pending moderation and PP exclusions
+do not enter that distribution. Global capture/publication staging and PP exclusions
 must not be confused with room processing or passing status. Include the last
 processed score ID. A new-best rank is room/item scoped and nullable for a
 non-best result.

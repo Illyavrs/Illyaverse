@@ -70,6 +70,25 @@ fn submission() -> Value {
     json!({"ruleset_id":0,"passed":true,"total_score":1234,"total_score_without_mods":1234,"accuracy":1.0,"max_combo":2,"rank":"X","mods":[{"acronym":"DT","settings":{"speed_change":1.2}}],"statistics":{"great":2},"maximum_statistics":{"great":2},"pauses":[]})
 }
 
+async fn moderate(pool: &sqlx::PgPool, actor: i64, score: i64, status: &str) {
+    let mut tx = pool.begin().await.unwrap();
+    sqlx::query("SELECT id FROM users WHERE id=$1 FOR UPDATE")
+        .bind(actor)
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE scores SET verification=$2 WHERE id=$1")
+        .bind(score)
+        .bind(status)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO audit_events(actor_id,action,target_type,target_id,details) VALUES($1,'scores.verify','score',$2,$3)")
+        .bind(actor).bind(score.to_string()).bind(json!({"verification":status}))
+        .execute(&mut *tx).await.unwrap();
+    tx.commit().await.unwrap();
+}
+
 #[tokio::test]
 #[ignore = "requires ILLYA_TEST_DATABASE_URL, every run creates/drops its own schema"]
 async fn native_replay_http_websocket_persistence() {
@@ -130,26 +149,70 @@ async fn native_replay_http_websocket_persistence() {
             if !score_before_end {ok(&call(&mut ws,"EndPlaySessionV2",vec![json!(token),json!(3)]).await);}
             let response=client.put(format!("{base}/api/v2/beatmaps/{native_map}/solo/scores/{token}")).bearer_auth(&secrets[0]).json(&submission()).send().await.unwrap();assert!(response.status().is_success());let score:Value=response.json().await.unwrap();let id=score["id"].as_i64().unwrap();
             if score_before_end {assert_eq!(score["has_replay"],false);ok(&call(&mut ws,"EndPlaySessionV2",vec![json!(token),json!(3)]).await);}
-            let retry:Value=client.put(format!("{base}/api/v2/beatmaps/{native_map}/solo/scores/{token}")).bearer_auth(&secrets[0]).json(&submission()).send().await.unwrap().json().await.unwrap();assert_eq!(retry["id"],id);assert_eq!(retry["has_replay"],true);
+            let retry:Value=client.put(format!("{base}/api/v2/beatmaps/{native_map}/solo/scores/{token}")).bearer_auth(&secrets[0]).json(&submission()).send().await.unwrap().json().await.unwrap();assert_eq!(retry["id"],id);assert_eq!(retry["has_replay"],true);assert_eq!(retry["verification"],"verified");
             let response=client.get(format!("{base}/api/v2/scores/{id}/download")).bearer_auth(&secrets[0]).send().await.unwrap();assert_eq!(response.status(),StatusCode::OK);let bytes=response.bytes().await.unwrap();let replay=lazer_replay::ExtendedReplay::parse(&bytes).unwrap();assert_eq!(replay.metadata.online_id,id);assert_eq!(replay.metadata.user_id,users[0]);assert_eq!(replay.frame_count,1);
-            assert_eq!(client.get(format!("{base}/api/v2/scores/{id}/download")).bearer_auth(&secrets[1]).send().await.unwrap().status(),StatusCode::NOT_FOUND);
+            assert_eq!(client.get(format!("{base}/api/v2/scores/{id}/download")).bearer_auth(&secrets[1]).send().await.unwrap().status(),StatusCode::OK);
             let capture=sqlx::query("SELECT completed_at,(SELECT count(*) FROM lazer_replay_chunks WHERE token_id=$1) chunks,frame_count FROM lazer_replay_captures WHERE token_id=$1").bind(token).fetch_one(&pool).await.unwrap();assert!(capture.get::<Option<chrono::DateTime<chrono::Utc>>,_>("completed_at").is_some());assert_eq!(capture.get::<i64,_>("chunks"),0);assert_eq!(capture.get::<i32,_>("frame_count"),1);assert_eq!(retry["replay_complete"],true);
-            sqlx::query("UPDATE scores SET verification='verified' WHERE id=$1").bind(id).execute(&pool).await.unwrap();assert_eq!(client.get(format!("{base}/api/v2/scores/{id}/download")).bearer_auth(&secrets[1]).send().await.unwrap().status(),StatusCode::OK);
+            let (first, second) = tokio::join!(finalize(&state, users[0], token), finalize(&state, users[0], token));
+            assert_eq!(first.unwrap(), Some(id));assert_eq!(second.unwrap(), Some(id));
+            assert_eq!(sqlx::query_scalar::<_, i64>("SELECT count(*) FROM audit_events WHERE action='scores.native_publish' AND target_id=$1").bind(id.to_string()).fetch_one(&pool).await.unwrap(), 1);
+            // A completed replay still checks immutable score/capture identity.
+            sqlx::query("UPDATE scores SET score=score+1 WHERE id=$1").bind(id).execute(&pool).await.unwrap();
+            assert_eq!(finalize(&state, users[0], token).await.unwrap_err().1, "score_ingestion_link_mismatch");
+            sqlx::query("UPDATE scores SET score=score-1 WHERE id=$1").bind(id).execute(&pool).await.unwrap();
+            moderate(&pool, users[0], id, "pending").await;
+            assert_eq!(finalize(&state, users[0], token).await.unwrap(), Some(id));
+            assert_eq!(sqlx::query_scalar::<_, String>("SELECT verification FROM scores WHERE id=$1").bind(id).fetch_one(&pool).await.unwrap(), "pending");
+            assert_eq!(client.get(format!("{base}/api/v2/scores/{id}/download")).bearer_auth(&secrets[1]).send().await.unwrap().status(), StatusCode::NOT_FOUND);
+            moderate(&pool, users[0], id, "rejected").await;
+            assert_eq!(finalize(&state, users[0], token).await.unwrap(), None);
+            assert_eq!(sqlx::query_scalar::<_, String>("SELECT verification FROM scores WHERE id=$1").bind(id).fetch_one(&pool).await.unwrap(), "rejected");
+            assert_eq!(sqlx::query_scalar::<_, i64>("SELECT count(*) FROM audit_events WHERE action='scores.native_publish' AND target_id=$1").bind(id.to_string()).fetch_one(&pool).await.unwrap(), 1);
+            moderate(&pool, users[0], id, "verified").await;
             sqlx::query("UPDATE users SET is_restricted=true WHERE id=$1").bind(users[0]).execute(&pool).await.unwrap();assert_eq!(client.get(format!("{base}/api/v2/scores/{id}/download")).bearer_auth(&secrets[1]).send().await.unwrap().status(),StatusCode::NOT_FOUND);sqlx::query("UPDATE users SET is_restricted=false WHERE id=$1").bind(users[0]).execute(&pool).await.unwrap();
         }
         // Current native V1 methods, with score submission racing EndPlaySession.
         let native_token:i64=sqlx::query_scalar("INSERT INTO lazer_score_tokens(user_id,beatmap_id,ruleset_id,version_hash,expires_at) VALUES($1,$2,0,'fixture',now()+interval '1 hour') RETURNING id").bind(users[0]).bind(map).fetch_one(&pool).await.unwrap();ok(&call(&mut ws,"BeginPlaySession",vec![json!(native_token),initial(native_map)]).await);ok(&call(&mut ws,"SendFrameData",vec![bundle(100.0)]).await);let mut finalstate=initial(native_map);finalstate["state"]=json!(3);let mut wrongstate=finalstate.clone();wrongstate["beatmapID"]=json!(native_map+1);assert_eq!(call(&mut ws,"EndPlaySession",vec![wrongstate]).await["error"],"play_session_state_mismatch");
-        let request=client.put(format!("{base}/api/v2/beatmaps/{native_map}/solo/scores/{native_token}")).bearer_auth(&secrets[0]).json(&submission());let (ended,submitted)=tokio::join!(call(&mut ws,"EndPlaySession",vec![finalstate]),request.send());ok(&ended);assert!(submitted.unwrap().status().is_success());let ready:Value=client.put(format!("{base}/api/v2/beatmaps/{native_map}/solo/scores/{native_token}")).bearer_auth(&secrets[0]).json(&submission()).send().await.unwrap().json().await.unwrap();assert_eq!(ready["has_replay"],true);assert_eq!(ready["replay_complete"],true);
+        let request=client.put(format!("{base}/api/v2/beatmaps/{native_map}/solo/scores/{native_token}")).bearer_auth(&secrets[0]).json(&submission());let (ended,submitted)=tokio::join!(call(&mut ws,"EndPlaySession",vec![finalstate]),request.send());ok(&ended);assert!(submitted.unwrap().status().is_success());let ready:Value=client.put(format!("{base}/api/v2/beatmaps/{native_map}/solo/scores/{native_token}")).bearer_auth(&secrets[0]).json(&submission()).send().await.unwrap().json().await.unwrap();assert_eq!(ready["has_replay"],true);assert_eq!(ready["replay_complete"],true);assert_eq!(ready["verification"],"verified");
         // Reconnect preserves bytes and invalidates the old connection's writer.
         let token:i64=sqlx::query_scalar("INSERT INTO lazer_score_tokens(user_id,beatmap_id,ruleset_id,version_hash,expires_at) VALUES($1,$2,0,'fixture',now()+interval '1 hour') RETURNING id").bind(users[0]).bind(map).fetch_one(&pool).await.unwrap();begin(&state,users[0],token,"connection-a",&initial(native_map)).await.unwrap();frames(&state,users[0],token,"connection-a",&bundle(100.0)).await.unwrap();begin(&state,users[0],token,"connection-b",&initial(native_map)).await.unwrap();assert_eq!(frames(&state,users[0],token,"connection-a",&bundle(200.0)).await.unwrap_err().1,"replay_connection_replaced");frames(&state,users[0],token,"connection-b",&bundle(200.0)).await.unwrap();assert_eq!(frames(&state,users[0],token,"connection-b",&bundle(150.0)).await.unwrap_err().1,"replay_frame_out_of_order");assert!(sqlx::query_scalar::<_,bool>("SELECT interrupted FROM lazer_replay_captures WHERE token_id=$1").bind(token).fetch_one(&pool).await.unwrap());
         end(&state,users[0],token,"connection-b",3).await.unwrap();
-        let score:Value=client.put(format!("{base}/api/v2/beatmaps/{native_map}/solo/scores/{token}")).bearer_auth(&secrets[0]).json(&submission()).send().await.unwrap().json().await.unwrap();let id=score["id"].as_i64().unwrap();assert_eq!(score["has_replay"],true);assert_eq!(score["replay_complete"],false);let bytes=client.get(format!("{base}/api/v2/scores/{id}/download")).bearer_auth(&secrets[0]).send().await.unwrap().bytes().await.unwrap();let replay=lazer_replay::ExtendedReplay::parse(&bytes).unwrap();assert_eq!(replay.frame_count,2);assert_eq!(replay.metadata.mods[0].settings["speed_change"],1.2);
+        let score:Value=client.put(format!("{base}/api/v2/beatmaps/{native_map}/solo/scores/{token}")).bearer_auth(&secrets[0]).json(&submission()).send().await.unwrap().json().await.unwrap();let id=score["id"].as_i64().unwrap();assert_eq!(score["has_replay"],true);assert_eq!(score["replay_complete"],false);assert_eq!(score["verification"],"pending");assert_eq!(client.get(format!("{base}/api/v2/scores/{id}/download")).bearer_auth(&secrets[1]).send().await.unwrap().status(),StatusCode::NOT_FOUND);let bytes=client.get(format!("{base}/api/v2/scores/{id}/download")).bearer_auth(&secrets[0]).send().await.unwrap().bytes().await.unwrap();let replay=lazer_replay::ExtendedReplay::parse(&bytes).unwrap();assert_eq!(replay.frame_count,2);assert_eq!(replay.metadata.mods[0].settings["speed_change"],1.2);
         let (first,second)=tokio::join!(finalize(&state,users[0],token),finalize(&state,users[0],token));assert_eq!(first.unwrap(),Some(id));assert_eq!(second.unwrap(),Some(id));assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM audit_events WHERE action='scores.lazer_replay_capture' AND target_id=$1").bind(id.to_string()).fetch_one(&pool).await.unwrap(),1);assert_eq!(begin(&state,users[0],token,"connection-c",&initial(native_map)).await.unwrap_err().1,"replay_token_already_used");
         let expired:i64=sqlx::query_scalar("INSERT INTO lazer_score_tokens(user_id,beatmap_id,ruleset_id,version_hash,expires_at) VALUES($1,$2,0,'fixture',now()-interval '1 second') RETURNING id").bind(users[0]).bind(map).fetch_one(&pool).await.unwrap();assert_eq!(begin(&state,users[0],expired,"connection-c",&initial(native_map)).await.unwrap_err().1,"invalid_score_token");
         let quit:i64=sqlx::query_scalar("INSERT INTO lazer_score_tokens(user_id,beatmap_id,ruleset_id,version_hash,expires_at) VALUES($1,$2,0,'fixture',now()+interval '1 hour') RETURNING id").bind(users[0]).bind(map).fetch_one(&pool).await.unwrap();begin(&state,users[0],quit,"connection-q",&initial(native_map)).await.unwrap();frames(&state,users[0],quit,"connection-q",&bundle(100.0)).await.unwrap();end(&state,users[0],quit,"connection-q",5).await.unwrap();assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM lazer_replay_chunks WHERE token_id=$1").bind(quit).fetch_one(&pool).await.unwrap(),0);
         // Simulate a process stopping after committing token.score_id but before
         // calling finalize; persisted state alone must publish after recovery.
-        let recovery:i64=sqlx::query_scalar("INSERT INTO lazer_score_tokens(user_id,beatmap_id,ruleset_id,version_hash,expires_at) VALUES($1,$2,0,'fixture',now()+interval '1 hour') RETURNING id").bind(users[0]).bind(map).fetch_one(&pool).await.unwrap();begin(&state,users[0],recovery,"connection-recovery",&initial(native_map)).await.unwrap();frames(&state,users[0],recovery,"connection-recovery",&bundle(100.0)).await.unwrap();end(&state,users[0],recovery,"connection-recovery",3).await.unwrap();let recovery_score:i64=sqlx::query_scalar("INSERT INTO scores(user_id,beatmap_id,mode,score,accuracy,max_combo,mods,pp,passed,hit_counts,client,api_mods) VALUES($1,$2,0,1234,100,2,64,0,true,'{\"n300\":2}','lazer',$3) RETURNING id").bind(users[0]).bind(map).bind(submission()["mods"].clone()).fetch_one(&pool).await.unwrap();sqlx::query("UPDATE lazer_score_tokens SET score_id=$2,submission=$3,consumed_at=now() WHERE id=$1").bind(recovery).bind(recovery_score).bind(submission()).execute(&pool).await.unwrap();assert_eq!(recover_pending(&state).await.unwrap(),1);assert_eq!(recover_pending(&state).await.unwrap(),0);assert!(sqlx::query_scalar::<_,Option<String>>("SELECT replay_path FROM scores WHERE id=$1").bind(recovery_score).fetch_one(&pool).await.unwrap().is_some());
+        let recovery:i64=sqlx::query_scalar("INSERT INTO lazer_score_tokens(user_id,beatmap_id,ruleset_id,version_hash,expires_at) VALUES($1,$2,0,'fixture',now()+interval '1 hour') RETURNING id").bind(users[0]).bind(map).fetch_one(&pool).await.unwrap();begin(&state,users[0],recovery,"connection-recovery",&initial(native_map)).await.unwrap();frames(&state,users[0],recovery,"connection-recovery",&bundle(100.0)).await.unwrap();end(&state,users[0],recovery,"connection-recovery",3).await.unwrap();let input:SoloScoreSubmission=serde_json::from_value(submission()).unwrap();let recovery_score:i64=sqlx::query_scalar("INSERT INTO scores(user_id,beatmap_id,mode,score,accuracy,max_combo,mods,pp,passed,hit_counts,client,api_mods,native_submission,ingestion_key) VALUES($1,$2,0,1234,100,2,64,0,true,$3,'lazer',$4,$5,$6) RETURNING id").bind(users[0]).bind(map).bind(input.legacy_hit_counts()).bind(submission()["mods"].clone()).bind(submission()).bind(format!("lazer:{recovery}")).fetch_one(&pool).await.unwrap();sqlx::query("UPDATE lazer_score_tokens SET score_id=$2,submission=$3,consumed_at=now() WHERE id=$1").bind(recovery).bind(recovery_score).bind(submission()).execute(&pool).await.unwrap();assert_eq!(recover_pending(&state).await.unwrap(),1);assert_eq!(recover_pending(&state).await.unwrap(),0);assert!(sqlx::query_scalar::<_,Option<String>>("SELECT replay_path FROM scores WHERE id=$1").bind(recovery_score).fetch_one(&pool).await.unwrap().is_some());assert_eq!(sqlx::query_scalar::<_,String>("SELECT verification FROM scores WHERE id=$1").bind(recovery_score).fetch_one(&pool).await.unwrap(),"verified");
+        // A durable complete replay can recover an older pending receipt once.
+        sqlx::query("UPDATE scores SET verification='pending' WHERE id=$1").bind(recovery_score).execute(&pool).await.unwrap();
+        sqlx::query("DELETE FROM audit_events WHERE action='scores.native_publish' AND target_id=$1").bind(recovery_score.to_string()).execute(&pool).await.unwrap();
+        assert_eq!(finalize(&state,users[0],recovery).await.unwrap(),Some(recovery_score));
+        assert_eq!(sqlx::query_scalar::<_,String>("SELECT verification FROM scores WHERE id=$1").bind(recovery_score).fetch_one(&pool).await.unwrap(),"verified");
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM audit_events WHERE action='scores.native_publish' AND target_id=$1").bind(recovery_score.to_string()).fetch_one(&pool).await.unwrap(),1);
+        // A decision made before replay finalization survives the replay write.
+        for decision in ["pending", "verified", "rejected"] {
+            let token: Value = client.post(format!("{base}/api/v2/beatmaps/{native_map}/solo/scores"))
+                .bearer_auth(&secrets[0])
+                .form(&[("beatmap_hash", "0123456789abcdef0123456789abcdef"), ("version_hash", "fixture-version"), ("ruleset_id", "0")])
+                .send().await.unwrap().json().await.unwrap();
+            let token = token["id"].as_i64().unwrap();
+            begin(&state, users[0], token, "connection-moderated", &initial(native_map)).await.unwrap();
+            frames(&state, users[0], token, "connection-moderated", &bundle(100.0)).await.unwrap();
+            let score: Value = client.put(format!("{base}/api/v2/beatmaps/{native_map}/solo/scores/{token}"))
+                .bearer_auth(&secrets[0]).json(&submission()).send().await.unwrap().json().await.unwrap();
+            let id = score["id"].as_i64().unwrap();
+            assert_eq!(score["verification"], "pending");
+            moderate(&pool, users[0], id, decision).await;
+            let result = end(&state, users[0], token, "connection-moderated", 3).await.unwrap();
+            assert_eq!(result, (decision != "rejected").then_some(id));
+            let stored = sqlx::query("SELECT verification,replay_path FROM scores WHERE id=$1")
+                .bind(id).fetch_one(&pool).await.unwrap();
+            assert_eq!(stored.get::<String, _>("verification"), decision);
+            assert_eq!(stored.get::<Option<String>, _>("replay_path").is_some(), decision != "rejected");
+            assert_eq!(sqlx::query_scalar::<_, i64>("SELECT count(*) FROM audit_events WHERE action='scores.native_publish' AND target_id=$1")
+                .bind(id.to_string()).fetch_one(&pool).await.unwrap(), 0);
+        }
         ws.close(None).await.unwrap();guest.close(None).await.unwrap();
     }).catch_unwind().await;
     server.abort();

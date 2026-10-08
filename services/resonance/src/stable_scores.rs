@@ -633,6 +633,103 @@ fn parse_score_submission(decoded: &str) -> Result<StableSubmission, ApiError> {
     })
 }
 
+#[derive(Default)]
+struct ChartStats {
+    rank: i64,
+    ranked: i64,
+    total: i64,
+    combo: i32,
+    accuracy: f64,
+    pp: f64,
+}
+
+impl ChartStats {
+    fn changes(&self, after: &Self) -> String {
+        format!(
+            "rankBefore:{}|rankAfter:{}|rankedScoreBefore:{}|rankedScoreAfter:{}|totalScoreBefore:{}|totalScoreAfter:{}|maxComboBefore:{}|maxComboAfter:{}|accuracyBefore:{}|accuracyAfter:{}|ppBefore:{}|ppAfter:{}",
+            self.rank,
+            after.rank,
+            self.ranked,
+            after.ranked,
+            self.total,
+            after.total,
+            self.combo,
+            after.combo,
+            self.accuracy,
+            after.accuracy,
+            self.pp,
+            after.pp,
+        )
+    }
+}
+
+struct ResultCharts {
+    map: ChartStats,
+    overall: ChartStats,
+    plays: i64,
+    passes: i64,
+}
+
+async fn result_charts(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    user: i64,
+    map: i64,
+    mode: u8,
+    variant: illya_domain::ScoreVariant,
+    mods: u32,
+) -> Result<ResultCharts, sqlx::Error> {
+    let lifetime =
+        crate::score_aggregates::lifetime(&mut **tx, user, i16::from(mode), variant).await?;
+    let ranking =
+        crate::score_aggregates::ranking(&mut **tx, user, i16::from(mode), variant).await?;
+    // Match stable's default map board: stable V1/V2 are separate, RX sorts PP.
+    let personal = sqlx::query(
+        "WITH best AS (
+           SELECT DISTINCT ON(s.user_id) s.id,s.user_id,s.score,s.max_combo,s.accuracy,s.pp
+           FROM scores s JOIN users u ON u.id=s.user_id JOIN active_beatmaps b ON b.id=s.beatmap_id
+           WHERE s.beatmap_id=$1 AND s.mode=$2 AND s.score_variant=$3 AND s.client='stable'
+           AND (s.mods & 536870912)=$4 AND s.verification='verified' AND s.passed
+           AND s.pp_eligible AND NOT u.is_restricted AND b.status IN ('ranked','loved')
+           ORDER BY s.user_id,CASE WHEN $3='relax' THEN s.pp ELSE s.score::float8 END DESC,s.id
+         ), placed AS (
+           SELECT *,row_number() OVER(ORDER BY CASE WHEN $3='relax' THEN pp ELSE score::float8 END DESC,id) placement
+           FROM best
+         ) SELECT * FROM placed WHERE user_id=$5",
+    ).bind(map).bind(i16::from(mode)).bind(variant.as_str())
+        .bind(i64::from(mods & 536870912)).bind(user).fetch_optional(&mut **tx).await?;
+    let counts = sqlx::query(
+        "SELECT count(*)::bigint plays,count(*) FILTER(WHERE passed)::bigint passes FROM scores
+         WHERE beatmap_id=$1 AND mode=$2 AND score_variant=$3 AND verification='verified'",
+    )
+    .bind(map)
+    .bind(i16::from(mode))
+    .bind(variant.as_str())
+    .fetch_one(&mut **tx)
+    .await?;
+    Ok(ResultCharts {
+        map: personal
+            .map(|row| ChartStats {
+                rank: row.get("placement"),
+                ranked: row.get("score"),
+                total: row.get("score"),
+                combo: row.get("max_combo"),
+                accuracy: row.get("accuracy"),
+                pp: row.get("pp"),
+            })
+            .unwrap_or_default(),
+        overall: ChartStats {
+            rank: ranking.get("global_rank"),
+            ranked: ranking.get("ranked_score"),
+            total: lifetime.get("total"),
+            combo: lifetime.get("combo"),
+            accuracy: lifetime.get("accuracy"),
+            pp: ranking.get("pp"),
+        },
+        plays: counts.get("plays"),
+        passes: counts.get("passes"),
+    })
+}
+
 async fn submit_inner(state: AppState, multipart: Multipart) -> Result<Response, ApiError> {
     let ScoreUpload {
         fields,
@@ -673,7 +770,7 @@ async fn submit_inner(state: AppState, multipart: Multipart) -> Result<Response,
     if submission.username != player.username {
         return Err(ApiError(StatusCode::BAD_REQUEST, "score_username_mismatch"));
     }
-    let Some(session)=sqlx::query("SELECT client_version,client_hash_hash FROM bancho_sessions WHERE user_id=$1 AND expires_at>now()").bind(player.id).fetch_optional(&state.pool).await?else{return Ok("".into_response());};
+    let Some(session)=sqlx::query("SELECT client_version,client_hash_hash,action FROM bancho_sessions WHERE user_id=$1 AND expires_at>now()").bind(player.id).fetch_optional(&state.pool).await?else{return Ok("".into_response());};
     let login_version: String = session.get("client_version");
     if !login_version
         .strip_prefix('b')
@@ -808,6 +905,15 @@ async fn submit_inner(state: AppState, multipart: Multipart) -> Result<Response,
         "invalid_ingestion_response",
     ))?;
     let mut tx = state.pool.begin().await?;
+    // Keep restriction changes ordered before score/replay/publication locks.
+    let unrestricted: bool =
+        sqlx::query_scalar("SELECT NOT is_restricted FROM users WHERE id=$1 FOR SHARE")
+            .bind(player.id)
+            .fetch_one(&mut *tx)
+            .await?;
+    if !unrestricted {
+        return Err(ApiError(StatusCode::UNAUTHORIZED, "invalid_account"));
+    }
     let row = sqlx::query("SELECT s.*,b.md5 AS beatmap_md5 FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id WHERE s.id=$1 FOR UPDATE OF s")
         .bind(score_id).fetch_optional(&mut *tx).await?
         .ok_or(ApiError(StatusCode::BAD_GATEWAY, "invalid_ingestion_response"))?;
@@ -821,6 +927,15 @@ async fn submit_inner(state: AppState, multipart: Multipart) -> Result<Response,
         &ingestion_key,
         variant,
     )?;
+    let before = result_charts(
+        &mut tx,
+        player.id,
+        map_id,
+        submission.mode,
+        variant,
+        submission.mods,
+    )
+    .await?;
     if submission.passed {
         let container = submission.replay_container(
             version
@@ -844,12 +959,11 @@ async fn submit_inner(state: AppState, multipart: Multipart) -> Result<Response,
             let filename = format!("stable-{score_id}-{}.osr", uuid::Uuid::new_v4());
             let path = state.storage.join("replays").join(&filename);
             tokio::fs::write(&path, &container).await?;
-            if let Err(error) =
-                sqlx::query("UPDATE scores SET replay_path=$2,verification='pending' WHERE id=$1")
-                    .bind(score_id)
-                    .bind(&filename)
-                    .execute(&mut *tx)
-                    .await
+            if let Err(error) = sqlx::query("UPDATE scores SET replay_path=$2 WHERE id=$1")
+                .bind(score_id)
+                .bind(&filename)
+                .execute(&mut *tx)
+                .await
             {
                 let _ = tokio::fs::remove_file(&path).await;
                 return Err(error.into());
@@ -857,28 +971,46 @@ async fn submit_inner(state: AppState, multipart: Multipart) -> Result<Response,
             sqlx::query("INSERT INTO audit_events(actor_id,action,target_type,target_id,details) VALUES($1,'scores.stable_ingest','score',$2,$3)").bind(player.id).bind(score_id.to_string()).bind(json!({"checksum_matches":true,"client_matches":true,"frames":frame_count,"gameplay_verified":false,"replay_bytes":replay.len(),"rank":submission.rank,"ended_at":submission.played_at.and_utc()})).execute(&mut *tx).await?;
         }
     }
+    let published = crate::native_score_publication::publish(
+        &mut tx,
+        score_id,
+        player.id,
+        crate::native_score_publication::NativeClient::Stable,
+        &ingestion_key,
+    )
+    .await?;
+    let after = result_charts(
+        &mut tx,
+        player.id,
+        map_id,
+        submission.mode,
+        variant,
+        submission.mods,
+    )
+    .await?;
+    if published {
+        let action = serde_json::from_value(session.get("action")).unwrap_or_default();
+        let stats = crate::stable::stats_on_connection(&mut tx, &player, action).await?;
+        sqlx::query("INSERT INTO bancho_packet_queue(user_id,payload) VALUES($1,$2)")
+            .bind(player.id)
+            .bind(stats.packet()?)
+            .execute(&mut *tx)
+            .await?;
+    }
     tx.commit().await?;
-    let notification = wire::string_packet(
-        wire::server::NOTIFICATION,
-        &format!(
-            "Score #{score_id} saved ({:.2}pp preview). It will enter rankings after moderator review.",
-            result.get("pp").and_then(Value::as_f64).unwrap_or(0.0)
-        ),
-    )?;
-    sqlx::query("INSERT INTO bancho_packet_queue(user_id,payload) VALUES($1,$2)")
-        .bind(player.id)
-        .bind(notification)
-        .execute(&state.pool)
-        .await?;
     if !submission.passed {
         return Ok("error: no".into_response());
     }
-    // Pending scores do not update ranked totals or placement. This chart still
-    // gives stable the persistent online score ID for its local score/replay.
+    // Results are ordinary charts; exact retries keep their receipt and totals.
+    // Explicitly moderated scores remain excluded by the aggregate queries.
     let body = format!(
-        "beatmapId:{public_map_id}|beatmapSetId:{set_id}|beatmapPlaycount:0|beatmapPasscount:0|approvedDate:{}|\n|chartId:beatmap|chartUrl:/beatmaps/{map_id}|chartName:Awaiting review|rankBefore:0|rankAfter:0|rankedScoreBefore:0|rankedScoreAfter:0|totalScoreBefore:0|totalScoreAfter:0|maxComboBefore:0|maxComboAfter:0|accuracyBefore:0|accuracyAfter:0|ppBefore:0|ppAfter:0|onlineScoreId:{score_id}|\n|chartId:overall|chartUrl:/players/{}|chartName:Awaiting review|rankBefore:0|rankAfter:0|rankedScoreBefore:0|rankedScoreAfter:0|totalScoreBefore:0|totalScoreAfter:0|maxComboBefore:0|maxComboAfter:0|accuracyBefore:0|accuracyAfter:0|ppBefore:0|ppAfter:0|achievements-new:",
+        "beatmapId:{public_map_id}|beatmapSetId:{set_id}|beatmapPlaycount:{}|beatmapPasscount:{}|approvedDate:{}|\n|chartId:beatmap|chartUrl:/beatmaps/{map_id}|chartName:Beatmap Ranking|{}|onlineScoreId:{score_id}|\n|chartId:overall|chartUrl:/players/{}|chartName:Overall Ranking|{}|achievements-new:",
+        after.plays,
+        after.passes,
         Utc::now().format("%Y-%m-%d %H:%M:%S"),
-        player.id
+        before.map.changes(&after.map),
+        player.id,
+        before.overall.changes(&after.overall),
     );
     Ok(body.into_response())
 }

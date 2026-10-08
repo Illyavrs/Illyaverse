@@ -2,8 +2,9 @@
 
 Install tests/requirements.txt, start both services against the same disposable DB,
 and provide TEST_ADMIN_USERNAME/PASSWORD and TEST_PLAYER_USERNAME/PASSWORD.
-This creates local beatmaps and synthetic players, submits scores, and moderates
-the test scores. Native room fixtures use an original standard-library SSE client.
+This creates local beatmaps and synthetic players, verifies automatic native
+publication, and explicitly moderates privacy fixtures. Native room fixtures use
+an original standard-library SSE client.
 It never modifies osu! clients, hosts files, certificates, or a remote service.
 """
 import base64
@@ -96,6 +97,12 @@ def packets(data):
         cursor += 7 + size
     assert cursor == len(data)
     return output
+
+
+def score_state(score):
+    """Failure diagnostics expose only fixture IDs and publication state."""
+    keys = ("id", "client", "verification", "passed", "processed", "ranked", "has_replay", "replay_complete")
+    return {key: score[key] for key in keys if key in score}
 
 
 def wire_string(text):
@@ -429,8 +436,22 @@ def native_room_smoke(admin, gateway, bearer, player_id, map_id, map_hash, objec
         spectator.call("EndPlaySessionV2", [host_token, 3])
         assert spectator.event("UserScoreProcessed") == [player_id, host_nm["id"]]
         other_spectator.no_event("UserScoreProcessed")
-        assert gateway.json("GET", first + f"/{host_nm['id']}", headers=bearer)["has_replay"]
+        completed = gateway.json("GET", first + f"/{host_nm['id']}", headers=bearer)
+        assert completed["has_replay"], score_state(completed)
+        assert completed["verification"] == "verified", score_state(completed)
+        # Frozen room DTOs always report ranked=false; global publication is
+        # represented by the global score endpoint and its live map eligibility.
+        assert not completed["ranked"], score_state(completed)
+        global_completed = gateway.json("GET", f"/api/v2/scores/{host_nm['id']}", headers=peer_auth)
+        assert global_completed["verification"] == "verified", score_state(global_completed)
+        assert global_completed["ranked"], score_state(global_completed)
+        assert global_completed["has_replay"], score_state(global_completed)
+        assert global_completed["replay_complete"] is True, score_state(global_completed)
+        # Frozen-room peer privacy below is an explicit moderation fixture,
+        # rather than the normal native submission policy.
+        admin.json("PATCH", f"/api/v1/admin/scores/{host_nm['id']}", {"verification": "pending"})
         assert gateway.json("PUT", first + f"/{host_token}", nm_input, bearer)["id"] == host_nm["id"]
+        assert admin.json("GET", f"/api/v1/scores/{host_nm['id']}")["verification"] == "pending"
         gateway.request("PUT", first + f"/{host_token}", dict(nm_input, total_score=999999), bearer, expected=409)
         metadata.no_event("MultiplayerRoomScoreSet")
         peer_nm = accepted(first, peer_token, peer_input, peer_auth)
@@ -751,11 +772,35 @@ def run():
     token = gateway.json("POST", f"/api/v2/beatmaps/{map_id}/solo/scores", token_fields, dict(bearer, **{"Content-Type": "application/x-www-form-urlencoded"}))["id"]
     score = {"ruleset_id": 0, "passed": True, "total_score": 1000000, "total_score_without_mods": 1000000, "accuracy": 1, "max_combo": 2, "rank": "X", "mods": [], "statistics": {"great": 2}, "maximum_statistics": {"great": 2}, "pauses": [], "user_id": 9999, "beatmap_id": 9999, "score_variant": "relax"}
     path = f"/api/v2/beatmaps/{map_id}/solo/scores/{token}"
-    lazer = gateway.json("PUT", path, score, bearer)
-    assert lazer["user_id"] == player_id and lazer["beatmap_id"] == map_id and lazer["verification"] == "pending" and lazer["pp"] > 0
+    with SignalRSSE(gateway, bearer, "spectator") as solo_capture:
+        solo_capture.call("BeginPlaySessionV2", [token, [map_id, 0, [], 1, {"5": 2}]])
+        replay_header = [1000000, 1.0, 2, 2, {"5": 2}, [0.0, 0.0, 2, 0.5, 0.0], None, [], None, None]
+        solo_capture.call("SendFrameDataV2", [token, [replay_header, [[1000.0, 64.0, 64.0, 1], [2000.0, 256.0, 192.0, 1]]]])
+        lazer = gateway.json("PUT", path, score, bearer)
+        assert lazer["user_id"] == player_id and lazer["beatmap_id"] == map_id
+        assert lazer["verification"] == "pending", score_state(lazer)
+        assert lazer["pp"] > 0
+        assert not lazer["has_replay"], score_state(lazer)
+        assert not lazer["ranked"], score_state(lazer)
+        anonymous.request("GET", f"/api/v1/scores/{lazer['id']}", expected=404)
+        solo_capture.call("EndPlaySessionV2", [token, 3])
+        # UserScoreProcessed belongs to processed room tokens. Solo completion
+        # is synchronous and its persisted score/replay are the authority.
+        solo_capture.no_event("UserScoreProcessed")
+        completed_lazer = gateway.json("GET", f"/api/v2/scores/{lazer['id']}", headers=bearer)
+        assert completed_lazer["verification"] == "verified", score_state(completed_lazer)
+        assert completed_lazer["has_replay"], score_state(completed_lazer)
+        assert anonymous.json("GET", f"/api/v1/scores/{lazer['id']}")["verification"] == "verified"
+        assert gateway.json("PUT", path, score, bearer)["verification"] == "verified"
+        # Keep the mixed-client ranking fixture pending until its explicit
+        # moderation step below, and prove a native retry cannot undo that choice.
+        admin.json("PATCH", f"/api/v1/admin/scores/{lazer['id']}", {"verification": "pending"})
     assert lazer["score_variant"] == "vanilla", "Untrusted variant overrode native mods"
-    assert gateway.json("PUT", path, score, bearer)["id"] == lazer["id"], "Score retry did not deduplicate"
+    lazer_retry = gateway.json("PUT", path, score, bearer)
+    assert lazer_retry["id"] == lazer["id"], score_state(lazer_retry)
+    assert lazer_retry["verification"] == "pending", score_state(lazer_retry)
     gateway.request("PUT", path, dict(score, total_score=999999), bearer, expected=409)
+    admin.json("PATCH", f"/api/v1/admin/beatmaps/{map_pk}", {"status": "ranked"})
 
     played_at = datetime.datetime.now(datetime.timezone.utc).strftime("%y%m%d%H%M%S")
     stable_raw = 600  # Two Great circles, no legacy combo bonus.
@@ -779,9 +824,30 @@ def run():
     # extension data. Canonical prefix validation still owns the saved score.
     fields = [("score", encrypt(envelope + ":synthetic-tail")), ("iv", base64.b64encode(iv).decode()), ("osuver", version), ("pass", digest(player_password)), ("bmk", map_hash), ("sbk", ""), ("s", encrypt(client_hash))]
     body, headers = multipart(fields, [("score", "replay.osr", frames)])
+    gateway.request("POST", "/", packet(4), player_bancho)  # Drain unrelated prior room packets.
+    native_score_count_before = admin.json("GET", f"/api/v1/scores?user_id={player_id}")["total"]
     stable = gateway.request("POST", "/web/osu-submit-modular-selector.php", body, headers)[0].decode()
-    assert stable.startswith(f"beatmapId:{map_id}|beatmapSetId:{set_id}|"), "Pending success chart lost canonical map identities"
+    assert stable.startswith(f"beatmapId:{map_id}|beatmapSetId:{set_id}|"), "Success chart lost canonical map identities"
+    assert "Awaiting review" not in stable and "moderator" not in stable.lower()
     stable_id = int(re.search(r"onlineScoreId:(\d+)", stable).group(1))
+    first_events = packets(gateway.request("POST", "/", packet(4), player_bancho)[0])
+    assert not any(kind == 24 for kind, _ in first_events), "Score submission emitted an unsolicited banner"
+    assert any(kind == 11 and struct.unpack_from("<i", payload)[0] == player_id for kind, payload in first_events), "First native publication did not update stable statistics"
+    published_statistics = gateway.json("GET", "/api/v2/me/osu", headers=bearer)["statistics"]
+    assert published_statistics["play_count"] == pending_statistics_before["play_count"] + 1
+    assert published_statistics["total_score"] == stable_raw and published_statistics["ranked_score"] > 0 and published_statistics["pp"] > 0
+    chart_rows = [dict(part.split(":", 1) for part in line.split("|") if ":" in part) for line in stable.splitlines()]
+    assert len(chart_rows) == 3 and chart_rows[0]["beatmapPlaycount"] == "1" and chart_rows[0]["beatmapPasscount"] == "1"
+    map_chart, overall_chart = chart_rows[1:]
+    assert map_chart["chartName"] == "Beatmap Ranking" and overall_chart["chartName"] == "Overall Ranking"
+    assert map_chart["rankBefore"] == "0" and map_chart["rankAfter"] == "1"
+    assert map_chart["totalScoreBefore"] == "0" and int(map_chart["totalScoreAfter"]) == stable_raw
+    assert overall_chart["totalScoreBefore"] == "0" and int(overall_chart["totalScoreAfter"]) == published_statistics["total_score"]
+    assert int(overall_chart["rankedScoreAfter"]) == published_statistics["ranked_score"]
+    assert int(overall_chart["rankAfter"]) == published_statistics["global_rank"]
+    assert overall_chart["maxComboBefore"] == "0" and overall_chart["maxComboAfter"] == "2"
+    assert overall_chart["ppBefore"] == "0" and math.isclose(float(overall_chart["ppAfter"]), published_statistics["pp"], rel_tol=1e-12)
+    assert admin.json("GET", f"/api/v1/scores?user_id={player_id}")["total"] == native_score_count_before + 1
     for suffix in (None, "", "17", "synthetic:opaque:extensions"):
         prefix_fields = [(name, encrypt(envelope if suffix is None else envelope + ":" + suffix) if name == "score" else value) for name, value in fields]
         prefix_body, prefix_headers = multipart(prefix_fields, [("score", "replay.osr", frames)])
@@ -811,7 +877,18 @@ def run():
     query = urllib.parse.urlencode({"u": player_name, "h": digest(player_password), "c": stable_id, "m": 0})
     assert gateway.request("GET", "/web/osu-getreplay.php?" + query)[0] == frames
     stable_score = gateway.json("GET", f"/api/v2/scores/{stable_id}", headers=bearer)
-    assert stable_score["has_replay"] and stable_score["verification"] == "pending" and stable_score["pp"] > 0
+    assert stable_score["has_replay"], score_state(stable_score)
+    assert stable_score["verification"] == "verified", score_state(stable_score)
+    assert stable_score["ranked"], score_state(stable_score)
+    assert stable_score["pp"] > 0
+    public_stable = anonymous.json("GET", f"/api/v1/scores/{stable_id}")
+    assert public_stable["verification"] == "verified", score_state(public_stable)
+    assert public_stable["has_replay"], score_state(public_stable)
+    assert anonymous.request("GET", public_stable["replay_url"])[0] == gateway.request("GET", f"/api/v2/scores/{stable_id}/download", headers=bearer)[0]
+    assert gateway.json("GET", "/api/v2/me/osu", headers=bearer)["statistics"] == published_statistics, "Exact retries changed native totals"
+    assert admin.json("GET", f"/api/v1/scores?user_id={player_id}")["total"] == native_score_count_before + 1, "Exact retries created another receipt"
+    retry_events = packets(gateway.request("POST", "/", packet(4), player_bancho)[0])
+    assert not any(kind in (11, 24) for kind, _ in retry_events), "Exact score retries repeated publication packets"
     altered_body, altered_headers = multipart(fields, [("score", "replay.osr", lzma.compress(b"1|0|0|0,", format=lzma.FORMAT_ALONE))])
     gateway.request("POST", "/web/osu-submit-modular-selector.php", altered_body, altered_headers, expected=409)
     invalid_fields = [(name, encrypt(envelope.replace(checksum, "0" * 32)) if name == "score" else value) for name, value in fields]
@@ -833,12 +910,19 @@ def run():
         gateway.request("POST", "/web/osu-submit-modular-selector.php", extension_failure_body, extension_failure_headers, expected=expected_status)
     leaderboard_query = urllib.parse.urlencode({"u": player_name, "h": digest(player_password), "c": map_hash, "m": 0})
     score_line = re.compile(rf"^{stable_id}\|{re.escape(player_name)}\|", re.MULTILINE)
+    assert score_line.search(gateway.request("GET", "/web/osu-osz2-getscores.php?" + leaderboard_query)[0].decode()), "Validated native score was not immediately ranked"
+    for review_state in ("pending", "rejected", "pending"):
+        admin.json("PATCH", f"/api/v1/admin/scores/{stable_id}", {"verification": review_state})
+        assert f"onlineScoreId:{stable_id}|" in gateway.request("POST", "/web/osu-submit-modular-selector.php", body, headers)[0].decode()
+        assert admin.json("GET", f"/api/v1/scores/{stable_id}")["verification"] == review_state, "Native retry overrode an explicit moderation decision"
+        anonymous.request("GET", f"/api/v1/scores/{stable_id}", expected=404)
+    review_retry_events = packets(gateway.request("POST", "/", packet(4), player_bancho)[0])
+    assert not any(kind in (11, 24) for kind, _ in review_retry_events)
     pending_board = gateway.request("GET", "/web/osu-osz2-getscores.php?" + leaderboard_query)[0].decode()
-    assert pending_board.startswith(f"0|false|{map_id}|{set_id}|"), "Known pending leaderboard lost canonical map identities"
+    assert pending_board.startswith(f"2|false|{map_id}|{set_id}|"), "Moderated pending leaderboard lost canonical map identities"
     assert not score_line.search(pending_board), "Pending score leaked to ranking"
     pending_statistics_after = gateway.json("GET", "/api/v2/me/osu", headers=bearer)["statistics"]
     assert all(pending_statistics_after[key] == pending_statistics_before[key] for key in ("ranked_score", "pp")), "Pending submissions changed ranked totals"
-    admin.json("PATCH", f"/api/v1/admin/beatmaps/{map_pk}", {"status": "ranked"})
     admin.json("PATCH", f"/api/v1/admin/scores/{stable_id}", {"verification": "verified"})
     assert score_line.search(gateway.request("GET", "/web/osu-osz2-getscores.php?" + leaderboard_query)[0].decode())
     native_scores = gateway.json("GET", f"/api/v2/beatmaps/{map_id}/scores?mode=osu&type=global", headers=bearer)
@@ -848,6 +932,60 @@ def run():
     assert converted["score_scale_status"] == "legacy_estimated" and any(m["acronym"] == "CL" for m in converted["mods"])
     assert gateway.json("GET", f"/api/v2/beatmaps/{map_id}/scores?mode=osu&mods[]=CL", headers=bearer)["scores"][0]["id"] == stable_id
     assert gateway.json("GET", f"/api/v2/beatmaps/{map_id}/scores?mode=osu&mods[]=NM", headers=bearer)["scores"] == []
+
+    # A validated failure is a public play-history receipt without a required
+    # replay. It must contribute a play, while never replacing the passed best.
+    failed_raw = 300
+    failed_checksum = digest(f"chickenmcnuggets1o1500smustard01uu{map_hash}1False{player_name}{failed_raw}F0QFalse0{version}{played_at}{client_hash}")
+    failed_envelope = f"{map_hash}:{player_name}:{failed_checksum}:1:0:0:0:0:1:{failed_raw}:1:False:F:0:False:0:{played_at}:b{version}"
+    failed_fields = [(name, encrypt(failed_envelope) if name == "score" else value) for name, value in fields]
+    failed_body, failed_headers = multipart(failed_fields)
+    before_failure = gateway.json("GET", "/api/v2/me/osu", headers=bearer)["statistics"]
+    failed_list_query = f"/api/v1/scores?user_id={player_id}&beatmap_id={map_pk}&mode=0&page_size=100"
+    before_failed_scores = admin.json("GET", failed_list_query)
+    assert gateway.request("POST", "/web/osu-submit-modular-selector.php", failed_body, failed_headers)[0] == b"error: no"
+    after_failed_scores = admin.json("GET", failed_list_query)
+    known_ids = {item["id"] for item in before_failed_scores["items"]}
+    failed_records = [item for item in after_failed_scores["items"] if item["id"] not in known_ids]
+    assert after_failed_scores["total"] == before_failed_scores["total"] + 1 and len(failed_records) == 1
+    failed_score = failed_records[0]
+    failed_id = failed_score["id"]
+    assert failed_score["client"] == "stable", score_state(failed_score)
+    assert failed_score["verification"] == "verified", score_state(failed_score)
+    assert not failed_score["passed"], score_state(failed_score)
+    assert not failed_score["has_replay"], score_state(failed_score)
+    assert anonymous.json("GET", f"/api/v1/scores/{failed_id}")["verification"] == "verified"
+    failed_statistics = gateway.json("GET", "/api/v2/me/osu", headers=bearer)["statistics"]
+    assert failed_statistics["play_count"] == before_failure["play_count"] + 1
+    assert failed_statistics["total_score"] == before_failure["total_score"] + failed_raw
+    assert all(failed_statistics[key] == before_failure[key] for key in ("ranked_score", "pp", "global_rank"))
+    assert not re.search(rf"^{failed_id}\|", gateway.request("GET", "/web/osu-osz2-getscores.php?" + leaderboard_query)[0].decode(), re.MULTILINE)
+    assert failed_id not in {item["id"] for item in gateway.json("GET", f"/api/v2/users/{player_id}/scores/best?mode=osu", headers=bearer)}
+    failed_events = packets(gateway.request("POST", "/", packet(4), player_bancho)[0])
+    assert not any(kind == 24 for kind, _ in failed_events)
+    assert gateway.request("POST", "/web/osu-submit-modular-selector.php", failed_body, failed_headers)[0] == b"error: no"
+    assert admin.json("GET", failed_list_query)["total"] == after_failed_scores["total"]
+    assert gateway.json("GET", "/api/v2/me/osu", headers=bearer)["statistics"] == failed_statistics
+    assert not any(kind in (11, 24) for kind, _ in packets(gateway.request("POST", "/", packet(4), player_bancho)[0]))
+    # Keep the existing exact mixed-scale totals isolated after testing failure
+    # publication; the explicit rejection remains authoritative on retry.
+    admin.json("PATCH", f"/api/v1/admin/scores/{failed_id}", {"verification": "rejected"})
+    assert gateway.request("POST", "/web/osu-submit-modular-selector.php", failed_body, failed_headers)[0] == b"error: no"
+    assert admin.json("GET", f"/api/v1/scores/{failed_id}")["verification"] == "rejected"
+
+    # The generic website score endpoint has no native session/replay authority.
+    player_site = Client(admin.base)
+    player_site.json("POST", "/api/v1/auth/login", {"username": player_name, "password": player_password})
+    api_payload = {"beatmap_id": map_pk, "mode": 0, "score": stable_raw, "accuracy": 100,
+                   "max_combo": 2, "mods": 0, "passed": True, "hit_counts": {"n300": 2}}
+    api_score = player_site.json("POST", "/api/v1/scores", api_payload)
+    assert api_score["verification"] == "pending", score_state(api_score)
+    assert api_score["client"] == "api", score_state(api_score)
+    assert not player_site.json("GET", f"/api/v1/scores/{api_score['id']}")["has_replay"]
+    anonymous.request("GET", f"/api/v1/scores/{api_score['id']}", expected=404)
+    player_site.request("POST", "/api/v1/scores", dict(api_payload, client="stable"), expected=400)
+    assert gateway.json("GET", "/api/v2/me/osu", headers=bearer)["statistics"] == before_failure
+
     admin.json("PATCH", f"/api/v1/admin/scores/{lazer['id']}", {"verification": "verified"})
     native_scores = gateway.json("GET", f"/api/v2/beatmaps/{map_id}/scores?mode=osu&type=global", headers=bearer)
     assert native_scores["score_count"] == 1 and native_scores["scores"][0]["id"] == lazer["id"]
@@ -868,7 +1006,7 @@ def run():
     v2_body, v2_headers = multipart(v2_fields, [("score", "replay.osr", frames)])
     v2_response = gateway.request("POST", "/web/osu-submit-modular-selector.php", v2_body, v2_headers)[0].decode()
     v2_id = int(re.search(r"onlineScoreId:(\d+)", v2_response).group(1))
-    admin.json("PATCH", f"/api/v1/admin/scores/{v2_id}", {"verification": "verified"})
+    assert admin.json("GET", f"/api/v1/scores/{v2_id}")["verification"] == "verified"
     v2_line = re.compile(rf"^{v2_id}\|{re.escape(player_name)}\|", re.MULTILINE)
     v1_board = gateway.request("GET", "/web/osu-osz2-getscores.php?" + leaderboard_query)[0].decode()
     assert score_line.search(v1_board) and not v2_line.search(v1_board)
@@ -962,11 +1100,22 @@ def run():
         assert stored["score_scale_version"] == "relax_score_scale.unavailable.v1"
         assert stored["user_id"] == (admin_id if score_id == rx_admin["id"] else player_id)
     assert rx_records[rx_stable_id]["pp"] > rx_records[rx_weak_id]["pp"], "Fixture did not distinguish RX PP"
+    for score_id in (rx_weak_id, rx_stable_id):
+        assert rx_records[score_id]["verification"] == "verified", score_state(rx_records[score_id])
+    for score_id in (rx_lazer["id"], rx_admin["id"]):
+        assert rx_records[score_id]["verification"] == "pending", score_state(rx_records[score_id])
     assert rx_records[rx_lazer["id"]]["native_submission"]["mods"] == [{"acronym": "RX"}]
     assert rx_records[rx_lazer["id"]]["api_mods"] == [{"acronym": "RX"}]
     assert "score_variant" not in rx_records[rx_lazer["id"]]["native_submission"], "Untrusted native variant was persisted"
     stored_list = admin.json("GET", f"/api/v1/scores?user_id={player_id}&mode=0&variant=relax")
     assert {item["id"] for item in stored_list["items"]} == rx_player_ids and stored_list["total"] == 3
+
+    # Preserve the explicit moderation/privacy coverage with staff decisions;
+    # normal native RX has already been accepted automatically above.
+    for score_id in (rx_weak_id, rx_stable_id):
+        admin.json("PATCH", f"/api/v1/admin/scores/{score_id}", {"verification": "pending"})
+    assert encrypted_rx() == rx_stable_id
+    assert admin.json("GET", f"/api/v1/scores/{rx_stable_id}")["verification"] == "pending"
 
     rx_query = urllib.parse.urlencode({"u": player_name, "h": digest(player_password), "c": map_hash, "m": 0, "mods": 128})
     rx_line = re.compile(rf"^{rx_stable_id}\|{re.escape(player_name)}\|", re.MULTILINE)
@@ -1039,7 +1188,11 @@ def run():
         converted_records = [admin.json("GET", f"/api/v1/scores/{score_id}") for score_id in converted_ids]
         for stored in converted_records:
             assert stored["mode"] == mode and stored["score_variant"] == "relax" and stored["pp_eligible"] and stored["pp"] > 0
-            admin.json("PATCH", f"/api/v1/admin/scores/{stored['id']}", {"verification": "verified"})
+            if stored["id"] == stable_converted:
+                assert stored["verification"] == "verified", score_state(stored)
+            else:
+                assert stored["verification"] == "pending", score_state(stored)
+                admin.json("PATCH", f"/api/v1/admin/scores/{stored['id']}", {"verification": "verified"})
         converted_stats = admin.json("GET", f"/api/v1/users/{player_id}?mode={mode}&variant=relax")["statistics"]
         assert converted_stats["play_count"] == 2 and abs(converted_stats["pp"] - max(item["pp"] for item in converted_records)) < 1e-9
         assert gateway.json("GET", f"/api/v2/me/{native_mode}?variant=relax", headers=bearer)["statistics"]["play_count"] == 2
@@ -1322,7 +1475,13 @@ def run():
                      "archive_bytes": len(cp932_archive),
                      "http_requests": Client.request_count - archive_name_initial_requests,
                      "scope": "disposable_release_image_http"}
-    checks = ["shared auth", "stable binary login/ping/chat/logout", "lazer OAuth/refresh", "lazer checksum/set lookup/archive/score collections", "immutable multi-difficulty package/retry/native set grouping/full asset archive", "stable direct canonical difficulty/set selectors", "native signed-int bounds and reserved local misses", "Classic profile totals and standardized mixed-client ranking", "stable ScoreV1/ScoreV2 board partition", "RBAC", "friend/block/DM settings", "stable password room/host authority/slot identity", "stable ready/start/load/score/complete/transfer/leave", "stable spectator frame relay", "lazer score token/idempotency", "stable Rijndael256 submission/checksum", "server PP", "replay round trip", "pending rankings", "moderation", "encrypted stable RX and native solo RX", "RX metadata and unavailable common scale", "RX retry deduplication and native mod binding", "RX pending isolation and fixture moderation", "RX replay original ruleset/mod binding", "RX PP-sorted boards and best-per-map totals", "NM/RX API and gateway rank/stat isolation", "osu/taiko/catch RX partition isolation", "mania RX rejection and untrusted variant derivation"]
+    checks = ["shared auth", "stable binary login/ping/chat/logout", "lazer OAuth/refresh", "lazer checksum/set lookup/archive/score collections", "immutable multi-difficulty package/retry/native set grouping/full asset archive", "stable direct canonical difficulty/set selectors", "native signed-int bounds and reserved local misses", "Classic profile totals and standardized mixed-client ranking", "stable ScoreV1/ScoreV2 board partition", "RBAC", "friend/block/DM settings", "stable password room/host authority/slot identity", "stable ready/start/load/score/complete/transfer/leave", "stable spectator frame relay", "lazer score token/idempotency", "stable Rijndael256 submission/checksum", "server PP", "replay round trip", "explicit pending moderation excludes rankings", "moderation", "encrypted stable RX and native solo RX", "RX metadata and unavailable common scale", "RX retry deduplication and native mod binding", "RX explicit pending isolation and fixture moderation", "RX replay original ruleset/mod binding", "RX PP-sorted boards and best-per-map totals", "NM/RX API and gateway rank/stat isolation", "osu/taiko/catch RX partition isolation", "mania RX rejection and untrusted variant derivation"]
+    checks.extend(["validated stable immediately public/ranked with replay and current statistics",
+                   "stable exact retries preserve receipts/totals and never repeat score banners/statistics packets",
+                   "stable failed native play publishes without replay and never enters best/map rankings",
+                   "explicit pending/rejected staff decisions survive native retries",
+                   "in-progress lazer replay remains private; complete solo/room capture publishes automatically",
+                   "generic website API scores remain pending and cannot select native authority"])
     checks.extend(["exact retained filename lookup and cached stable input positions",
                    "website package pagination and explicit original download formats",
                    "Docker media publication and private staging routes",
@@ -1348,7 +1507,10 @@ def run():
     checks.extend(["raw CP932 ZIP names decode before separators and preserve stable/lazer filename selectors",
                    "CP932 package same-owner retry IDs and original .osz/.osu download bytes",
                    "all duplicate raw ZIP records and invalid flagged UTF-8 reject without publication"])
-    print(json.dumps({"status": "passed", "beatmap_id": primary_map_id, "rx_beatmap_id": map_id, "stable_score_id": stable_id, "lazer_score_id": lazer["id"], "rx_stable_score_id": rx_stable_id, "rx_lazer_score_id": rx_lazer["id"], "rx_converted_score_ids": rx_converted_ids, "room_scores": room_scores, "withdrawal": withdrawal, "upload_boundary": upload_boundary, "archive_names": archive_names, "http_requests": Client.request_count, "check_count": len(checks), "checks": checks}))
+    native_publication = {"stable_passed_id": stable_id, "stable_failed_id": failed_id,
+                          "lazer_complete_id": lazer["id"], "website_pending_id": api_score["id"],
+                          "score_notifications": 0, "scope": "disposable_release_image_http"}
+    print(json.dumps({"status": "passed", "beatmap_id": primary_map_id, "rx_beatmap_id": map_id, "stable_score_id": stable_id, "lazer_score_id": lazer["id"], "rx_stable_score_id": rx_stable_id, "rx_lazer_score_id": rx_lazer["id"], "rx_converted_score_ids": rx_converted_ids, "native_publication": native_publication, "room_scores": room_scores, "withdrawal": withdrawal, "upload_boundary": upload_boundary, "archive_names": archive_names, "http_requests": Client.request_count, "check_count": len(checks), "checks": checks}))
 
 
 if __name__ == "__main__":

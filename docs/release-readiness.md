@@ -15,7 +15,7 @@
 | 權限與不同角色區域 | 伺服器檢查權限，網站呈現相應管理區；有角色、帳號限制、圖譜／成績管理與稽核。見 [網站功能的權限驗證](website-features.md)。隱藏入口本身不作為授權證據。 |
 | 聊天系統 | 已有網站公開／私人對話、好友／封鎖及跨協定隔離整合證據。見 [聊天](website-chat.md)。原生遊戲的聊天畫面與重連仍待實機驗證。 |
 | 官方與社群圖譜 | 已有共享官方節流、metadata／整包匯入、本地 `.osu`／`.osz` 上傳、下載、難度切換及下架。見 [圖譜搜尋](map-discovery.md)、[官方圖譜包](official-beatmap-archives.md)、[本地圖譜包](local-map-packages.md)。 |
-| Score、Replay、rosu-pp、RX | 已有持久化、驗證／私密政策、Replay 綁定、PP 計算與獨立 Normal／RX 分區。隔離協定與資料庫證據見 [驗證紀錄](verification.md)。最新五次真人 stable 提交帶 19 欄，被原先精確 18 欄檢查以 400 拒絕；已按參考協定修正有界前段解析，真人成績／Replay 保存仍待確認。 |
+| Score、Replay、rosu-pp、RX | 已有持久化、Replay 綁定、PP 計算與獨立 Normal／RX 分區。真人 stable 已保存一筆 failed 與一筆 passed 成績，passed Replay 13,047 bytes、11 項綁定全部符合。正常原生成績改為通過協定與所需 Replay 檢查後自動公開；passed lazer 須完整 capture，API／未完成 capture／管理員明確決定保留原狀態。實際保存證據見 [原生提交](native-score-submission.md#真人-stable-保存證據)；Replay 播放及完整原生清單仍待確認。 |
 | stable 與 lazer 連線 | 已有 stable `-devserver` 協定及固定端點的 stock lazer 原創橋接，並有 HTTP／DTO／即時協定測試。見 [協定相容性](protocol-compatibility.md)。實機登入、遊玩、送分、Replay 播放及重連尚未通過完整清單。 |
 | 專用啟動器、禁止官方 fallback、退出移除 DLL | 已有必須先載入的外掛、固定服務、相容性拒絕、監護程序與復原清理。見 [Kaleidoscope](kaleidoscope-launcher.md)。真實遊戲的啟動／重新啟動／退出清理仍待玩家驗證；外掛只允許已驗證的 client 版本。 |
 | Landing 與連線教學 | 已有實際伺服器資料、功能入口、註冊／連線步驟及各客戶端操作指南。見 [網站功能](website-features.md) 與 [連線](connection.md)。 |
@@ -34,11 +34,17 @@
 
 其後的版本欄位 ASCII 空格旗標修正完成 7 個核心 tests、診斷隱私測試與 Clippy，Resonance 映像 `sha256:bcd541bbdd0a154ae7082136b042d851f69713218b2a46937eb6bf0fe27345cd` 通過一次 465 HTTP／57 類隔離協定 gate。兩套本機服務在 2026-10-08 10:00 UTC（台灣 18:00）完成更新，仍有十個健康容器；只重新建立兩個 Resonance，schema 22、其餘容器與原有資料 ID 保留。部署時兩套都仍為零成績／Replay。此 checkpoint 的 source 與備份範圍另記在 [版本旗標證據](stable-version-flags-evidence.json)。
 
-最新的有界前段解析修正映像 `sha256:4e298cd79897886bf08e29c867737aa7b92779c564390e1a4d1362a628bcae9d` 完成 10 個核心 tests、更新後的隱私測試、Clippy，以及一次 472 HTTP／58 類隔離協定 gate；其中首次加密送分就是已觀察到的 19 欄結構，以原創附加資料驗證保存及 Replay 回傳。兩套本機 Resonance 在 2026-10-08 14:07 UTC（台灣 22:07）更新，schema 22、其餘八個容器與原有資料 ID 保留，十個容器健康。Client 當時有 46 個難度，兩套仍為零成績／Replay；真人保存另待對應證據。見 [有界前段證據](stable-prefix-evidence.json)。
+有界前段解析修正映像 `sha256:4e298cd79897886bf08e29c867737aa7b92779c564390e1a4d1362a628bcae9d` 完成 10 個核心 tests、更新後的隱私測試、Clippy，以及一次 472 HTTP／58 類隔離協定 gate；其中首次加密送分就是已觀察到的 19 欄結構，以原創附加資料驗證保存及 Replay 回傳。兩套本機 Resonance 在 2026-10-08 14:07 UTC（台灣 22:07）更新，schema 22、其餘八個容器與原有資料 ID 保留，十個容器健康。部署 checkpoint 時 client 有 46 個難度，兩套仍為零成績／Replay。見 [有界前段證據](stable-prefix-evidence.json)；這個歷史 checkpoint 不包含其後的真人保存或自動公開政策。
+
+2026-10-08 14:12:30／14:12:57 UTC（台灣 22:12:30／22:12:57）的真人 stable 提交均為 HTTP 200，client 實際保存成績 #1（failed、無 Replay）與 #2（passed、有 Replay）。兩筆 immutable ingestion key 與成績內容不同，不是重複保存同一 checksum。#2 的 13,047-byte Replay 已做唯讀容器與 11 項 metadata 綁定核對，全部符合；原生 Replay 播放仍未驗證。14:16–14:19 UTC 的採樣時兩筆仍為 pending，發生在自動公開變更之前。精確本機證據檔及 SHA-256 見 [真人保存證據](native-score-submission.md#真人-stable-保存證據)。這證明該次 stable 成績／Replay 持久化，並未完成 stable／lazer 的所有原生功能或原始目標。
+
+目前政策是正常 native 成績自動公開，並保留既有 `scores.verify` 管理決定。Passed stable 須綁定 Replay，failed stable 保留為歷史且不進入要求 passed 的排名；passed lazer 須完整、未中斷且綁定的 capture。API 上傳與尚未完成／中斷的 capture 繼續 staging。正常 stable 不再排入保存／等待審核通知，結果圖表回傳實際前後統計。
+
+這項變更通過 4 個 publication PostgreSQL tests、1 個 replay capture PostgreSQL test、Clippy／rustfmt，以及最終映像的一輪 537 HTTP／64 類隔離協定 gate。兩個先前 HTTP gate 因新增 fixture 誤等 room-only 事件、誤讀 frozen room DTO 的 ranked flag 而失敗；修正測試後使用同一個編譯映像通過，失敗紀錄保留。兩套本機 Resonance 已在 2026-10-08 14:38 UTC（台灣 22:38）更新為 `sha256:247cad7c860a189c251775e403a0270567e9c8bc3e18aa390ad011c649a84355`，備份、schema 22、原有資料 ID 與其餘八個容器保持一致。已按原生保存證據與管理狀態 guard，只將觀察到的 #1／#2 公開；匿名 HTTPS 確認兩筆 verified、兩次遊玩與正 PP，#2 Replay 回覆 200／13,047 bytes。新版原生結果 UI 與 Replay 播放仍待玩家驗證。見 [自動公開證據](native-auto-publication-evidence.json)。
 
 ## 尚需完成
 
-1. 確認真人 stable 能成功保存成績與 Replay；2026-10-08 13:53–13:55 UTC 的五次重試確定因 19 欄／原先精確 18 欄限制而收到 400。已參照 Sunrise／bancho.py 的 canonical 前段契約修正，附加內容有界且不參與任何成績驗證；完整實機成功仍待對應請求與持久化證據。見 [原生成績提交](native-score-submission.md)。
+1. 確認自動公開版的原生結果頁、公開排行榜／統計與 Replay 下載／播放；本次真人 stable 保存已確認，完整流程與各模式尚未全部通過。保留 API／未完成 capture／明確管理決定的 staging／私密狀態，並確認正常 stable 不再出現保存／等待審核通知。見 [原生成績提交](native-score-submission.md)。
 2. 由玩家執行 [原生 release checklist](protocol-compatibility.md#native-client-release-checklist)，記錄 client 版本、時間與結果，涵蓋 stable／lazer 登入、聊天、官方／本地圖譜、各模式、RX、成績、Replay 與重連。
 3. 由玩家確認 Kaleidoscope 的真實啟動／關閉並重新啟動，以及遊戲結束後外掛清理；異常中斷後依復原流程檢查。
 

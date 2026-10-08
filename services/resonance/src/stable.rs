@@ -197,10 +197,7 @@ async fn login(state: &AppState, client: &str, body: &[u8]) -> Result<Response, 
     }
     append(
         &mut output,
-        wire::string_packet(
-            wire::server::NOTIFICATION,
-            "Welcome to Illyaverse. Submitted scores await moderator review before entering rankings.",
-        ),
+        wire::string_packet(wire::server::NOTIFICATION, "Welcome to Illyaverse."),
     )?;
     Ok(binary(output, Some(&token)))
 }
@@ -228,7 +225,7 @@ fn append_presence(
     )
 }
 
-async fn stats_on_connection(
+pub(crate) async fn stats_on_connection(
     db: &mut sqlx::PgConnection,
     player: &Account,
     action: UserAction,

@@ -8,7 +8,7 @@ use resonance_protocol::{
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use sqlx::{Postgres, Row, Transaction, postgres::PgRow};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[cfg(test)]
 #[path = "replay_capture_tests.rs"]
@@ -306,6 +306,14 @@ pub async fn end(
 pub async fn finalize(state: &AppState, uid: i64, token: i64) -> Result<Option<i64>, ApiError> {
     let mut tx = state.pool.begin().await?;
     lock_token_room(&mut tx, uid, token).await?;
+    // Keep room -> owner -> token/capture -> score lock order consistent with
+    // score ingestion and moderation. The restriction check remains locked
+    // until replay linkage and native publication have committed together.
+    sqlx::query("SELECT id FROM users WHERE id=$1 AND NOT is_restricted FOR SHARE")
+        .bind(uid)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(error("invalid_score_token"))?;
     let token_row = capture_token(&mut tx, uid, token, true).await?;
     room_capture_guard(&mut tx, &token_row, None, false).await?;
     if token_row.get::<String, _>("scope") == "room"
@@ -335,45 +343,39 @@ pub async fn finalize(state: &AppState, uid: i64, token: i64) -> Result<Option<i
     {
         return Ok(None);
     }
-    let Some(row)=sqlx::query("SELECT COALESCE(s.native_submission,t.submission) submission,t.version_hash,s.id,s.mods,s.replay_path,s.created_at,s.verification,b.md5,u.username FROM lazer_score_tokens t JOIN scores s ON s.id=t.score_id JOIN beatmaps b ON b.id=t.beatmap_id JOIN users u ON u.id=t.user_id WHERE t.id=$1 AND t.user_id=$2 AND s.user_id=$2 AND s.beatmap_id=t.beatmap_id AND (t.scope='solo' OR (s.client='lazer' AND s.mode=t.ruleset_id AND s.ingestion_key='lazer:'||t.id::text)) AND NOT u.is_restricted FOR UPDATE OF s").bind(token).bind(uid).fetch_optional(&mut *tx).await? else { return Ok(None); };
+    let Some(row)=sqlx::query("SELECT s.native_submission submission,s.id,s.mode,s.mods,s.score,s.accuracy,s.max_combo,s.passed,s.hit_counts,s.api_mods,s.replay_path,s.replay_sha256,s.replay_format,s.replay_complete,s.created_at,s.verification,b.md5,u.username FROM lazer_score_tokens t JOIN scores s ON s.id=t.score_id JOIN beatmaps b ON b.id=t.beatmap_id JOIN users u ON u.id=t.user_id WHERE t.id=$1 AND t.user_id=$2 AND s.user_id=$2 AND s.beatmap_id=t.beatmap_id AND s.client='lazer' AND s.mode=t.ruleset_id AND s.ingestion_key='lazer:'||t.id::text AND NOT u.is_restricted FOR UPDATE OF s").bind(token).bind(uid).fetch_optional(&mut *tx).await? else { return Ok(None); };
     let score_id: i64 = row.get("id");
     // A delayed capture must never undo a moderator's rejection. The locked
     // score row also serializes this check with moderation during publication.
     if row.get::<String, _>("verification") == "rejected" {
         return Ok(None);
     }
-    if token_row.get::<String, _>("scope") == "room" {
-        let saved: SoloScoreSubmission = serde_json::from_value(token_row.get("submission"))
-            .map_err(|_| error("invalid_stored_submission"))?;
-        let linked: SoloScoreSubmission = serde_json::from_value(row.get("submission"))
-            .map_err(|_| error("invalid_stored_submission"))?;
-        if json!(saved) != json!(linked)
-            || i64::from(crate::lazer::legacy_mods(linked.ruleset_id, &linked.mods)?)
-                != row.get::<i64, _>("mods")
-        {
-            return Err(error("room_ingestion_link_mismatch"));
-        }
-    }
-    if capture
-        .get::<Option<chrono::DateTime<chrono::Utc>>, _>("completed_at")
-        .is_some()
+    let saved: SoloScoreSubmission = serde_json::from_value(
+        token_row
+            .get::<Option<Value>, _>("submission")
+            .ok_or(error("invalid_stored_submission"))?,
+    )
+    .map_err(|_| error("invalid_stored_submission"))?;
+    let input: SoloScoreSubmission = serde_json::from_value(
+        row.get::<Option<Value>, _>("submission")
+            .ok_or(error("invalid_stored_submission"))?,
+    )
+    .map_err(|_| error("invalid_stored_submission"))?;
+    input.validate()?;
+    if json!(saved) != json!(input)
+        || i16::from(input.ruleset_id) != row.get::<i16, _>("mode")
+        || i64::from(crate::lazer::legacy_mods(input.ruleset_id, &input.mods)?)
+            != row.get::<i64, _>("mods")
+        || row.get::<i64, _>("score") != input.total_score as i64
+        || (row.get::<f64, _>("accuracy") - input.accuracy * 100.0).abs() > 1e-6
+        || row.get::<i32, _>("max_combo") != input.max_combo as i32
+        || row.get::<bool, _>("passed") != input.passed
+        || row.get::<Value, _>("hit_counts") != input.legacy_hit_counts()
+        || crate::room_scores::canonical_mods(&row.get::<Value, _>("api_mods"))?
+            != crate::room_scores::canonical_mods(&json!(input.mods))?
     {
-        return Ok(Some(score_id));
+        return Err(error("score_ingestion_link_mismatch"));
     }
-    if row.get::<Option<String>, _>("replay_path").is_some() {
-        sqlx::query("DELETE FROM lazer_replay_chunks WHERE token_id=$1")
-            .bind(token)
-            .execute(&mut *tx)
-            .await?;
-        sqlx::query("UPDATE lazer_replay_captures SET completed_at=now() WHERE token_id=$1")
-            .bind(token)
-            .execute(&mut *tx)
-            .await?;
-        tx.commit().await?;
-        return Ok(Some(score_id));
-    }
-    let input: SoloScoreSubmission = serde_json::from_value(row.get("submission"))
-        .map_err(|_| error("invalid_stored_submission"))?;
     let header: Value = capture
         .get::<Option<Value>, _>("final_header")
         .ok_or(error("replay_frames_missing"))?;
@@ -412,6 +414,82 @@ pub async fn finalize(state: &AppState, uid: i64, token: i64) -> Result<Option<i
     let md5: String = row.get("md5");
     let date: chrono::DateTime<chrono::Utc> = row.get("created_at");
     let bits = row.get::<i64, _>("mods") as u32;
+    let timestamp_ticks = date.timestamp() * 10_000_000
+        + i64::from(date.timestamp_subsec_nanos() / 100)
+        + 621_355_968_000_000_000;
+    let ingestion_key = format!("lazer:{token}");
+    if let Some(path) = row.get::<Option<String>, _>("replay_path") {
+        // Completed captures discard their chunks, so recovery revalidates the
+        // bounded durable bytes against the immutable token/score and digest.
+        // A separately uploaded replay with unknown completeness stays pending.
+        let _permit = ENCODERS
+            .try_acquire()
+            .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "replay_encoding_busy"))?;
+        let mut bytes = Vec::new();
+        tokio::fs::File::open(state.storage.join("replays").join(&path))
+            .await?
+            .take(resonance_protocol::replay::MAX_REPLAY_BYTES as u64 + 1)
+            .read_to_end(&mut bytes)
+            .await?;
+        let expected_sha = row.get::<Option<String>, _>("replay_sha256");
+        if expected_sha.as_deref() != Some(digest(&bytes).as_str())
+            || row.get::<Option<String>, _>("replay_format").as_deref() != Some("lazer")
+        {
+            return Err(error("replay_metadata_mismatch"));
+        }
+        let frames = capture.get::<i32, _>("frame_count");
+        tokio::task::spawn_blocking(move || {
+            let replay = lazer_replay::ExtendedReplay::parse(&bytes)?;
+            replay.matches(&ReplayScore {
+                online_id: score_id,
+                user_id: uid,
+                username: &username,
+                beatmap_md5: &md5,
+                client_version: "",
+                mods_bits: bits,
+                timestamp_ticks,
+                submission: &input,
+            })?;
+            if replay.frame_count != frames as usize
+                || replay.legacy.timestamp_ticks != timestamp_ticks
+            {
+                return Err(resonance_protocol::ProtocolError::Invalid(
+                    "replay capture mismatch",
+                ));
+            }
+            Ok::<_, resonance_protocol::ProtocolError>(())
+        })
+        .await
+        .map_err(|_| error("replay_encoding_failed"))??;
+        if !capture.get::<bool, _>("interrupted")
+            && row.get::<Option<bool>, _>("replay_complete") == Some(true)
+        {
+            crate::native_score_publication::publish(
+                &mut tx,
+                score_id,
+                uid,
+                crate::native_score_publication::NativeClient::Lazer,
+                &ingestion_key,
+            )
+            .await?;
+        }
+        sqlx::query("DELETE FROM lazer_replay_chunks WHERE token_id=$1")
+            .bind(token)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("UPDATE lazer_replay_captures SET completed_at=COALESCE(completed_at,now()) WHERE token_id=$1")
+            .bind(token)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        return Ok(Some(score_id));
+    }
+    if capture
+        .get::<Option<chrono::DateTime<chrono::Utc>>, _>("completed_at")
+        .is_some()
+    {
+        return Err(error("replay_file_missing"));
+    }
     let chunks: Vec<Vec<u8>> = sqlx::query_scalar(
         "SELECT frame_text FROM lazer_replay_chunks WHERE token_id=$1 ORDER BY sequence",
     )
@@ -433,9 +511,7 @@ pub async fn finalize(state: &AppState, uid: i64, token: i64) -> Result<Option<i
             beatmap_md5: &md5,
             client_version: "",
             mods_bits: bits,
-            timestamp_ticks: date.timestamp() * 10_000_000
-                + i64::from(date.timestamp_subsec_nanos() / 100)
-                + 621_355_968_000_000_000,
+            timestamp_ticks,
             submission: &input,
         };
         lazer_replay::encode(&score, &frames)
@@ -457,7 +533,29 @@ pub async fn finalize(state: &AppState, uid: i64, token: i64) -> Result<Option<i
     file.sync_all().await?;
     drop(file);
     tokio::fs::rename(&temporary, &final_path).await?;
-    let result:Result<(),sqlx::Error>=async {sqlx::query("UPDATE scores SET replay_path=$2,replay_sha256=$3,replay_format='lazer',replay_complete=$4,verification='pending' WHERE id=$1").bind(score_id).bind(&name).bind(&sha).bind(!capture.get::<bool,_>("interrupted")).execute(&mut *tx).await?;sqlx::query("UPDATE lazer_replay_captures SET completed_at=now(),updated_at=now() WHERE token_id=$1").bind(token).execute(&mut *tx).await?;sqlx::query("DELETE FROM lazer_replay_chunks WHERE token_id=$1").bind(token).execute(&mut *tx).await?;sqlx::query("INSERT INTO audit_events(actor_id,action,target_type,target_id,details) VALUES($1,'scores.lazer_replay_capture','score',$2,$3)").bind(uid).bind(score_id.to_string()).bind(json!({"frame_count":capture.get::<i32,_>("frame_count"),"interrupted":capture.get::<bool,_>("interrupted"),"gameplay_verified":false,"sha256":sha})).execute(&mut *tx).await?;tx.commit().await?;Ok(())}.await;
+    let result: Result<(), sqlx::Error> = async {
+        let complete = !capture.get::<bool, _>("interrupted");
+        sqlx::query("UPDATE scores SET replay_path=$2,replay_sha256=$3,replay_format='lazer',replay_complete=$4 WHERE id=$1")
+            .bind(score_id).bind(&name).bind(&sha).bind(complete)
+            .execute(&mut *tx).await?;
+        sqlx::query("UPDATE lazer_replay_captures SET completed_at=now(),updated_at=now() WHERE token_id=$1")
+            .bind(token).execute(&mut *tx).await?;
+        sqlx::query("DELETE FROM lazer_replay_chunks WHERE token_id=$1")
+            .bind(token).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO audit_events(actor_id,action,target_type,target_id,details) VALUES($1,'scores.lazer_replay_capture','score',$2,$3)")
+            .bind(uid).bind(score_id.to_string())
+            .bind(json!({"frame_count":capture.get::<i32,_>("frame_count"),"interrupted":capture.get::<bool,_>("interrupted"),"gameplay_verified":false,"sha256":sha}))
+            .execute(&mut *tx).await?;
+        if complete {
+            crate::native_score_publication::publish(
+                &mut tx, score_id, uid,
+                crate::native_score_publication::NativeClient::Lazer,
+                &ingestion_key,
+            ).await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }.await;
     if let Err(error) = result {
         // A lost COMMIT acknowledgement can still have persisted the reference.
         // Retain complete bytes rather than delete a possibly published replay.
