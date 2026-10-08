@@ -224,6 +224,18 @@ pub struct Filter {
     source: Option<String>,
     status: Option<String>,
     availability: Option<String>,
+    uploaded_by: Option<String>,
+}
+fn uploader_filter(value: Option<&str>) -> ApiResult<Option<i64>> {
+    value
+        .map(|value| {
+            value
+                .parse::<i64>()
+                .ok()
+                .filter(|id| *id > 0)
+                .ok_or_else(|| ApiError::bad("Enter a positive uploader ID."))
+        })
+        .transpose()
 }
 pub async fn list(State(state): State<AppState>, Query(filter): Query<Filter>) -> ApiResult {
     list_inner(&state, filter, false).await
@@ -242,6 +254,7 @@ async fn list_inner(state: &AppState, filter: Filter, admin: bool) -> ApiResult 
     if filter.q.as_ref().is_some_and(|v| v.len() > 100) {
         return Err(ApiError::bad("Search is too long."));
     }
+    let uploaded_by = uploader_filter(filter.uploaded_by.as_deref())?;
     let (p, size, offset) = Pagination {
         page: filter.page,
         page_size: filter.page_size,
@@ -262,7 +275,7 @@ async fn list_inner(state: &AppState, filter: Filter, admin: bool) -> ApiResult 
         _ => "true",
     };
     let where_clause = format!(
-        "{predicate} AND ($1::text IS NULL OR title ILIKE $1 OR artist ILIKE $1 OR creator ILIKE $1 OR version ILIKE $1) AND ($2::smallint IS NULL OR mode=$2) AND ($3::text IS NULL OR source=$3) AND ($4::text IS NULL OR status=$4)"
+        "{predicate} AND ($1::text IS NULL OR title ILIKE $1 OR artist ILIKE $1 OR creator ILIKE $1 OR version ILIKE $1) AND ($2::smallint IS NULL OR mode=$2) AND ($3::text IS NULL OR source=$3) AND ($4::text IS NULL OR status=$4) AND ($5::bigint IS NULL OR b.uploaded_by=$5)"
     );
     let total: i64 = sqlx::query_scalar(&format!(
         "SELECT count(*) FROM beatmaps b WHERE {where_clause}"
@@ -271,6 +284,7 @@ async fn list_inner(state: &AppState, filter: Filter, admin: bool) -> ApiResult 
     .bind(filter.mode)
     .bind(&filter.source)
     .bind(&filter.status)
+    .bind(uploaded_by)
     .fetch_one(&state.db)
     .await?;
     let state_projection = if admin {
@@ -279,13 +293,14 @@ async fn list_inner(state: &AppState, filter: Filter, admin: bool) -> ApiResult 
         availability::PUBLIC_STATE
     };
     let query = format!(
-        "SELECT {PUBLIC_MAP}||jsonb_build_object('availability',{state_projection}) FROM beatmaps b LEFT JOIN beatmapset_availability av ON av.native_set_id=b.native_set_id WHERE {where_clause} ORDER BY b.created_at DESC,b.id DESC LIMIT $5 OFFSET $6"
+        "SELECT {PUBLIC_MAP}||jsonb_build_object('availability',{state_projection}) FROM beatmaps b LEFT JOIN beatmapset_availability av ON av.native_set_id=b.native_set_id WHERE {where_clause} ORDER BY b.created_at DESC,b.id DESC LIMIT $6 OFFSET $7"
     );
     let items = sqlx::query_scalar::<_, Value>(&query)
         .bind(q)
         .bind(filter.mode)
         .bind(filter.source)
         .bind(filter.status)
+        .bind(uploaded_by)
         .bind(size)
         .bind(offset)
         .fetch_all(&state.db)
@@ -1775,6 +1790,10 @@ pub(crate) mod map_mutation_tests;
 #[cfg(test)]
 #[path = "map_package_tests.rs"]
 mod map_package_tests;
+
+#[cfg(test)]
+#[path = "uploaded_map_list_tests.rs"]
+mod uploaded_map_list_tests;
 
 #[cfg(test)]
 mod tests {
