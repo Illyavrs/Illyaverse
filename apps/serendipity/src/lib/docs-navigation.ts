@@ -21,6 +21,7 @@ export const documents = Object.freeze({
   permissions: 'permissions.md',
   announcements: 'announcements.md',
   'rank-history': 'rank-history.md',
+  'map-discovery': 'map-discovery.md',
   protocol: 'protocol-compatibility.md',
   realtime: 'signalr-compatibility.md',
   'room-scores': 'lazer-room-scores-plan.md',

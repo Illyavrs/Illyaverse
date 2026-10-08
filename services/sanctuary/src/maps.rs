@@ -97,7 +97,7 @@ fn filename_conflict() -> ApiError {
     )
 }
 
-const PUBLIC_MAP: &str = r#"to_jsonb(b)-'osu_path'-'archive_path' || jsonb_build_object(
+pub(crate) const PUBLIC_MAP: &str = r#"to_jsonb(b)-'osu_path'-'archive_path' || jsonb_build_object(
     'play_count',(SELECT count(*) FROM scores s WHERE s.beatmap_id=b.id AND verification='verified'),
     'download_url','/api/v1/beatmaps/'||b.id||'/download',
     'download_kind',CASE WHEN EXISTS(SELECT 1 FROM official_beatmapset_archive_members am WHERE am.beatmap_id=b.id)

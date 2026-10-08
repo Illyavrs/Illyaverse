@@ -37,6 +37,9 @@ jobs:
       - run: cargo test -p sanctuary rank_history_tests --locked -- --ignored --test-threads=1
         env:
           ILLYA_TEST_DATABASE_URL: postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci
+      - run: cargo test -p sanctuary map_catalogue_tests --locked -- --ignored --test-threads=1
+        env:
+          ILLYA_TEST_DATABASE_URL: postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci
       - run: cargo test -p resonance signalr_http_websocket_and_sse --locked -- --ignored
         env:
           ILLYA_TEST_DATABASE_URL: postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci

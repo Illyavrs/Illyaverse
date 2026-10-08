@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-07T11:38:38.181896Z",
+  "generatedAt": "2026-10-08T04:12:46.109Z",
   "title": "Design System: Illyaverse — Serendipity",
   "extensions": {
     "colorMeta": {
@@ -272,7 +272,7 @@
       },
       "surface-strong": {
         "role": "neutral",
-        "displayName": "Header Glass",
+        "displayName": "Strong Glass",
         "tonalRamp": [
           "oklch(15% 0.00000 0.00 / 0.7000)",
           "oklch(26% 0.00000 0.00 / 0.7000)",
@@ -524,7 +524,7 @@
       },
       "light-surface-strong": {
         "role": "neutral",
-        "displayName": "Light Header Glass",
+        "displayName": "Light Strong Glass",
         "tonalRamp": [
           "oklch(15% 0.00000 0.00 / 0.7000)",
           "oklch(26% 0.00000 0.00 / 0.7000)",
@@ -576,6 +576,286 @@
           "oklch(72% 0.08777 70.94)",
           "oklch(84% 0.08777 70.94)",
           "oklch(95% 0.08777 70.94)"
+        ]
+      },
+      "surface-raised": {
+        "role": "neutral",
+        "displayName": "Raised Glass",
+        "tonalRamp": [
+          "oklch(15% 0.00000 0.00 / 0.5500)",
+          "oklch(26% 0.00000 0.00 / 0.5500)",
+          "oklch(38% 0.00000 0.00 / 0.5500)",
+          "oklch(49% 0.00000 0.00 / 0.5500)",
+          "oklch(61% 0.00000 0.00 / 0.5500)",
+          "oklch(72% 0.00000 0.00 / 0.5500)",
+          "oklch(84% 0.00000 0.00 / 0.5500)",
+          "oklch(95% 0.00000 0.00 / 0.5500)"
+        ]
+      },
+      "surface-subtle": {
+        "role": "neutral",
+        "displayName": "Subtle Glass",
+        "tonalRamp": [
+          "oklch(15% 0.00000 0.00 / 0.5500)",
+          "oklch(26% 0.00000 0.00 / 0.5500)",
+          "oklch(38% 0.00000 0.00 / 0.5500)",
+          "oklch(49% 0.00000 0.00 / 0.5500)",
+          "oklch(61% 0.00000 0.00 / 0.5500)",
+          "oklch(72% 0.00000 0.00 / 0.5500)",
+          "oklch(84% 0.00000 0.00 / 0.5500)",
+          "oklch(95% 0.00000 0.00 / 0.5500)"
+        ]
+      },
+      "divider-strong": {
+        "role": "neutral",
+        "displayName": "Strong Divider",
+        "tonalRamp": [
+          "oklch(15% 0.00000 0.00 / 0.1882)",
+          "oklch(26% 0.00000 0.00 / 0.1882)",
+          "oklch(38% 0.00000 0.00 / 0.1882)",
+          "oklch(49% 0.00000 0.00 / 0.1882)",
+          "oklch(61% 0.00000 0.00 / 0.1882)",
+          "oklch(72% 0.00000 0.00 / 0.1882)",
+          "oklch(84% 0.00000 0.00 / 0.1882)",
+          "oklch(95% 0.00000 0.00 / 0.1882)"
+        ]
+      },
+      "selection-fill": {
+        "role": "primary",
+        "displayName": "Accent Selection",
+        "tonalRamp": [
+          "oklch(15% 0.02720 353.47)",
+          "oklch(26% 0.02720 353.47)",
+          "oklch(38% 0.02720 353.47)",
+          "oklch(49% 0.02720 353.47)",
+          "oklch(61% 0.02720 353.47)",
+          "oklch(72% 0.02720 353.47)",
+          "oklch(84% 0.02720 353.47)",
+          "oklch(95% 0.02720 353.47)"
+        ]
+      },
+      "light-surface-raised": {
+        "role": "neutral",
+        "displayName": "Light Raised Glass",
+        "tonalRamp": [
+          "oklch(15% 0.00000 0.00 / 0.5500)",
+          "oklch(26% 0.00000 0.00 / 0.5500)",
+          "oklch(38% 0.00000 0.00 / 0.5500)",
+          "oklch(49% 0.00000 0.00 / 0.5500)",
+          "oklch(61% 0.00000 0.00 / 0.5500)",
+          "oklch(72% 0.00000 0.00 / 0.5500)",
+          "oklch(84% 0.00000 0.00 / 0.5500)",
+          "oklch(95% 0.00000 0.00 / 0.5500)"
+        ]
+      },
+      "light-surface-subtle": {
+        "role": "neutral",
+        "displayName": "Light Subtle Glass",
+        "tonalRamp": [
+          "oklch(15% 0.00000 0.00 / 0.5500)",
+          "oklch(26% 0.00000 0.00 / 0.5500)",
+          "oklch(38% 0.00000 0.00 / 0.5500)",
+          "oklch(49% 0.00000 0.00 / 0.5500)",
+          "oklch(61% 0.00000 0.00 / 0.5500)",
+          "oklch(72% 0.00000 0.00 / 0.5500)",
+          "oklch(84% 0.00000 0.00 / 0.5500)",
+          "oklch(95% 0.00000 0.00 / 0.5500)"
+        ]
+      },
+      "light-divider-strong": {
+        "role": "neutral",
+        "displayName": "Light Strong Divider",
+        "tonalRamp": [
+          "oklch(15% 0.00000 0.00 / 0.1882)",
+          "oklch(26% 0.00000 0.00 / 0.1882)",
+          "oklch(38% 0.00000 0.00 / 0.1882)",
+          "oklch(49% 0.00000 0.00 / 0.1882)",
+          "oklch(61% 0.00000 0.00 / 0.1882)",
+          "oklch(72% 0.00000 0.00 / 0.1882)",
+          "oklch(84% 0.00000 0.00 / 0.1882)",
+          "oklch(95% 0.00000 0.00 / 0.1882)"
+        ]
+      },
+      "light-selection-fill": {
+        "role": "primary",
+        "displayName": "Light Accent Selection",
+        "tonalRamp": [
+          "oklch(15% 0.01436 351.04)",
+          "oklch(26% 0.01436 351.04)",
+          "oklch(38% 0.01436 351.04)",
+          "oklch(49% 0.01436 351.04)",
+          "oklch(61% 0.01436 351.04)",
+          "oklch(72% 0.01436 351.04)",
+          "oklch(84% 0.01436 351.04)",
+          "oklch(95% 0.01436 351.04)"
+        ]
+      },
+      "difficulty-easy": {
+        "role": "neutral",
+        "displayName": "Easy Blue",
+        "tonalRamp": [
+          "oklch(15% 0.08654 236.76)",
+          "oklch(26% 0.08654 236.76)",
+          "oklch(38% 0.08654 236.76)",
+          "oklch(49% 0.08654 236.76)",
+          "oklch(61% 0.08654 236.76)",
+          "oklch(72% 0.08654 236.76)",
+          "oklch(84% 0.08654 236.76)",
+          "oklch(95% 0.08654 236.76)"
+        ]
+      },
+      "light-difficulty-easy": {
+        "role": "neutral",
+        "displayName": "Light Easy Blue",
+        "tonalRamp": [
+          "oklch(15% 0.08900 238.43)",
+          "oklch(26% 0.08900 238.43)",
+          "oklch(38% 0.08900 238.43)",
+          "oklch(49% 0.08900 238.43)",
+          "oklch(61% 0.08900 238.43)",
+          "oklch(72% 0.08900 238.43)",
+          "oklch(84% 0.08900 238.43)",
+          "oklch(95% 0.08900 238.43)"
+        ]
+      },
+      "difficulty-normal": {
+        "role": "neutral",
+        "displayName": "Normal Green",
+        "tonalRamp": [
+          "oklch(15% 0.08741 154.85)",
+          "oklch(26% 0.08741 154.85)",
+          "oklch(38% 0.08741 154.85)",
+          "oklch(49% 0.08741 154.85)",
+          "oklch(61% 0.08741 154.85)",
+          "oklch(72% 0.08741 154.85)",
+          "oklch(84% 0.08741 154.85)",
+          "oklch(95% 0.08741 154.85)"
+        ]
+      },
+      "light-difficulty-normal": {
+        "role": "neutral",
+        "displayName": "Light Normal Green",
+        "tonalRamp": [
+          "oklch(15% 0.09162 151.01)",
+          "oklch(26% 0.09162 151.01)",
+          "oklch(38% 0.09162 151.01)",
+          "oklch(49% 0.09162 151.01)",
+          "oklch(61% 0.09162 151.01)",
+          "oklch(72% 0.09162 151.01)",
+          "oklch(84% 0.09162 151.01)",
+          "oklch(95% 0.09162 151.01)"
+        ]
+      },
+      "difficulty-hard": {
+        "role": "neutral",
+        "displayName": "Hard Amber",
+        "tonalRamp": [
+          "oklch(15% 0.09414 90.81)",
+          "oklch(26% 0.09414 90.81)",
+          "oklch(38% 0.09414 90.81)",
+          "oklch(49% 0.09414 90.81)",
+          "oklch(61% 0.09414 90.81)",
+          "oklch(72% 0.09414 90.81)",
+          "oklch(84% 0.09414 90.81)",
+          "oklch(95% 0.09414 90.81)"
+        ]
+      },
+      "light-difficulty-hard": {
+        "role": "neutral",
+        "displayName": "Light Hard Amber",
+        "tonalRamp": [
+          "oklch(15% 0.09384 85.24)",
+          "oklch(26% 0.09384 85.24)",
+          "oklch(38% 0.09384 85.24)",
+          "oklch(49% 0.09384 85.24)",
+          "oklch(61% 0.09384 85.24)",
+          "oklch(72% 0.09384 85.24)",
+          "oklch(84% 0.09384 85.24)",
+          "oklch(95% 0.09384 85.24)"
+        ]
+      },
+      "difficulty-insane": {
+        "role": "neutral",
+        "displayName": "Insane Pink",
+        "tonalRamp": [
+          "oklch(15% 0.08502 346.45)",
+          "oklch(26% 0.08502 346.45)",
+          "oklch(38% 0.08502 346.45)",
+          "oklch(49% 0.08502 346.45)",
+          "oklch(61% 0.08502 346.45)",
+          "oklch(72% 0.08502 346.45)",
+          "oklch(84% 0.08502 346.45)",
+          "oklch(95% 0.08502 346.45)"
+        ]
+      },
+      "light-difficulty-insane": {
+        "role": "neutral",
+        "displayName": "Light Insane Pink",
+        "tonalRamp": [
+          "oklch(15% 0.12932 350.36)",
+          "oklch(26% 0.12932 350.36)",
+          "oklch(38% 0.12932 350.36)",
+          "oklch(49% 0.12932 350.36)",
+          "oklch(61% 0.12932 350.36)",
+          "oklch(72% 0.12932 350.36)",
+          "oklch(84% 0.12932 350.36)",
+          "oklch(95% 0.12932 350.36)"
+        ]
+      },
+      "difficulty-expert": {
+        "role": "neutral",
+        "displayName": "Expert Violet",
+        "tonalRamp": [
+          "oklch(15% 0.09714 296.93)",
+          "oklch(26% 0.09714 296.93)",
+          "oklch(38% 0.09714 296.93)",
+          "oklch(49% 0.09714 296.93)",
+          "oklch(61% 0.09714 296.93)",
+          "oklch(72% 0.09714 296.93)",
+          "oklch(84% 0.09714 296.93)",
+          "oklch(95% 0.09714 296.93)"
+        ]
+      },
+      "light-difficulty-expert": {
+        "role": "neutral",
+        "displayName": "Light Expert Violet",
+        "tonalRamp": [
+          "oklch(15% 0.14043 297.24)",
+          "oklch(26% 0.14043 297.24)",
+          "oklch(38% 0.14043 297.24)",
+          "oklch(49% 0.14043 297.24)",
+          "oklch(61% 0.14043 297.24)",
+          "oklch(72% 0.14043 297.24)",
+          "oklch(84% 0.14043 297.24)",
+          "oklch(95% 0.14043 297.24)"
+        ]
+      },
+      "difficulty-extreme": {
+        "role": "neutral",
+        "displayName": "Extreme Coral",
+        "tonalRamp": [
+          "oklch(15% 0.09699 31.18)",
+          "oklch(26% 0.09699 31.18)",
+          "oklch(38% 0.09699 31.18)",
+          "oklch(49% 0.09699 31.18)",
+          "oklch(61% 0.09699 31.18)",
+          "oklch(72% 0.09699 31.18)",
+          "oklch(84% 0.09699 31.18)",
+          "oklch(95% 0.09699 31.18)"
+        ]
+      },
+      "light-difficulty-extreme": {
+        "role": "neutral",
+        "displayName": "Light Extreme Coral",
+        "tonalRamp": [
+          "oklch(15% 0.12080 30.96)",
+          "oklch(26% 0.12080 30.96)",
+          "oklch(38% 0.12080 30.96)",
+          "oklch(49% 0.12080 30.96)",
+          "oklch(61% 0.12080 30.96)",
+          "oklch(72% 0.12080 30.96)",
+          "oklch(84% 0.12080 30.96)",
+          "oklch(95% 0.12080 30.96)"
         ]
       }
     },
@@ -678,6 +958,11 @@
         "name": "reduced-motion",
         "value": "none",
         "purpose": "The reduced-motion query disables transitions and animations and restores immediate scrolling."
+      },
+      {
+        "name": "map-loading",
+        "value": "1.5s ease-in-out infinite",
+        "purpose": "Map discovery loading placeholders pulse; the existing reduced-motion query disables the animation."
       }
     ],
     "breakpoints": [
@@ -696,6 +981,18 @@
       {
         "name": "tailwind-sm",
         "value": "40rem"
+      },
+      {
+        "name": "map-list-stack",
+        "value": "1000px"
+      },
+      {
+        "name": "map-catalogue-single-column",
+        "value": "680px"
+      },
+      {
+        "name": "map-filters-single-column",
+        "value": "440px"
       }
     ]
   },
@@ -735,9 +1032,9 @@
     {
       "name": "Primary Navigation",
       "kind": "nav",
-      "description": "Desktop route links with a source-matched active underline; the preview switches to the mobile sheet-link treatment.",
+      "description": "Desktop route links use readable accent and an active underline; mobile current links use the shared selection fill.",
       "html": "<nav class=\"ds-navigation\" aria-label=\"主要選單\"><a class=\"ds-navigation-link ds-navigation-active\" href=\"/\" aria-current=\"page\">首頁</a><a class=\"ds-navigation-link\" href=\"/beatmaps\">圖譜</a><a class=\"ds-navigation-link\" href=\"/rankings\">排行榜</a></nav>",
-      "css": ".ds-navigation{display:flex;align-items:center;gap:26px;font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);}.ds-navigation-link{position:relative;color:var(--secondary-text,#b5b5b5);font-size:14px;font-weight:700;line-height:1.7;white-space:nowrap;padding:25px 0;text-decoration:none;transition:color .18s;}.ds-navigation-link:hover,.ds-navigation-active{color:var(--foreground,#f5f5f5);}.ds-navigation-active::after{content:\"\";position:absolute;height:2px;background:var(--user-accent,#f28eb6);bottom:15px;left:0;right:0;border-radius:3px;}.ds-navigation-link:focus-visible{outline:2px solid var(--user-accent,#f28eb6);outline-offset:4px;}@media(max-width:1100px){.ds-navigation{gap:18px;}.ds-navigation-link{font-size:12px;}}@media(max-width:860px){.ds-navigation{flex-direction:column;align-items:stretch;gap:6px;padding:8px 20px;}.ds-navigation-link{padding:10px 12px;border-radius:8px;font-size:15px;}.ds-navigation-active{background:var(--secondary,#262626);color:var(--readable-accent,color-mix(in srgb,var(--user-accent,#f28eb6) 40%,#f5f5f5));}.ds-navigation-active::after{display:none;}}@media(prefers-reduced-motion:reduce){.ds-navigation-link{transition:none;}}@media(max-width:600px){.ds-navigation-link{font-size:14px;}}"
+      "css": ".ds-navigation{display:flex;align-items:center;gap:26px;font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);}.ds-navigation-link{position:relative;color:var(--secondary-text,#b5b5b5);font-size:14px;font-weight:700;line-height:1.7;white-space:nowrap;padding:25px 0;text-decoration:none;transition:color .18s;}.ds-navigation-link:hover{color:var(--foreground,#f5f5f5);}.ds-navigation-active{color:var(--readable-accent,color-mix(in srgb,var(--user-accent,#f28eb6) 40%,#f5f5f5));}.ds-navigation-active::after{content:\"\";position:absolute;height:2px;background:var(--user-accent,#f28eb6);bottom:15px;left:0;right:0;border-radius:3px;}.ds-navigation-link:focus-visible{outline:2px solid var(--user-accent,#f28eb6);outline-offset:4px;}@media(max-width:1100px){.ds-navigation{gap:18px;}.ds-navigation-link{font-size:12px;}}@media(max-width:860px){.ds-navigation{flex-direction:column;align-items:stretch;gap:6px;padding:8px 20px;}.ds-navigation-link{padding:10px 12px;border-radius:8px;font-size:15px;}.ds-navigation-active{background:var(--selection-fill,color-mix(in srgb,var(--user-accent,#f28eb6) 16%,var(--background,#080808)));color:var(--readable-accent,color-mix(in srgb,var(--user-accent,#f28eb6) 40%,#f5f5f5));}.ds-navigation-active::after{display:none;}}@media(prefers-reduced-motion:reduce){.ds-navigation-link{transition:none;}}@media(max-width:600px){.ds-navigation-link{font-size:14px;}}"
     },
     {
       "name": "Secondary Badge",
@@ -751,17 +1048,17 @@
       "name": "Glass Content Panel",
       "kind": "card",
       "refersTo": "glass-panel",
-      "description": "The general glass container uses independent panel blur and opacity, a shared live radius, and no default box shadow.",
+      "description": "Base glass content material; filtering and table headers use the shared raised level while navigation uses strong glass.",
       "html": "<section class=\"ds-glass\"><h2 class=\"ds-glass-title\">圖譜</h2><p class=\"ds-glass-copy\">搜尋與瀏覽社群圖譜。</p><a class=\"ds-glass-link\" href=\"/beatmaps\">瀏覽圖譜</a></section>",
-      "css": ".ds-glass{padding:24px;overflow:hidden;background:var(--surface,rgb(12 12 12 / var(--panel-opacity,.55)));color:var(--foreground,#f5f5f5);border:1px solid var(--border,#ffffff16);border-radius:var(--radius,14px);backdrop-filter:blur(var(--panel-blur,8px));font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);}.ds-glass-title{margin:0 0 24px;font-size:1.4rem;font-weight:800;line-height:1.3;letter-spacing:-.025em;text-wrap:balance;}.ds-glass-copy{margin:0;color:var(--secondary-text,#b5b5b5);font-size:14px;line-height:1.9;}.ds-glass-link{display:inline-flex;margin-top:18px;color:var(--readable-accent,color-mix(in srgb,var(--user-accent,#f28eb6) 40%,#f5f5f5));font-size:13px;font-weight:800;line-height:1.7;text-decoration:none;text-underline-offset:4px;transition:color .18s;}.ds-glass-link:hover{text-decoration:underline;}.ds-glass-link:focus-visible{outline:2px solid var(--user-accent,#f28eb6);outline-offset:4px;}@media(max-width:600px){.ds-glass{padding:12px;}}@media(prefers-reduced-motion:reduce){.ds-glass-link{transition:none;}}"
+      "css": ".ds-glass{padding:24px;overflow:hidden;background:var(--surface,rgb(26 26 26 / var(--panel-opacity,.55)));color:var(--foreground,#f5f5f5);border:1px solid var(--border,#ffffff16);border-radius:var(--radius,14px);backdrop-filter:blur(var(--panel-blur,8px));font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);}.ds-glass-title{margin:0 0 24px;font-size:1.4rem;font-weight:800;line-height:1.3;letter-spacing:-.025em;text-wrap:balance;}.ds-glass-copy{margin:0;color:var(--secondary-text,#b5b5b5);font-size:14px;line-height:1.9;}.ds-glass-link{display:inline-flex;margin-top:18px;color:var(--readable-accent,color-mix(in srgb,var(--user-accent,#f28eb6) 40%,#f5f5f5));font-size:13px;font-weight:800;line-height:1.7;text-decoration:none;text-underline-offset:4px;transition:color .18s;}.ds-glass-link:hover{text-decoration:underline;}.ds-glass-link:focus-visible{outline:2px solid var(--user-accent,#f28eb6);outline-offset:4px;}@media(max-width:600px){.ds-glass{padding:12px;}}@media(prefers-reduced-motion:reduce){.ds-glass-link{transition:none;}}"
     },
     {
       "name": "Game Mode Selector",
       "kind": "custom",
       "refersTo": "mode-control",
-      "description": "The native pressed-state button group shared by catalogues and scores; mobile labels remain intact.",
+      "description": "The shared pressed-state group uses live accent selection; profile instances bind it to the owner’s public accent.",
       "html": "<div class=\"ds-mode-control\" role=\"group\" aria-label=\"遊戲模式\"><button class=\"ds-mode-button\" type=\"button\" aria-pressed=\"true\">全部</button><button class=\"ds-mode-button\" type=\"button\" aria-pressed=\"false\">osu!</button><button class=\"ds-mode-button\" type=\"button\" aria-pressed=\"false\">taiko</button><button class=\"ds-mode-button\" type=\"button\" aria-pressed=\"false\">catch</button><button class=\"ds-mode-button\" type=\"button\" aria-pressed=\"false\">mania</button></div>",
-      "css": ".ds-mode-control{display:flex;gap:4px;background:var(--background,#080808);border-radius:calc(var(--radius,14px)*.65);padding:4px;border:1px solid var(--border,#ffffff16);font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);}.ds-mode-button{padding:5px 12px;border:0;background:transparent;border-radius:calc(var(--radius,14px)*.45);font-size:13px;font-weight:700;line-height:1.7;color:var(--secondary-text,#b5b5b5);cursor:pointer;font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);}.ds-mode-button[aria-pressed=true]{background:var(--secondary,#262626);color:var(--foreground,#f5f5f5);}.ds-mode-button:hover{color:var(--foreground,#f5f5f5);}.ds-mode-button:focus-visible{outline:2px solid var(--user-accent,#f28eb6);outline-offset:4px;}@media(max-width:600px){.ds-mode-control{max-width:100%;overflow:auto;}.ds-mode-button{padding:5px 10px;font-size:12px;white-space:nowrap;}}"
+      "css": ".ds-mode-control{display:flex;gap:4px;background:var(--background,#080808);border-radius:calc(var(--radius,14px)*.65);padding:4px;border:1px solid var(--border,#ffffff16);font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);}.ds-mode-button{padding:5px 12px;border:0;background:transparent;border-radius:calc(var(--radius,14px)*.45);font-size:13px;font-weight:700;line-height:1.7;color:var(--secondary-text,#b5b5b5);cursor:pointer;font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);}.ds-mode-button[aria-pressed=true]{background:var(--selection-fill,color-mix(in srgb,var(--user-accent,#f28eb6) 16%,var(--background,#080808)));color:var(--readable-accent,color-mix(in srgb,var(--user-accent,#f28eb6) 40%,#f5f5f5));}.ds-mode-button:hover{color:var(--foreground,#f5f5f5);}.ds-mode-button:focus-visible{outline:2px solid var(--user-accent,#f28eb6);outline-offset:4px;}@media(max-width:600px){.ds-mode-control{max-width:100%;overflow:auto;}.ds-mode-button{padding:5px 10px;font-size:12px;white-space:nowrap;}}"
     },
     {
       "name": "Initial Avatar",
@@ -776,7 +1073,15 @@
       "kind": "custom",
       "description": "The resolved Markdown pattern keeps technical columns readable inside a labeled focusable region.",
       "html": "<div class=\"ds-reading\"><div class=\"ds-table-scroll\" tabindex=\"0\" role=\"region\" aria-label=\"可水平捲動的表格\"><table class=\"ds-reading-table\"><thead><tr><th>Client</th><th>Connection requirement</th></tr></thead><tbody><tr><td>stable</td><td><code class=\"ds-inline-code\">--devserver</code></td></tr><tr><td>lazer</td><td><code class=\"ds-inline-code\">--server</code></td></tr></tbody></table></div></div>",
-      "css": ".ds-reading{max-width:920px;padding:48px;background:var(--surface,rgb(12 12 12 / var(--panel-opacity,.55)));border:1px solid var(--border,#ffffff16);border-radius:var(--radius,14px);backdrop-filter:blur(var(--panel-blur,8px));color:var(--foreground,#f5f5f5);font-size:14px;line-height:1.95;font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);}.ds-table-scroll{overflow-x:auto;margin:20px 0;}.ds-table-scroll:focus-visible{outline:2px solid var(--user-accent,#f28eb6);outline-offset:4px;}.ds-reading-table{width:100%;min-width:640px;border-collapse:collapse;margin:0;font-size:12px;}.ds-reading-table td,.ds-reading-table th{overflow-wrap:normal;word-break:normal;text-align:left;padding:10px 14px;border:1px solid var(--border,#ffffff16);}.ds-inline-code{font-family:monospace;font-size:12px;background:var(--secondary,#262626);padding:2px 5px;border-radius:4px;white-space:nowrap;}@media(max-width:600px){.ds-reading{padding:24px;}}"
+      "css": ".ds-reading{max-width:920px;padding:48px;background:var(--surface,rgb(26 26 26 / var(--panel-opacity,.55)));border:1px solid var(--border,#ffffff16);border-radius:var(--radius,14px);backdrop-filter:blur(var(--panel-blur,8px));color:var(--foreground,#f5f5f5);font-size:14px;line-height:1.95;font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);}.ds-table-scroll{overflow-x:auto;margin:20px 0;}.ds-table-scroll:focus-visible{outline:2px solid var(--user-accent,#f28eb6);outline-offset:4px;}.ds-reading-table{width:100%;min-width:640px;border-collapse:collapse;margin:0;font-size:12px;}.ds-reading-table td,.ds-reading-table th{overflow-wrap:normal;word-break:normal;text-align:left;padding:10px 14px;border:1px solid var(--border,#ffffff16);}.ds-inline-code{font-family:monospace;font-size:12px;background:var(--secondary,#262626);padding:2px 5px;border-radius:4px;white-space:nowrap;}@media(max-width:600px){.ds-reading{padding:24px;}}"
+    },
+    {
+      "name": "Difficulty Link",
+      "kind": "chip",
+      "refersTo": "difficulty-chip",
+      "description": "A numeric difficulty link shared by map sets and the detail selector; the tier supports the star value and current-page state.",
+      "html": "<a class=\"ds-difficulty-chip\" href=\"/beatmaps/1\" aria-current=\"page\" aria-label=\"Open Hard, osu!, 3.50 stars\"><span class=\"ds-difficulty-mode\">osu!</span><span class=\"ds-difficulty-version\">Hard</span><span class=\"ds-difficulty-rating\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m12 3 2.75 5.57 6.15.9-4.45 4.33 1.05 6.13L12 17.04l-5.5 2.89 1.05-6.13L3.1 9.47l6.15-.9Z\"/></svg>3.50</span></a>",
+      "css": ".ds-difficulty-chip{--difficulty-color:var(--difficulty-hard,#e8cf88);display:inline-flex;align-items:center;gap:7px;min-width:0;max-width:100%;min-height:44px;padding:7px 10px;border:1px solid color-mix(in srgb,var(--difficulty-color) 38%,var(--border,#ffffff16));border-radius:calc(var(--radius,14px)*.45);background:color-mix(in srgb,var(--difficulty-color) 7%,transparent);color:var(--foreground,#f5f5f5);font-size:12px;line-height:1.7;font-variant-numeric:tabular-nums;font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);text-decoration:none;}.ds-difficulty-mode{font-size:10px;color:var(--muted-foreground,#b5b5b5);flex-shrink:0;}.ds-difficulty-version{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:170px;}.ds-difficulty-rating{display:inline-flex;align-items:center;gap:4px;color:var(--difficulty-color);font-weight:800;white-space:nowrap;flex-shrink:0;}.ds-difficulty-rating svg{width:12px;height:12px;}.ds-difficulty-chip:hover,.ds-difficulty-chip[aria-current=page]{background:color-mix(in srgb,var(--difficulty-color) 16%,transparent);border-color:var(--difficulty-color);}.ds-difficulty-chip:focus-visible{outline:2px solid var(--ring,var(--readable-accent,#f28eb6));outline-offset:3px;}:host-context(.light) .ds-difficulty-chip,.light .ds-difficulty-chip{--difficulty-color:var(--difficulty-hard,#785b10);}@media(max-width:440px){.ds-difficulty-version{max-width:140px;}}"
     }
   ],
   "narrative": {
@@ -785,9 +1090,10 @@
     "keyCharacteristics": [
       "Pure-black default ground with translucent neutral gray-black glass.",
       "Rounded Latin and Traditional Chinese typography with a strong reading hierarchy.",
-      "A player-selected accent shared by actions, focus and readable highlights.",
+      "A player-selected accent shared by actions, focus, readable highlights and selected controls.",
       "Independent controls for background treatment, panel material and radius.",
-      "Compact catalogue rows, quiet dividers and purposeful negative space.",
+      "Distinct neutral glass levels, clear heading dividers and compact catalogue content.",
+      "Paired difficulty colors accompanied by actual star ratings and mode/version labels.",
       "Responsive navigation, intact mode labels and locally scrollable dense tables."
     ],
     "rules": [
@@ -799,6 +1105,11 @@
       {
         "name": "The Paired Theme Rule",
         "body": "Choose semantic surface and foreground pairs so light mode and user-selected accents remain readable together.",
+        "section": "colors"
+      },
+      {
+        "name": "The Numeric Difficulty Rule",
+        "body": "Pair every difficulty color with the actual star value and intact mode/version labels; status and selection remain separate meanings.",
         "section": "colors"
       },
       {
@@ -822,6 +1133,11 @@
         "section": "elevation"
       },
       {
+        "name": "The Neutral Hierarchy Rule",
+        "body": "Use base glass for content, raised glass for filters and table headers, and strong glass for persistent navigation; use the stronger divider to separate heading groups without adding a shadow to every panel.",
+        "section": "elevation"
+      },
+      {
         "name": "The Shared Radius Rule",
         "body": "New glass, fields and buttons follow the live radius family; preserve fixed corners only where the existing small label or navigation pattern calls for them.",
         "section": "shapes"
@@ -834,6 +1150,8 @@
       "**Do** keep technical strings and mode labels intact in bounded, keyboard-accessible scroll regions.",
       "**Do** carry explicit hover, focus, disabled and feedback states into new controls.",
       "**Do** preserve the light-theme foreground pairs and the custom-accent contrast behavior.",
+      "**Do** use the shared neutral surface levels and selection fill for content, filtering, navigation and pressed states.",
+      "**Do** pair semantic difficulty colors with actual numeric ratings and mode/version text.",
       "**Do** keep panel blur and opacity independent from background blur and dim, with immediate preview and explicit account saving.",
       "**Do** use direct, ordinary labels and explanatory copy for community tools and appearance controls."
     ],

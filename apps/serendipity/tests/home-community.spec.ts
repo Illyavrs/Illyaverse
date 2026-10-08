@@ -290,13 +290,17 @@ async function stableLayout(page: BrowserPage) {
 
 async function capture(page: BrowserPage, name: string, state: string) {
   await stableLayout(page);
-  if (process.env.ILLYA_CAPTURE_WORKFLOW_REVIEW !== '1') return;
+  const hierarchy = process.env.ILLYA_MAP_DISCOVERY_CAPTURE === '1';
+  if (hierarchy && !['1440-dark-zh-TW-populated', '390-light-en-error-empty'].includes(name)) return;
+  if (!hierarchy && process.env.ILLYA_CAPTURE_WORKFLOW_REVIEW !== '1') return;
   await page.evaluate(() => {
+    document.documentElement.style.setProperty('scroll-behavior', 'auto', 'important');
     (document.activeElement as HTMLElement | null)?.blur();
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   });
   await page.mouse.move(0, 0);
-  const output = path.resolve('../../.impeccable/review', `community-home-${name}`);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  const output = path.resolve('../../.impeccable/review', `${hierarchy ? 'map-hierarchy-home' : 'community-home'}-${name}`);
   await page.screenshot({ path: `${output}.png`, fullPage: true, animations: 'disabled' });
   const sourceFiles = [
     'src/features/home.tsx',
@@ -320,6 +324,16 @@ async function capture(page: BrowserPage, name: string, state: string) {
         captured_at: new Date().toISOString(),
         route: '/',
         viewport: page.viewportSize(),
+        visual_facts: await page.evaluate(() => ({
+          locale: document.documentElement.lang,
+          theme: document.documentElement.className,
+          fonts: document.fonts.status,
+          scrollY: window.scrollY,
+          documentOverflow: document.documentElement.scrollWidth > innerWidth,
+          panelBlur: getComputedStyle(document.documentElement).getPropertyValue('--panel-blur'),
+          surface: getComputedStyle(document.documentElement).getPropertyValue('--surface'),
+          raised: getComputedStyle(document.documentElement).getPropertyValue('--surface-raised'),
+        })),
         state,
         data: 'Synthetic QA fixtures intercepted at existing public API routes; no native-client or live activity claims.',
         sources,

@@ -1,20 +1,10 @@
 'use client';
-import { useDeferredValue, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import useSWR, { unstable_serialize, useSWRConfig } from 'swr';
-import {
-  ArrowRight,
-  Search,
-  Plus,
-  Download,
-  Music2,
-  Star,
-  Clock,
-  Upload,
-  LoaderCircle,
-} from 'lucide-react';
+import { ArrowRight, Download, Music2, Star, Clock, Upload, LoaderCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -34,13 +24,19 @@ import type {
   BeatmapAvailability,
   BeatmapDifficulty,
   BeatmapUploadResult,
-  Page,
   ScoreBoard,
   ScoreVariant,
 } from '@/lib/types';
 import { ScoreTable } from './scores';
 import { ScoreVariantControl, useScoreSelection } from '@/components/score-selection';
 import { BeatmapAvailabilityAction } from './admin';
+import {
+  MapArtwork,
+  MapMetadata,
+  SetDifficultySelector,
+  safeCatalogueReturn,
+} from './map-discovery';
+export { MapDiscoveryPage as BeatmapsPage } from './map-discovery';
 
 function duration(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
@@ -124,46 +120,6 @@ function MapDownloads({ map }: { map: Beatmap }) {
   );
 }
 
-function PackageDifficulties({ mapId, currentVersion }: { mapId: number; currentVersion: string }) {
-  const t = useTranslations('maps');
-  const c = useTranslations('common');
-  const [page, setPage] = useState(1);
-  const { data, error, isLoading, mutate } = useSWR<Page<BeatmapDifficulty>>(
-    `/beatmaps/${mapId}/package/difficulties?page=${page}&page_size=24`,
-    fetcher,
-    { keepPreviousData: false },
-  );
-  return (
-    <section
-      className="glass content-panel map-package"
-      aria-labelledby="map-package-title"
-      aria-busy={isLoading}
-    >
-      <header className="section-heading">
-        <div>
-          <h2 id="map-package-title">{t('packageTitle')}</h2>
-          <p>{data ? t('packageCount', { count: data.total }) : c('loading')}</p>
-          <p className="package-current">
-            {t('currentDifficulty')}: <strong>{currentVersion}</strong>
-          </p>
-        </div>
-      </header>
-      {error ? (
-        <LoadError retry={() => mutate()} />
-      ) : !data ? (
-        <Loading />
-      ) : data.items.length ? (
-        <DifficultyRows items={data.items} currentId={mapId} />
-      ) : (
-        <Empty title={c('empty')} />
-      )}
-      {data && !error && (
-        <Pagination page={page} total={data.total} pageSize={data.page_size} onChange={setPage} />
-      )}
-    </section>
-  );
-}
-
 function UploadResult({
   result,
   official = false,
@@ -219,7 +175,7 @@ export function MapRows({ items, compact = false }: { items: Beatmap[]; compact?
       {items.map((map) => (
         <Link href={`/beatmaps/${map.id}`} key={map.id} className="map-row">
           <span className={`map-art mode-${map.mode}`} aria-hidden="true">
-            <Music2 />
+            <MapArtwork source={map.source} nativeSetId={map.native_set_id} />
           </span>
           <div className="map-main">
             <strong>{map.title}</strong>
@@ -251,132 +207,6 @@ export function MapRows({ items, compact = false }: { items: Beatmap[]; compact?
           <ArrowRight className="row-arrow" />
         </Link>
       ))}
-    </div>
-  );
-}
-
-export function BeatmapsPage() {
-  const t = useTranslations('maps');
-  const c = useTranslations('common');
-  const { user } = useSession();
-  const params = useSearchParams();
-  const uploader = params.get('uploaded_by');
-  const [search, setSearch] = useState('');
-  const q = useDeferredValue(search);
-  const [mode, setMode] = useState('all');
-  const [status, setStatus] = useState('all');
-  const [source, setSource] = useState(() =>
-    ['official', 'local'].includes(params.get('source') ?? '') ? params.get('source')! : 'all',
-  );
-  const [page, setPage] = useState(1);
-  const query = new URLSearchParams({ page: String(page), page_size: '24', q });
-  if (mode !== 'all') query.set('mode', mode);
-  if (status !== 'all') query.set('status', status);
-  if (source !== 'all') query.set('source', source);
-  if (uploader !== null) query.set('uploaded_by', uploader);
-  const { data, error, isLoading, mutate } = useSWR<Page<Beatmap>>(`/beatmaps?${query}`, fetcher);
-  return (
-    <div className="page-container">
-      <PageHeading title={t('title')} description={t('subtitle')}>
-        {user && hasPermission(user.permissions, 'beatmaps.upload') && (
-          <Button asChild>
-            <Link href="/beatmaps/upload">
-              <Plus />
-              {t('upload')}
-            </Link>
-          </Button>
-        )}
-        {user && hasPermission(user.permissions, 'beatmaps.import') && (
-          <Button asChild variant="outline">
-            <Link href="/beatmaps/import">{t('import')}</Link>
-          </Button>
-        )}
-      </PageHeading>
-      <div className="filter-bar glass">
-        <div className="search-input">
-          <Search />
-          <Input
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-            placeholder={t('search')}
-            aria-label={t('search')}
-          />
-        </div>
-        <select
-          className="native-select"
-          value={status}
-          onChange={(e) => {
-            setStatus(e.target.value);
-            setPage(1);
-          }}
-          aria-label={c('status')}
-        >
-          {['all', 'ranked', 'loved', 'pending', 'unranked'].map((s) => (
-            <option value={s} key={s}>
-              {c(s)}
-            </option>
-          ))}
-        </select>
-        <select
-          className="native-select"
-          name="source"
-          value={source}
-          aria-label={t('source')}
-          onChange={(event) => {
-            setSource(event.target.value);
-            setPage(1);
-          }}
-        >
-          {['all', 'official', 'local'].map((value) => (
-            <option value={value} key={value}>
-              {c(value)}
-            </option>
-          ))}
-        </select>
-        <GameMode
-          value={mode}
-          onChange={(v) => {
-            setMode(v);
-            setPage(1);
-          }}
-          all
-        />
-      </div>
-      {uploader !== null && (
-        <div className="filter-context">
-          <p>{t('uploaderFilter', { id: uploader })}</p>
-          <Button
-            variant="ghost"
-            onClick={() => {
-              const next = new URLSearchParams(window.location.search);
-              next.delete('uploaded_by');
-              window.history.replaceState(
-                null,
-                '',
-                `${window.location.pathname}${next.size ? `?${next}` : ''}`,
-              );
-              setPage(1);
-            }}
-          >
-            {t('clearUploader')}
-          </Button>
-        </div>
-      )}
-      <section className="glass content-panel">
-        {isLoading ? (
-          <Loading />
-        ) : error ? (
-          <LoadError retry={() => mutate()} />
-        ) : !data?.items.length ? (
-          <Empty title={t('emptyTitle')} description={t('emptyDescription')} />
-        ) : (
-          <MapRows items={data.items} />
-        )}
-      </section>
-      {data && <Pagination page={page} total={data.total} onChange={setPage} />}
     </div>
   );
 }
@@ -484,6 +314,7 @@ export function BeatmapPage({ id }: { id: number }) {
     mode !== '3' && search.get('variant') === 'relax' ? 'relax' : 'vanilla';
   const selection = new URLSearchParams({ mode, variant });
   const requestedReturn = search.get('returnTo');
+  const catalogueReturn = safeCatalogueReturn(requestedReturn);
   let reviewReturn: string | null = null;
   if (canManage && requestedReturn) {
     try {
@@ -520,7 +351,7 @@ export function BeatmapPage({ id }: { id: number }) {
   );
   return (
     <div className="page-container">
-      <Link href={reviewReturn ?? '/beatmaps'} className="back-link">
+      <Link href={reviewReturn ?? catalogueReturn ?? '/beatmaps'} className="back-link">
         {reviewReturn ? review('backToQueue') : t('back')}
       </Link>
       {management && sessionLoading ? (
@@ -542,9 +373,12 @@ export function BeatmapPage({ id }: { id: number }) {
           <>
             {error && <LoadError retry={() => mutate()} />}
             <section className="map-detail-cover glass">
-              <div className="map-detail-art" aria-hidden="true">
-                <Music2 />
-              </div>
+              <MapArtwork
+                source={map.source}
+                nativeSetId={map.native_set_id ?? map.package?.native_set_id}
+                className="map-detail-art"
+                priority
+              />
               <div>
                 <span className="map-artist">{map.artist}</span>
                 <h1>{map.title}</h1>
@@ -562,6 +396,7 @@ export function BeatmapPage({ id }: { id: number }) {
                     </Badge>
                   )}
                 </div>
+                <MapMetadata map={map} />
               </div>
               <div className="map-detail-actions">
                 {!withdrawn && <MapDownloads map={map} />}
@@ -634,24 +469,16 @@ export function BeatmapPage({ id }: { id: number }) {
                 )}
               </section>
             )}
-            <dl className="map-detail-stats glass">
-              {[
-                [t('stars'), `${map.stars.toFixed(2)} ★`],
-                [t('bpm'), map.bpm.toFixed(0)],
-                [t('length'), duration(map.length_seconds)],
-                [c('combo'), `${map.max_combo}x`],
-              ].map(([label, value]) => (
-                <div key={label}>
-                  <dt>{label}</dt>
-                  <dd>{value}</dd>
-                </div>
-              ))}
-            </dl>
-            {map.package && !withdrawn && (
-              <PackageDifficulties
-                key={`${map.id}:${map.package.id}`}
+            {!withdrawn && (
+              <SetDifficultySelector
                 mapId={map.id}
                 currentVersion={map.version}
+                navigation={{
+                  mode,
+                  variant,
+                  returnTo: reviewReturn ?? catalogueReturn,
+                  management: management && canManage,
+                }}
               />
             )}
             {!withdrawn && (

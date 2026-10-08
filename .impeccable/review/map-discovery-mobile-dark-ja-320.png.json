@@ -1,0 +1,17 @@
+{
+  "captured_at": "2026-10-08T04:11:45.159Z",
+  "url": "http://localhost:19000/beatmaps",
+  "locale": "ja",
+  "theme": "dark",
+  "synthetic": true,
+  "artwork_origin": "https://assets.ppy.sh/beatmaps/{validated_official_set_id}/covers/cover.jpg; browser rendered only; fallback on failure",
+  "width": 320,
+  "height": 844,
+  "scroll_x": 0,
+  "scroll_y": 0,
+  "document_width": 320,
+  "document_height": 3264,
+  "actual_theme": "dark",
+  "actual_locale": "ja",
+  "font_status": "loaded"
+}

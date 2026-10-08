@@ -28,8 +28,12 @@
   --border: #ffffff16;
   --input: #ffffff25;
   --ring: var(--readable-accent);
-  --surface: rgb(12 12 12 / var(--panel-opacity));
-  --surface-strong: rgb(12 12 12 / clamp(0, calc(var(--panel-opacity) + 0.15), 1));
+  --surface: rgb(26 26 26 / var(--panel-opacity));
+  --surface-strong: rgb(38 38 38 / clamp(0, calc(var(--panel-opacity) + 0.15), 1));
+  --surface-raised: rgb(42 42 42 / var(--panel-opacity));
+  --surface-subtle: rgb(18 18 18 / var(--panel-opacity));
+  --divider-strong: #ffffff30;
+  --selection-fill: color-mix(in srgb, var(--user-accent) 16%, var(--background));
   --page-ground: #000000;
   --secondary-text: #b5b5b5;
 }
@@ -52,6 +56,10 @@
   --input: #00000030;
   --surface: rgb(255 255 255 / var(--panel-opacity));
   --surface-strong: rgb(255 255 255 / clamp(0, calc(var(--panel-opacity) + 0.15), 1));
+  --surface-raised: rgb(246 246 246 / var(--panel-opacity));
+  --surface-subtle: rgb(252 252 252 / var(--panel-opacity));
+  --divider-strong: #00000030;
+  --selection-fill: color-mix(in srgb, var(--user-accent) 12%, var(--background));
   --page-ground: #f5f5f5;
   --secondary-text: #606060;
 }
@@ -299,9 +307,11 @@ svg {
   white-space: nowrap;
   padding: 25px 0;
 }
-.desktop-nav a:hover,
-.desktop-nav a.active {
+.desktop-nav a:hover {
   color: var(--foreground);
+}
+.desktop-nav a.active {
+  color: var(--readable-accent);
 }
 .desktop-nav a.active::after {
   content: '';
@@ -520,6 +530,10 @@ svg {
   align-items: center;
   margin-bottom: 20px;
 }
+.content-panel > .section-heading {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--divider-strong);
+}
 .section-heading p {
   font-size: 13px;
   color: var(--secondary-text);
@@ -718,6 +732,8 @@ svg {
   align-items: center;
   justify-content: space-between;
   gap: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--divider-strong);
 }
 .page-heading p {
   margin-top: 12px;
@@ -744,6 +760,9 @@ svg {
   align-items: center;
   margin-bottom: 20px;
   flex-wrap: wrap;
+}
+.filter-bar.glass {
+  background: var(--surface-raised);
 }
 .search-input {
   position: relative;
@@ -789,8 +808,8 @@ svg {
 }
 .mode-control button[aria-pressed='true'],
 .segmented button[aria-pressed='true'] {
-  background: var(--secondary);
-  color: var(--foreground);
+  background: var(--selection-fill);
+  color: var(--readable-accent);
 }
 .mode-control button:hover,
 .segmented button:hover {
@@ -1017,6 +1036,7 @@ svg {
   color: var(--secondary-text);
   font-size: 12px;
   border-bottom: 1px solid var(--border);
+  background: var(--surface-raised);
 }
 .data-table td {
   padding: 20px 16px;
@@ -1403,9 +1423,11 @@ svg {
   --primary-foreground: var(--primary-contrast);
   --readable-accent: color-mix(in srgb, var(--user-accent) 40%, #f5f5f5);
   --ring: var(--readable-accent);
+  --selection-fill: color-mix(in srgb, var(--user-accent) 16%, var(--background));
 }
 .light .profile-accent-scope {
   --readable-accent: color-mix(in srgb, var(--user-accent) 30%, #262626);
+  --selection-fill: color-mix(in srgb, var(--user-accent) 12%, var(--background));
 }
 .profile-accent-scope :focus-visible {
   outline-color: var(--readable-accent);
@@ -2706,7 +2728,7 @@ input[type='checkbox'] {
     border-radius: 8px;
   }
   .mobile-nav a.active {
-    background: var(--secondary);
+    background: var(--selection-fill);
     color: var(--readable-accent);
   }
 }

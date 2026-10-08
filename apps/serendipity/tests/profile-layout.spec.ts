@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { writeFileSync } from 'node:fs';
 
 // Intercepted synthetic content only. Runtime request gates verify real statistics and ownership.
 const playerId = 989610;
@@ -123,6 +124,24 @@ async function fixture(page: Page, locale = 'en', theme = 'dark', banner = false
         },
       });
     }
+    if (url.pathname === `/api/v1/users/${playerId}/rank-history`) {
+      const days = Number(url.searchParams.get('days') ?? '90');
+      const start = new Date(stamp);
+      start.setUTCDate(start.getUTCDate() - days + 1);
+      return route.fulfill({
+        json: {
+          mode: Number(url.searchParams.get('mode') ?? '0'),
+          variant: url.searchParams.get('variant') ?? 'vanilla',
+          days,
+          start_date: start.toISOString().slice(0, 10),
+          end_date: stamp.slice(0, 10),
+          time_zone: 'UTC',
+          collection_interval_seconds: 1800,
+          last_captured_at: null,
+          points: [],
+        },
+      });
+    }
     if (
       url.pathname === `/api/v1/users/${playerId}/scores/best` ||
       url.pathname === '/api/v1/scores'
@@ -157,18 +176,37 @@ async function capture(page: Page, name: string) {
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
     .toBe(true);
-  if (process.env.ILLYA_WEB_SMOKE_CAPTURE !== '1') return;
+  const hierarchy = process.env.ILLYA_MAP_DISCOVERY_CAPTURE === '1';
+  if (hierarchy && !['desktop-1440-dark-zh-banner', 'mobile-light-en-no-banner'].includes(name)) return;
+  if (!hierarchy && process.env.ILLYA_WEB_SMOKE_CAPTURE !== '1') return;
+  await expect(page.locator('.rank-history-empty-title')).toBeVisible();
   await page.evaluate(() => {
     document.documentElement.style.setProperty('scroll-behavior', 'auto', 'important');
     (document.activeElement as HTMLElement | null)?.blur();
     window.scrollTo({ top: 0, behavior: 'instant' });
   });
   await page.mouse.move(0, 0);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  const output = `../../.impeccable/review/${hierarchy ? 'map-hierarchy-profile' : 'community-profile'}-${name}`;
   await page.screenshot({
-    path: `../../.impeccable/review/community-profile-${name}.png`,
+    path: `${output}.png`,
     fullPage: true,
     animations: 'disabled',
   });
+  if (hierarchy) writeFileSync(`${output}.json`, JSON.stringify({
+    viewport: page.viewportSize(),
+    route: new URL(page.url()).pathname + new URL(page.url()).search,
+    data: 'Synthetic intercepted profile; no real player activity or account changes.',
+    visual_facts: await page.evaluate(() => ({
+      locale: document.documentElement.lang,
+      theme: document.documentElement.className,
+      fonts: document.fonts.status,
+      scrollY: window.scrollY,
+      documentOverflow: document.documentElement.scrollWidth > innerWidth,
+      profileAccent: getComputedStyle(document.querySelector('.profile-page')!).getPropertyValue('--user-accent'),
+      selectedFill: getComputedStyle(document.querySelector('.profile-page')!).getPropertyValue('--selection-fill'),
+    })),
+  }, null, 2));
 }
 
 test('compact no-banner profile exposes actual ranks, detailed statistics, grades and uploader navigation', async ({

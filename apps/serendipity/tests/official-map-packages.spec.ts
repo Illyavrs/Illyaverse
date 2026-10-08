@@ -1,10 +1,11 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import english from '../messages/en.json';
 import chinese from '../messages/zh-TW.json';
 import japanese from '../messages/ja.json';
 import type { Beatmap, BeatmapUploadResult } from '../src/lib/types';
+import type { DiscoverySet } from '../src/features/map-discovery';
 
 // All API requests and upload bytes are intercepted synthetic fixtures. These
 // cases do not verify official credentials, real archives or native clients.
@@ -20,6 +21,7 @@ const packageId = '0b248fbf-63e3-4f34-a7ad-1ae5bbc728d4';
 const members: Beatmap[] = Array.from({ length: 25 }, (_, index) => ({
   id: 96300 + index,
   official_id: 96300 + index,
+  native_set_id: setId,
   title: 'Official archive fixture with a long movement title for wrapping',
   artist: 'Official fixture artist',
   creator: 'Official fixture mapper',
@@ -57,6 +59,22 @@ function listing<T>(items: T[], page = 1, pageSize = 24) {
     page,
     page_size: pageSize,
     total: items.length,
+  };
+}
+function discoverySet(): DiscoverySet {
+  return {
+    native_set_id: setId,
+    representative: members[0],
+    matching_count: members.length,
+    stored_count: members.length,
+    matching_modes: [0],
+    matching_statuses: ['ranked', 'loved'],
+    stars_min: 4.25,
+    stars_max: 4.25,
+    length_min: 207,
+    length_max: 207,
+    added_at: '2026-10-08T00:00:00Z',
+    preview: members.slice(0, 8),
   };
 }
 function deferred() {
@@ -103,6 +121,7 @@ async function fixtures(
     preferences,
   );
   page.on('pageerror', (error) => state.errors.push(error.message));
+  await page.route('https://assets.ppy.sh/**', (route) => route.abort());
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -131,8 +150,10 @@ async function fixtures(
       );
     if (method === 'GET' && pathname === '/me/preferences')
       return route.fulfill({ json: preferences });
-    if (method === 'GET' && pathname === '/beatmaps')
-      return route.fulfill({ json: listing(members.slice(0, 1)) });
+    if (method === 'GET' && pathname === '/beatmapsets')
+      return route.fulfill({
+        json: listing([discoverySet()], Number(url.searchParams.get('page') ?? 1)),
+      });
     if (method === 'POST' && pathname === '/beatmaps/import') {
       expect(request.headers()['content-type']).toContain('application/json');
       state.singles.push(request.postDataJSON());
@@ -164,7 +185,7 @@ async function fixtures(
       return route.fulfill({
         json: members.find((member) => member.id === Number(detail[1])) ?? members[0],
       });
-    const membership = /^\/beatmaps\/\d+\/package\/difficulties$/.test(pathname);
+    const membership = /^\/beatmaps\/\d+\/set\/difficulties$/.test(pathname);
     if (method === 'GET' && membership) {
       state.membershipQueries.push(url.search);
       return route.fulfill({
@@ -192,6 +213,15 @@ async function fixtures(
 function assertClean(state: Awaited<ReturnType<typeof fixtures>>) {
   expect(state.unexpected).toEqual([]);
   expect(state.errors).toEqual([]);
+}
+async function openDifficultyDetails(panel: Locator, label: string) {
+  const disclosure = panel.locator('details.set-difficulty-disclosure');
+  await expect(disclosure).toBeVisible();
+  const summary = disclosure.locator('.set-difficulty-summary');
+  await expect(summary).toHaveText(label);
+  if (!(await disclosure.evaluate((element: HTMLDetailsElement) => element.open)))
+    await summary.click();
+  await expect(disclosure).toHaveAttribute('open', '');
 }
 async function selectArchive(page: Page, id = String(setId)) {
   await page.locator('#official-import-kind').selectOption('archive');
@@ -358,7 +388,10 @@ test('official archive detail reuses actual osz downloads and independent paged 
   const state = await fixtures(page);
   await page.goto(`/beatmaps/${members[24].id}`);
   const panel = page.locator('.map-package');
-  await expect(panel.locator('.package-current')).toContainText(members[24].version);
+  await expect(panel.locator('.set-current')).toContainText(members[24].version);
+  await expect(panel.locator('.set-difficulty-disclosure')).not.toHaveAttribute('open');
+  await expect(panel.locator('.set-difficulty-strip a').first()).toBeVisible();
+  await openDifficultyDetails(panel, state.copy.mapDiscovery.difficultyDetails);
   await expect(panel.locator('.package-difficulty-row')).toHaveCount(24);
   await expect(
     page.getByRole('link', { name: state.copy.maps.downloadPackage, exact: true }),
@@ -366,21 +399,26 @@ test('official archive detail reuses actual osz downloads and independent paged 
   await expect(
     page.getByRole('link', { name: state.copy.maps.downloadDifficulty, exact: true }),
   ).toHaveAttribute('href', `/api/v1/beatmaps/${members[24].id}/osu`);
-  await panel.getByRole('button', { name: state.copy.common.next, exact: true }).click();
+  await panel.getByRole('button', { name: state.copy.mapDiscovery.next, exact: true }).click();
+  await expect(panel.locator('.discovery-pagination')).toContainText('2 / 2');
+  await expect(panel.locator('.set-difficulty-disclosure')).not.toHaveAttribute('open');
+  await openDifficultyDetails(panel, state.copy.mapDiscovery.difficultyDetails);
   await expect(panel.locator('.package-difficulty-row')).toHaveCount(1);
-  await expect(panel.locator('[aria-current="page"]')).toHaveAttribute(
+  await expect(panel.locator('.package-difficulty-row[aria-current="page"]')).toHaveAttribute(
     'href',
-    `/beatmaps/${members[24].id}`,
+    `/beatmaps/${members[24].id}?mode=0&variant=vanilla`,
   );
-  // SWR intentionally revalidates on focus. Keep every request recorded while
-  // asserting page transitions independently of repeated same-page fetches.
+  // Keep every request recorded while asserting page transitions independently
+  // of any repeated same-page reads.
   const allowedPageQueries = ['?page=1&page_size=24', '?page=2&page_size=24'];
   expect(
     state.membershipQueries.filter(
       (query, index, queries) => index === 0 || query !== queries[index - 1],
     ),
   ).toEqual(allowedPageQueries);
-  await panel.getByRole('button', { name: state.copy.common.previous, exact: true }).click();
+  await panel.getByRole('button', { name: state.copy.mapDiscovery.previous, exact: true }).click();
+  await expect(panel.locator('.discovery-pagination')).toContainText('1 / 2');
+  await openDifficultyDetails(panel, state.copy.mapDiscovery.difficultyDetails);
   await expect(panel.locator('.package-difficulty-row')).toHaveCount(24);
   await captureReview(page, 'workflow-official-map-package-members');
   for (const query of state.membershipQueries) expect(allowedPageQueries).toContain(query);

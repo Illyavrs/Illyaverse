@@ -65,22 +65,38 @@ test('catalogue preserves profile uploader identity through filters and can clea
     const url = new URL(route.request().url());
     if (url.pathname === '/api/v1/me')
       return route.fulfill({ status: 401, json: { error: { code: 'unauthorized' } } });
-    if (url.pathname === '/api/v1/beatmaps') queries.push(url.searchParams);
+    if (url.pathname === '/api/v1/beatmapsets') queries.push(url.searchParams);
     return route.fulfill({ json: { items: [], total: 0, page: 1, page_size: 24 } });
   });
   await page.goto('/beatmaps?uploaded_by=989802&source=local');
-  await expect(page.locator('select[name="source"]')).toHaveValue('local');
+  const source = page.getByRole('combobox', { name: 'Source', exact: true });
+  await expect(source).toHaveValue('local');
   await expect(page.getByText('Uploaded by player #989802', { exact: true })).toBeVisible();
   await expect.poll(() => queries.at(-1)?.get('uploaded_by')).toBe('989802');
+  const beforeSearch = queries.length;
+  await page.getByRole('textbox', { name: 'Search', exact: true }).fill('星降り');
+  expect(queries).toHaveLength(beforeSearch);
   await page
-    .getByLabel('Search title, artist, mapper or difficulty', { exact: true })
-    .fill('星降り');
+    .locator('.discovery-search')
+    .getByRole('button', { name: 'Search', exact: true })
+    .click();
   await expect.poll(() => queries.at(-1)?.get('q')).toBe('星降り');
   expect(queries.at(-1)?.get('uploaded_by')).toBe('989802');
   expect(queries.at(-1)?.get('source')).toBe('local');
-  await page.getByRole('button', { name: 'Clear player filter', exact: true }).click();
+  await source.selectOption('official');
+  await expect.poll(() => queries.at(-1)?.get('source')).toBe('official');
+  expect(queries.at(-1)?.get('uploaded_by')).toBe('989802');
+  expect(queries.at(-1)?.get('q')).toBe('星降り');
+  await page.goBack();
+  await expect(source).toHaveValue('local');
+  await expect.poll(() => queries.at(-1)?.get('source')).toBe('local');
+  expect(queries.at(-1)?.get('uploaded_by')).toBe('989802');
+  expect(queries.at(-1)?.get('q')).toBe('星降り');
+  await page.getByRole('button', { name: 'Clear uploader', exact: true }).click();
   await expect.poll(() => queries.at(-1)?.get('uploaded_by')).toBe(null);
   expect(queries.at(-1)?.get('source')).toBe('local');
   expect(queries.at(-1)?.get('q')).toBe('星降り');
-  await expect(page).toHaveURL(/\/beatmaps\?source=local$/);
+  await expect
+    .poll(() => Object.fromEntries(new URL(page.url()).searchParams))
+    .toEqual({ source: 'local', q: '星降り' });
 });

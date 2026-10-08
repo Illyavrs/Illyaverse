@@ -20,11 +20,21 @@ colors:
   destructive: "#f294a0"
   border: "#ffffff16"
   input: "#ffffff25"
-  surface: "rgb(12 12 12 / var(--panel-opacity))"
-  surface-strong: "rgb(12 12 12 / clamp(0, calc(var(--panel-opacity) + 0.15), 1))"
+  surface: "rgb(26 26 26 / var(--panel-opacity))"
+  surface-strong: "rgb(38 38 38 / clamp(0, calc(var(--panel-opacity) + 0.15), 1))"
+  surface-raised: "rgb(42 42 42 / var(--panel-opacity))"
+  surface-subtle: "rgb(18 18 18 / var(--panel-opacity))"
+  divider-strong: "#ffffff30"
+  selection-fill: "color-mix(in srgb, var(--user-accent) 16%, var(--background))"
   ranked: "#93d7be"
   loved: "#edb0d1"
   pending: "#e8cd99"
+  difficulty-easy: "#87c7ef"
+  difficulty-normal: "#96d5ab"
+  difficulty-hard: "#e8cf88"
+  difficulty-insane: "#e7a8c9"
+  difficulty-expert: "#bfacf0"
+  difficulty-extreme: "#f3a495"
   light-readable-accent: "color-mix(in srgb, var(--user-accent) 30%, #262626)"
   light-page-ground: "#f5f5f5"
   light-background: "#fafafa"
@@ -40,9 +50,19 @@ colors:
   light-input: "#00000030"
   light-surface: "rgb(255 255 255 / var(--panel-opacity))"
   light-surface-strong: "rgb(255 255 255 / clamp(0, calc(var(--panel-opacity) + 0.15), 1))"
+  light-surface-raised: "rgb(246 246 246 / var(--panel-opacity))"
+  light-surface-subtle: "rgb(252 252 252 / var(--panel-opacity))"
+  light-divider-strong: "#00000030"
+  light-selection-fill: "color-mix(in srgb, var(--user-accent) 12%, var(--background))"
   light-ranked: "#246346"
   light-loved: "#984168"
   light-pending: "#785018"
+  light-difficulty-easy: "#24658b"
+  light-difficulty-normal: "#326d43"
+  light-difficulty-hard: "#785b10"
+  light-difficulty-insane: "#953d6b"
+  light-difficulty-expert: "#6848a2"
+  light-difficulty-extreme: "#9c4436"
 typography:
   display:
     fontFamily: "'Nunito Variable', 'Noto Sans TC', sans-serif"
@@ -160,6 +180,17 @@ components:
     textColor: "{colors.muted-foreground}"
     rounded: "{rounded.md}"
     padding: "{spacing.xs}"
+  mode-control-selected:
+    backgroundColor: "{colors.selection-fill}"
+    textColor: "{colors.readable-accent}"
+    rounded: "{rounded.sm}"
+  difficulty-chip:
+    backgroundColor: "color-mix(in srgb, var(--difficulty-color) 7%, transparent)"
+    textColor: "{colors.foreground}"
+    rounded: "{rounded.sm}"
+    padding: "7px 10px"
+  difficulty-chip-current:
+    backgroundColor: "color-mix(in srgb, var(--difficulty-color) 16%, transparent)"
   avatar:
     backgroundColor: "color-mix(in srgb, var(--user-accent) 15%, var(--background))"
     textColor: "{colors.readable-accent}"
@@ -181,12 +212,13 @@ Personalization is a material rule. Players can change the theme, accent, backgr
 
 - Pure-black default ground with translucent neutral gray-black glass.
 - Rounded Latin and Traditional Chinese typography with a strong reading hierarchy.
-- A player-selected accent shared by actions, focus and readable highlights.
+- A player-selected accent shared by actions, focus, readable highlights and selected controls.
 - Independent controls for background treatment, panel material and radius.
-- Compact catalogue rows, quiet dividers and purposeful negative space.
+- Distinct neutral glass levels, clear heading dividers and compact catalogue content.
+- Paired difficulty colors accompanied by actual star ratings and mode/version labels.
 - Responsive navigation, intact mode labels and locally scrollable dense tables.
 
-The normative frontmatter records default values extracted from `apps/serendipity/src/app/globals.css`, the shadcn primitives and `providers.tsx`. Runtime CSS custom properties remain authoritative for personalized values. Typography entries with fluid sizes intentionally leave `fontSize` out of the portable token object; the actual formulas are recorded below. The companion `.impeccable/design.json` adds previews, motion, depth and breakpoint metadata without a second primitive-token catalogue. Its tonal ramps are preview aids, not additional shipping colors. Format reference: [official DESIGN.md specification](https://raw.githubusercontent.com/google-labs-code/design.md/main/docs/spec.md).
+The normative frontmatter records default values extracted from `apps/serendipity/src/app/globals.css`, `apps/serendipity/src/styles/map-discovery.css`, the shadcn primitives and `providers.tsx`. Runtime CSS custom properties remain authoritative for personalized values. Difficulty colors are scoped to the map catalogue and difficulty selector rather than applied as general brand accents. Typography entries with fluid sizes intentionally leave `fontSize` out of the portable token object; the actual formulas are recorded below. The companion `.impeccable/design.json` adds previews, motion, depth and breakpoint metadata without a second primitive-token catalogue. Its tonal ramps are preview aids, not additional shipping colors. Format reference: [official DESIGN.md specification](https://raw.githubusercontent.com/google-labs-code/design.md/main/docs/spec.md).
 
 ## Colors
 
@@ -197,23 +229,32 @@ The palette keeps the default raspberry accent within neutral black and gray sur
 - **Raspberry** (`primary`): the default user accent for primary actions, selected emphasis and keyboard focus. The appearance controls also offer lavender, mint and apricot choices; these are player choices, not competing brand accents.
 - **Readable Raspberry** (`readable-accent`): the accent mixed toward the foreground for linked text, headline emphasis, avatar initials and score highlights. The mix changes in light mode through `light-readable-accent`.
 - **Primary Ink** (`primary-foreground`): text on the default pale accent. The provider switches this value to white for a sufficiently dark custom accent, using its calculated relative luminance threshold (0.179).
+- **Accent Selection** (`selection-fill`, `light-selection-fill`): the live accent mixed into the theme's field ground for pressed mode/theme controls, current mobile navigation and the catalogue view switch. Profile-scoped selections rebind this role to the profile owner's public accent.
 
 ### Neutral
 
 - **Black Ground** (`page-ground`): the default canvas. `background` provides a slightly lifted opaque ground for fields, selectors and code.
-- **Neutral Glass** (`surface`, `surface-strong`): the translucent container and denser sticky-header materials. Their opacity comes from the live panel-opacity control. `card` and `popover` serve opaque component layers.
+- **Neutral Glass** (`surface`): the base translucent content material, distinct from the black page ground. Its opacity comes from the live panel-opacity control. `card` and `popover` serve opaque component layers.
+- **Strong Glass** (`surface-strong`): denser sticky-header and catalogue view-switch material, sharing the live opacity control with a clamped opacity increase.
+- **Raised Glass** (`surface-raised`): the brighter neutral surface used for filter toolbars and data-table headers. **Subtle Glass** (`surface-subtle`) is a declared lower neutral level; it currently has no component consumer.
 - **Soft Silver** (`foreground`): primary text. **Secondary Gray** (`muted-foreground`) carries descriptions, metadata and secondary navigation.
-- **Gray Layers** (`secondary`, `muted`, `accent`): selected controls, subdued regions and hover states. Their matching foreground tokens stay paired with them.
-- **Silver Seams** (`border`, `input`): quiet dividers and field outlines; preserve their source alpha values.
+- **Gray Layers** (`secondary`, `muted`, `accent`): supporting opaque regions and hover states. Their matching foreground tokens stay paired with them.
+- **Silver Seams** (`border`, `input`): quiet dividers and field outlines; preserve their source alpha values. **Strong Divider** (`divider-strong`) separates page headings and direct content-panel section headings from their content.
 - **Light Ground and Glass** (`light-*`): semantic replacements applied by the `.light` theme. Light card and popover surfaces are white; the page ground and supporting layers are neutral grays.
 
 ### Semantic status
 
 Ranked mint, loved pink and pending amber label beatmap states. Their `light-*` counterparts darken the text in light mode. Destructive feedback uses the separate `destructive` role and its light counterpart. Status labels retain text as well as color.
 
+### Semantic difficulty
+
+The map catalogue and set selector share six rating roles: easy blue below 2 stars, normal green from 2 to below 2.7, hard amber from 2.7 to below 4, insane pink from 4 to below 5.3, expert violet from 5.3 to below 6.5, and extreme coral from 6.5 upward. Each role has a paired `light-difficulty-*` foreground. These tiers are derived from the actual numeric rating, while mode and version remain text. Color supports comparison without replacing the rating or identifying moderation status.
+
 **The Personal Accent Rule.** Use the shared runtime accent and readable-accent roles for new surfaces; do not hard-code raspberry into personalized actions or text.
 
 **The Paired Theme Rule.** Choose semantic surface and foreground pairs so light mode and user-selected accents remain readable together.
+
+**The Numeric Difficulty Rule.** Pair every difficulty color with the actual star value and intact mode/version labels; status and selection remain separate meanings.
 
 ## Typography
 
@@ -254,7 +295,7 @@ The landing introduction is a compact glass panel with a 270px desktop minimum h
 
 ## Elevation & Depth
 
-Depth comes primarily from translucency, tonal layering and quiet borders. Glass containers, the sticky header, sheets, select menus and the settings tab track share `backdrop-filter: blur(var(--panel-blur))`. Panel blur defaults to 8px and ranges from 0 to 48px. Panel opacity defaults to 55% and ranges from 0% to 100%, represented as 0–1 in preferences. The header's strong surface adds 0.15 to the same opacity and clamps the result to 0–1, giving a 70% default. Dark glass uses neutral 12/12/12 RGB; light glass uses white. Panel blur and opacity remain independent.
+Depth comes primarily from translucency, distinct neutral levels and borders. Glass containers, the sticky header, sheets, select menus and the settings tab track share `backdrop-filter: blur(var(--panel-blur))`. Panel blur defaults to 8px and ranges from 0 to 48px. Panel opacity defaults to 55% and ranges from 0% to 100%, represented as 0–1 in preferences. Strong glass adds 0.15 to the same opacity and clamps the result to 0–1, giving a 70% default. Base, raised and subtle glass use the unchanged live opacity directly; their neutral channels and paired light materials are normative in the frontmatter. Panel blur and opacity remain independent.
 
 The default ground has no image; a chosen player background sits in a fixed cover layer, enlarged slightly (1.05), with a separate theme-aware dim veil. Background blur ranges from 0 to 48px and dim from 0 to 1; defaults are 0px and 0.76. These scene controls remain separate from panel controls and do not blur readable foreground content.
 
@@ -269,6 +310,8 @@ Glass panels, sheets and select menus have no default box shadow. Reuse their ma
 **The Glass Before Shadow Rule.** Establish container depth through the shared translucent surface, panel blur and border; reserve the existing small shadows for control states.
 
 **The Independent Material Controls Rule.** Keep background blur and dim separate from panel blur and opacity; use the shared panel variables for every surface that carries the glass material.
+
+**The Neutral Hierarchy Rule.** Use base glass for content, raised glass for filters and table headers, and strong glass for persistent navigation; use the stronger divider to separate heading groups without adding a shadow to every panel.
 
 ## Shapes
 
@@ -290,11 +333,11 @@ Primary hover reduces the fill opacity to 90%. Outline buttons use a quiet input
 
 ### Chips and segmented controls
 
-Secondary badges are compact pills (2px 8px padding), carrying map difficulty or account-role text. Mode and theme controls sit inside a bordered background track with 4px padding and gap. Their 13px, weight-700 buttons use small-radius corners; the pressed state gains a secondary fill and foreground text. Mobile mode buttons use 12px type, intact labels and bounded overflow.
+Secondary badges are compact pills (2px 8px padding), carrying map difficulty or account-role text. Mode and theme controls sit inside a bordered background track with 4px padding and gap. Their 13px, weight-700 buttons use small-radius corners; the pressed state gains the shared accent-selection fill and readable-accent text. Mobile mode buttons use 12px type, intact labels and bounded overflow. Profile mode controls use the owner's accent through their local scope; the visitor's private accent remains outside that profile scope.
 
 ### Cards and containers
 
-The reusable glass material combines the live `surface` role, a one-pixel `border` seam, the full live radius and shared panel blur. Padding belongs to the content pattern: 24px for general panels, 36px for settings, and larger reading padding for articles. Map catalogues use divider-led rows with 18px gaps and a restrained accent mix on hover (4%); dense tables use a 3% row hover mix. Do not infer that every content group needs a glass box.
+The reusable glass material combines the live `surface` role, a one-pixel `border` seam, the full live radius and shared panel blur. Filter toolbars and table headers use `surface-raised`; direct content-panel section headings use `divider-strong`. Padding belongs to the content pattern: 24px for general panels, 36px for settings, and larger reading padding for articles. Shared compact map rows use 18px gaps and a restrained accent mix on hover (4%); dense tables use a 3% row hover mix. The map discovery catalogue uses its set-card pattern below. Do not infer that every content group needs a glass box.
 
 ### Inputs and feedback
 
@@ -304,7 +347,7 @@ Focus combines a three-pixel half-opacity accent ring with the global two-pixel 
 
 ### Navigation and sheets
 
-The sticky header uses stronger glass, a bottom seam and compact tools. Desktop links use 14px, weight 700 and secondary text; hover and active links brighten to foreground, with a two-pixel accent underline for the active route. Mobile navigation uses a menu sheet with padded links and a secondary active fill. The shell includes a visible-on-focus skip link. Locale choices are Traditional Chinese, English and Japanese through next-intl; preserve the translated labels and accessible names.
+The sticky header uses stronger glass, a bottom seam and compact tools. Desktop links use 14px, weight 700 and secondary text; hover brightens to foreground, while active links use readable accent and a two-pixel accent underline. Mobile navigation uses a menu sheet with padded links, the shared selection fill and readable-accent text for the current route. The shell includes a visible-on-focus skip link. Locale choices are Traditional Chinese, English and Japanese through next-intl; preserve the translated labels and accessible names.
 
 The appearance sheet is 390px wide, capped at the viewport, and scrolls vertically. It previews the whole site's material immediately, including theme, accent, background blur and dim, panel blur and opacity, and radius. Guests retain private appearance preferences in their browser; signed-in players explicitly save preferences to their account. Background upload requires an account. Persistence and load errors remain visible. Standard sheets use the existing dialog primitives for dismissal and focus behavior. Their source declares 500ms opening and 300ms closing durations, but the stylesheet does not import an animation utility package; do not treat a slide animation as guaranteed by those class names alone.
 
@@ -316,9 +359,15 @@ Avatars show player-uploaded images or a single initial. Initials use readable a
 
 Map detail downloads name the actual returned file kind: a complete `.osz` package or one `.osu` difficulty. Complete-package details also expose an outline action for the single difficulty, with direct copy explaining that `.osu` does not include music, images or other difficulties. The download group stacks its shared buttons; labels wrap within a minimum 36px control height and use the full available width on small screens.
 
-Package difficulties reuse divider-led catalogue rows inside the existing glass content panel. The current difficulty has both a text badge and a light accent mix (8%) with an accessible current-page state; its version remains visible above the paged list even when its row is on another page. Difficulty/version, title, artist and creator may wrap, while mode labels and the numeric column remain intact. The package icon tile is 52px on desktop and 36px at 600px and below. Package pagination is independent of the score board's mode, category and page.
+Package difficulty selection reuses the set selector described below inside the existing glass content panel. Its current version remains visible above the paged list even when that difficulty is on another page. Difficulty/version, title, artist and creator may wrap, while mode labels and numeric values remain intact. Difficulty pagination is independent of the score board's mode, category and page.
 
 Upload results remain inside the upload form, separated by the existing border role with 28px top margin and 24px top padding. A 22px result heading, shared status text, direct hints and paged difficulty rows distinguish a new upload from an exact retry that returns existing content. Each row uses its returned current moderation status. Errors use the existing alert and recovery-link styles; failed submission retains the selected file, while successful submission clears it. Traditional Chinese, English and Japanese share these semantics, with import and sign-in recovery actions reflecting the player's permission/session state. This is an Operate extension of the incumbent system; it introduces no new primitive tokens or artwork.
+
+### Map sets and difficulty selection
+
+Map discovery groups actual server-paginated sets into a two-column catalogue with cover, song information, state labels and a full-width difficulty strip. At 680px and below it becomes one column. The list view uses a cover-and-copy region beside its difficulty strip, then stacks the regions at 1000px and below. Official map covers load as runtime content from the validated official set ID; local maps and failed images use the existing library SVG fallback. Shared landing/profile map rows use that same artwork behavior. No shipping raster or default background illustration is introduced.
+
+Difficulty links use the numeric tier foreground for their star value, a 7% tier mix at rest and a 38% tier/border mix for the seam. Hover and current-page states use a 16% tier mix and the full tier border; current links retain `aria-current="page"`. The catalogue keeps mode, version and two-decimal star values together within a minimum 44px target. The detail selector opens with a compact difficulty strip; an ordinary disclosure reveals fuller mode/status/source/numeric rows on the same page. The current version and truthful known-difficulty count remain visible, and pagination describes stored siblings rather than a complete upstream archive. Controls, search fields and difficulty links on this surface use a minimum 44px height.
 
 ### Motion and keyboard treatment
 
@@ -334,6 +383,8 @@ Motion follows state changes rather than decorating the ground: links change col
 - **Do** keep technical strings and mode labels intact in bounded, keyboard-accessible scroll regions.
 - **Do** carry explicit hover, focus, disabled and feedback states into new controls.
 - **Do** preserve the light-theme foreground pairs and the custom-accent contrast behavior.
+- **Do** use the shared neutral surface levels and selection fill for content, filtering, navigation and pressed states.
+- **Do** pair semantic difficulty colors with actual numeric ratings and mode/version text.
 - **Do** keep panel blur and opacity independent from background blur and dim, with immediate preview and explicit account saving.
 - **Do** use direct, ordinary labels and explanatory copy for community tools and appearance controls.
 

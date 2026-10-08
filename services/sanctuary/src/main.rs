@@ -18,6 +18,9 @@ mod legacy_scoring;
 mod mail_delivery;
 #[cfg(test)]
 mod mail_queue_tests;
+mod map_catalogue;
+#[cfg(test)]
+mod map_catalogue_tests;
 #[cfg(test)]
 mod map_package_migration_tests;
 #[cfg(test)]
@@ -397,6 +400,11 @@ fn router(state: AppState) -> Router {
         .route("/api/v1/announcements/{id}", get(announcements::get))
         .route("/api/v1/users/{id}/scores/best", get(scores::best_for_user))
         .route("/api/v1/beatmaps", get(maps::list))
+        .route("/api/v1/beatmapsets", get(map_catalogue::list))
+        .route(
+            "/api/v1/beatmaps/{id}/set/difficulties",
+            get(map_catalogue::difficulties),
+        )
         .route(
             "/api/v1/beatmaps/upload",
             post(maps::upload).layer(DefaultBodyLimit::max(66 * 1024 * 1024)),

@@ -1,4 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
+import type { Beatmap } from '../src/lib/types';
+import type { DiscoverySet } from '../src/features/map-discovery';
 
 // Intercepted synthetic fixtures only. Real policy/persistence is covered by owned PG tests.
 const stamp = '2026-10-08T00:00:00Z';
@@ -32,10 +34,11 @@ function player(locale = 'en', mode = 'dark', id = owner, permissions: string[] 
     preferences: preferences(locale, mode),
   };
 }
-function map(id = 984702, mode = 0, status = 'ranked', source = 'local') {
+function map(id = 984702, mode = 0, status = 'ranked', source = 'local'): Beatmap {
   return {
     id,
     official_id: null,
+    native_set_id: 2_000_000_000 + id,
     title: `Review fixture map ${id}`,
     artist: 'Illyaverse fixture',
     creator: 'Fixture mapper',
@@ -93,6 +96,22 @@ function listing<T>(items: T[], page = 1, size = 24) {
     page,
     page_size: size,
     total: items.length,
+  };
+}
+function discoverySet(item: Beatmap): DiscoverySet {
+  return {
+    native_set_id: item.native_set_id!,
+    representative: item,
+    matching_count: 1,
+    stored_count: 1,
+    matching_modes: [item.mode],
+    matching_statuses: [item.status],
+    stars_min: item.stars,
+    stars_max: item.stars,
+    length_min: item.length_seconds,
+    length_max: item.length_seconds,
+    added_at: stamp,
+    preview: [item],
   };
 }
 async function capture(page: Page, name: string) {
@@ -326,7 +345,7 @@ async function mapFixture(page: Page, locale = 'en', mode = 'dark', staff = true
     const path = url.pathname.replace('/api/v1', '');
     if (path === '/me') return route.fulfill({ json: user });
     if (path === '/me/preferences') return route.fulfill({ json: pref });
-    if (path === '/admin/beatmaps' || path === '/beatmaps') {
+    if (path === '/admin/beatmaps' || path === '/beatmapsets') {
       state.queries.push(path + url.search);
       if (state.failRefresh && state.writes.length)
         return route.fulfill({ status: 503, json: { error: { code: 'unavailable' } } });
@@ -345,7 +364,12 @@ async function mapFixture(page: Page, locale = 'en', mode = 'dark', staff = true
               )),
         )
         .toReversed();
-      return route.fulfill({ json: listing(items, Number(query.get('page') ?? 1)) });
+      return route.fulfill({
+        json:
+          path === '/beatmapsets'
+            ? listing(items.map(discoverySet), Number(query.get('page') ?? 1))
+            : listing(items, Number(query.get('page') ?? 1)),
+      });
     }
     const admin = /^\/admin\/beatmaps\/(\d+)$/.exec(path);
     if (admin && request.method() === 'GET')
@@ -365,6 +389,18 @@ async function mapFixture(page: Page, locale = 'en', mode = 'dark', staff = true
       return route.fulfill({
         json: state.items.find((item) => item.id === Number(detail[1])) ?? map(Number(detail[1])),
       });
+    const siblings = /^\/beatmaps\/(\d+)\/set\/difficulties$/.exec(path);
+    if (siblings) {
+      const known =
+        state.items.find((item) => item.id === Number(siblings[1])) ?? map(Number(siblings[1]));
+      return route.fulfill({
+        json: listing(
+          [known],
+          Number(url.searchParams.get('page') ?? 1),
+          Number(url.searchParams.get('page_size') ?? 24),
+        ),
+      });
+    }
     if (/^\/beatmaps\/\d+\/scores$/.test(path)) {
       const rx = url.searchParams.get('variant') === 'relax';
       return route.fulfill({
@@ -472,11 +508,11 @@ test('public source selection and board use supplied rank and comparison values'
 }) => {
   const state = await mapFixture(page, 'en', 'dark', false);
   await page.goto('/beatmaps');
-  await page.locator('select[name=source]').selectOption('local');
+  await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('local');
   await expect
     .poll(() =>
       state.queries.some(
-        (query) => query.startsWith('/beatmaps?') && query.includes('source=local'),
+        (query) => query.startsWith('/beatmapsets?') && query.includes('source=local'),
       ),
     )
     .toBe(true);

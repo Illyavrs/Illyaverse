@@ -1,10 +1,11 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import english from '../messages/en.json';
 import japanese from '../messages/ja.json';
 import chinese from '../messages/zh-TW.json';
 import type { BeatmapUploadResult } from '../src/lib/types';
+import type { DiscoverySet } from '../src/features/map-discovery';
 
 // Every browser API call, including uploads/imports, is intercepted. Real
 // package persistence, bytes, fingerprints and conflicts have separate PG tests.
@@ -80,6 +81,22 @@ function listing<T>(items: T[], pageNumber: number, pageSize = 24) {
     page_size: pageSize,
   };
 }
+function discoverySet(map: FixtureMap, known: ReturnType<typeof difficulty>[]): DiscoverySet {
+  return {
+    native_set_id: map.native_set_id,
+    representative: map,
+    matching_count: known.length,
+    stored_count: known.length,
+    matching_modes: [...new Set(known.map((member) => member.mode))],
+    matching_statuses: [...new Set(known.map((member) => member.status))],
+    stars_min: Math.min(...known.map((member) => member.stars)),
+    stars_max: Math.max(...known.map((member) => member.stars)),
+    length_min: Math.min(...known.map((member) => member.length_seconds)),
+    length_max: Math.max(...known.map((member) => member.length_seconds)),
+    added_at: timestamp,
+    preview: known.slice(0, 8),
+  };
+}
 function deferred() {
   let release!: () => void;
   const promise = new Promise<void>((resolve) => {
@@ -153,6 +170,7 @@ async function fixtures(
   await page.addInitScript((value) => {
     localStorage.setItem('illya_appearance', JSON.stringify(value));
   }, preferences);
+  await page.route('https://assets.ppy.sh/**', (route) => route.abort());
   page.on('pageerror', (error) => state.errors.push(error.message));
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
@@ -167,8 +185,13 @@ async function fixtures(
       );
     if (method === 'GET' && pathname === '/me/preferences')
       return route.fulfill({ json: preferences });
-    if (method === 'GET' && pathname === '/beatmaps') {
-      return route.fulfill({ json: listing([primary], Number(url.searchParams.get('page') ?? 1)) });
+    if (method === 'GET' && pathname === '/beatmapsets') {
+      return route.fulfill({
+        json: listing(
+          [discoverySet(primary, state.members.get(primary.id) ?? [primary])],
+          Number(url.searchParams.get('page') ?? 1),
+        ),
+      });
     }
     const detail = /^\/beatmaps\/(\d+)$/.exec(pathname);
     if (method === 'GET' && detail) {
@@ -181,7 +204,7 @@ async function fixtures(
         map ? { json: map } : { status: 404, json: { error: { code: 'beatmap_not_found' } } },
       );
     }
-    const siblings = /^\/beatmaps\/(\d+)\/package\/difficulties$/.exec(pathname);
+    const siblings = /^\/beatmaps\/(\d+)\/set\/difficulties$/.exec(pathname);
     if (method === 'GET' && siblings) {
       const id = Number(siblings[1]);
       const pageNumber = Number(url.searchParams.get('page'));
@@ -238,6 +261,15 @@ async function fixtures(
 function assertClean(state: Awaited<ReturnType<typeof fixtures>>) {
   expect(state.unexpected).toEqual([]);
   expect(state.errors).toEqual([]);
+}
+async function openDifficultyDetails(section: Locator, label: string) {
+  const disclosure = section.locator('details.set-difficulty-disclosure');
+  await expect(disclosure).toBeVisible();
+  const summary = disclosure.locator('.set-difficulty-summary');
+  await expect(summary).toHaveText(label);
+  if (!(await disclosure.evaluate((element: HTMLDetailsElement) => element.open)))
+    await summary.click();
+  await expect(disclosure).toHaveAttribute('open', '');
 }
 
 async function captureReview(page: Page, name: string) {
@@ -517,12 +549,15 @@ test('a 25-difficulty package pages complete membership and identifies the curre
   await page.goto(`/beatmaps/${current.id}`);
   const section = page.locator('.map-package');
   await expect(
-    section.getByRole('heading', { name: state.copy.maps.packageTitle, exact: true }),
+    section.getByRole('heading', { name: state.copy.mapDiscovery.setTitle, exact: true }),
   ).toBeVisible();
-  await expect(section).toContainText('25 difficulties');
+  await expect(section).toContainText('25 known difficulties in this set');
+  await expect(section.locator('.set-difficulty-disclosure')).not.toHaveAttribute('open');
+  await expect(section.locator('.set-difficulty-strip a').first()).toBeVisible();
+  await openDifficultyDetails(section, state.copy.mapDiscovery.difficultyDetails);
   await expect(section.locator('.package-difficulty-row')).toHaveCount(24);
   await expect(section.locator('[aria-current="page"]')).toHaveCount(0);
-  await expect(section.locator('.pagination')).toContainText('1 / 2');
+  await expect(section.locator('.discovery-pagination')).toContainText('1 / 2');
   await expect(
     page.getByRole('link', { name: state.copy.maps.downloadPackage, exact: true }),
   ).toHaveAttribute('href', `/api/v1/beatmaps/${members[0].id}/download`);
@@ -531,20 +566,26 @@ test('a 25-difficulty package pages complete membership and identifies the curre
   ).toHaveAttribute('href', `/api/v1/beatmaps/${current.id}/osu`);
   await expect(page.getByText(state.copy.maps.singleFileHint, { exact: true })).toBeVisible();
   await captureReview(page, 'workflow-map-package-members');
-  await section.getByRole('button', { name: state.copy.common.next, exact: true }).click();
-  await expect(section.locator('.pagination')).toContainText('2 / 2');
+  await section.getByRole('button', { name: state.copy.mapDiscovery.next, exact: true }).click();
+  await expect(section.locator('.discovery-pagination')).toContainText('2 / 2');
+  await expect(section.locator('.set-difficulty-disclosure')).not.toHaveAttribute('open');
+  await openDifficultyDetails(section, state.copy.mapDiscovery.difficultyDetails);
   const row = section.locator('.package-difficulty-row');
   await expect(row).toHaveCount(1);
   await expect(row).toContainText(current.version);
-  await expect(row).toContainText(state.copy.maps.currentDifficulty);
-  await expect(row).toHaveAttribute('href', `/beatmaps/${current.id}`);
+  await expect(row).toContainText(state.copy.mapDiscovery.current);
+  await expect(row).toHaveAttribute('href', `/beatmaps/${current.id}?mode=0&variant=vanilla`);
   await expect(row).toHaveAttribute('aria-current', 'page');
   await expect(
-    section.getByRole('button', { name: state.copy.common.next, exact: true }),
+    section.getByRole('button', { name: state.copy.mapDiscovery.next, exact: true }),
   ).toBeDisabled();
-  await section.getByRole('button', { name: state.copy.common.previous, exact: true }).click();
+  await section
+    .getByRole('button', { name: state.copy.mapDiscovery.previous, exact: true })
+    .click();
+  await expect(section.locator('.discovery-pagination')).toContainText('1 / 2');
+  await openDifficultyDetails(section, state.copy.mapDiscovery.difficultyDetails);
   await expect(section.locator('.package-difficulty-row')).toHaveCount(24);
-  await expect(section.locator('.pagination')).toContainText('1 / 2');
+  await expect(section.locator('.discovery-pagination')).toContainText('1 / 2');
   expect(state.queries).toContainEqual({ id: current.id, page: 1, pageSize: 24 });
   expect(state.queries).toContainEqual({ id: current.id, page: 2, pageSize: 24 });
   assertClean(state);
@@ -554,10 +595,15 @@ test('sibling navigation resets package paging and never renders the old page wh
   page,
 }) => {
   const state = await fixtures(page);
-  await page.goto(`/beatmaps/${members[0].id}`);
+  const catalogue = '/beatmaps?source=local&q=fixture&view=list';
+  const selection = new URLSearchParams({ mode: '0', variant: 'relax', returnTo: catalogue });
+  await page.goto(`/beatmaps/${members[0].id}?${selection}`);
   const section = page.locator('.map-package');
+  await openDifficultyDetails(section, state.copy.mapDiscovery.difficultyDetails);
   await expect(section.locator('.package-difficulty-row')).toHaveCount(24);
-  await section.getByRole('button', { name: state.copy.common.next, exact: true }).click();
+  await section.getByRole('button', { name: state.copy.mapDiscovery.next, exact: true }).click();
+  await expect(section.locator('.discovery-pagination')).toContainText('2 / 2');
+  await openDifficultyDetails(section, state.copy.mapDiscovery.difficultyDetails);
   await expect(section.locator('.package-difficulty-row')).toHaveCount(1);
   const destination = members[24].id;
   const hold = deferred();
@@ -573,19 +619,28 @@ test('sibling navigation resets package paging and never renders the old page wh
     }).observe(document.body, { childList: true, subtree: true });
   }, destination);
   try {
-    await section.locator(`a[href="/beatmaps/${destination}"]`).click();
+    await section
+      .locator(`.package-difficulty-row[href="/beatmaps/${destination}?${selection}"]`)
+      .click();
     await expect(page).toHaveURL(new RegExp(`/beatmaps/${destination}(?:\\?|$)`));
+    expect(Object.fromEntries(new URL(page.url()).searchParams)).toEqual({
+      mode: '0',
+      variant: 'relax',
+      returnTo: catalogue,
+    });
+    await expect(page.locator('.back-link')).toHaveAttribute('href', catalogue);
     await expect
       .poll(() => state.queries.filter((query) => query.id === destination).length)
       .toBeGreaterThan(0);
     await expect(
-      section.getByRole('status', { name: state.copy.common.loading, exact: true }),
+      section.getByRole('status', { name: state.copy.mapDiscovery.loading, exact: true }),
     ).toBeVisible();
     await expect(section.locator('.package-difficulty-row')).toHaveCount(0);
-    await expect(section.locator('.pagination')).toHaveCount(0);
+    await expect(section.locator('.discovery-pagination')).toHaveCount(0);
     hold.release();
+    await openDifficultyDetails(section, state.copy.mapDiscovery.difficultyDetails);
     await expect(section.locator('.package-difficulty-row')).toHaveCount(24);
-    await expect(section.locator('.pagination')).toContainText('1 / 2');
+    await expect(section.locator('.discovery-pagination')).toContainText('1 / 2');
     await expect(section.locator('.package-difficulty-list')).not.toContainText(
       members[24].version,
     );
@@ -616,14 +671,15 @@ test('package loading and failure retain the parent map and expose a working ret
     const section = page.locator('.map-package');
     await expect(page.getByRole('heading', { name: longTitle, exact: true })).toBeVisible();
     await expect(
-      section.getByRole('status', { name: state.copy.common.loading, exact: true }),
+      section.getByRole('status', { name: state.copy.mapDiscovery.loading, exact: true }),
     ).toBeVisible();
     await expect(section.locator('.package-difficulty-row')).toHaveCount(0);
     hold.release();
     await expect(section.getByRole('alert')).toBeVisible();
     await expect(page.getByRole('heading', { name: longTitle, exact: true })).toBeVisible();
     state.memberFailures.delete(members[0].id);
-    await section.getByRole('button', { name: state.copy.common.retry, exact: true }).click();
+    await section.getByRole('button', { name: state.copy.mapDiscovery.retry, exact: true }).click();
+    await openDifficultyDetails(section, state.copy.mapDiscovery.difficultyDetails);
     await expect(section.locator('.package-difficulty-row')).toHaveCount(24);
     await expect(section.getByRole('alert')).toHaveCount(0);
     expect(state.queries.length).toBeGreaterThanOrEqual(2);
@@ -647,14 +703,20 @@ test('a standalone package clearly downloads one osu difficulty without music or
   await expect(
     page.getByRole('link', { name: state.copy.maps.downloadPackage, exact: true }),
   ).toHaveCount(0);
+  await openDifficultyDetails(
+    page.locator('.map-package'),
+    state.copy.mapDiscovery.difficultyDetails,
+  );
   await expect(page.locator('.map-package .package-difficulty-row')).toHaveCount(1);
-  await expect(page.locator('.map-package [aria-current="page"]')).toHaveCount(1);
-  await expect(page.locator('.map-package .pagination')).toHaveCount(0);
+  await expect(
+    page.locator('.map-package .package-difficulty-row[aria-current="page"]'),
+  ).toHaveCount(1);
+  await expect(page.locator('.map-package .discovery-pagination')).toHaveCount(0);
   assertClean(state);
 });
 
 for (const kind of ['osu', 'osz'] as const) {
-  test(`official package-null detail uses the actual ${kind} download kind without requesting local membership`, async ({
+  test(`official package-null detail uses the actual ${kind} download kind and shows its one known stored difficulty`, async ({
     page,
   }) => {
     const map: FixtureMap = {
@@ -667,6 +729,7 @@ for (const kind of ['osu', 'osz'] as const) {
       package: null,
     };
     const state = await fixtures(page, { map });
+    state.members.set(map.id, [map]);
     await page.goto(`/beatmaps/${map.id}`);
     await expect(page.getByRole('heading', { name: longTitle, exact: true })).toBeVisible();
     await expect(
@@ -680,8 +743,17 @@ for (const kind of ['osu', 'osz'] as const) {
       await expect(
         page.getByRole('link', { name: state.copy.maps.downloadDifficulty, exact: true }),
       ).toHaveAttribute('href', `/api/v1/beatmaps/${map.id}/osu`);
-    await expect(page.locator('.map-package')).toHaveCount(0);
-    expect(state.queries).toEqual([]);
+    const selector = page.locator('.map-package');
+    await openDifficultyDetails(selector, state.copy.mapDiscovery.difficultyDetails);
+    await expect(selector.locator('.package-difficulty-row')).toHaveCount(1);
+    await expect(selector).toContainText('1 known difficulty in this set');
+    await expect(selector).toContainText(state.copy.mapDiscovery.knownHint);
+    await expect(selector.locator('.package-difficulty-row')).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await expect(selector.locator('.discovery-pagination')).toHaveCount(0);
+    expect(state.queries).toContainEqual({ id: map.id, page: 1, pageSize: 24 });
     assertClean(state);
   });
 }

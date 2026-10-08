@@ -11,6 +11,7 @@ The website uses real server records. Empty sections mean that no eligible conte
 | Social            | Friends, mutual relationships, blocks and private messaging; Message on a profile opens a recipient form, and the player explicitly requests the conversation                                             |
 | Personalization   | Light/dark theme, accent, uploaded background, independent background blur/dim, independent glass blur/opacity, live radius, profile media and public accent                                              |
 | Map management    | Official import subject to API configuration/rate limits, local upload, package/difficulty downloads and permission-controlled moderation/withdrawal                                                      |
+| Map discovery     | Grouped catalogue, grid/list views, URL search/filter/sort/paging, official covers, known-difficulty switching and truthful .osu/.osz downloads; see [map discovery](map-discovery.md)                       |
 | Accounts          | Public website registration, email/username login, password recovery, email verification, locale and account settings                                                                                     |
 | Administration    | Server-enforced permissions and restricted account, role, map, score, announcement and audit areas                                                                                                        |
 
