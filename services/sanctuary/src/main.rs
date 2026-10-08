@@ -1,5 +1,8 @@
 mod account_recovery;
 mod admin;
+mod announcements;
+#[cfg(test)]
+mod announcements_tests;
 mod auth;
 mod beatmap_availability;
 #[cfg(test)]
@@ -386,6 +389,8 @@ fn router(state: AppState) -> Router {
                 .merge(delete(auth::remove_profile_media).layer(DefaultBodyLimit::max(1024))),
         )
         .route("/api/v1/users/{id}", get(auth::user_profile))
+        .route("/api/v1/announcements", get(announcements::list))
+        .route("/api/v1/announcements/{id}", get(announcements::get))
         .route("/api/v1/users/{id}/scores/best", get(scores::best_for_user))
         .route("/api/v1/beatmaps", get(maps::list))
         .route(
@@ -468,6 +473,18 @@ fn router(state: AppState) -> Router {
             axum::routing::put(website_chat::mark_read).layer(DefaultBodyLimit::max(8 * 1024)),
         )
         .route("/api/v1/admin/users", get(admin::users))
+        .route(
+            "/api/v1/admin/announcements",
+            get(announcements::admin_list)
+                .post(announcements::create)
+                .layer(DefaultBodyLimit::max(256 * 1024)),
+        )
+        .route(
+            "/api/v1/admin/announcements/{id}",
+            get(announcements::admin_get)
+                .patch(announcements::update)
+                .layer(DefaultBodyLimit::max(256 * 1024)),
+        )
         .route("/api/v1/admin/users/{id}", patch(admin::update_user))
         .route(
             "/api/v1/admin/users/{id}/sessions/revoke",

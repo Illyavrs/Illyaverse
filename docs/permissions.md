@@ -7,16 +7,17 @@
 網站管理面板入口需要 `admin.view`。面板中的功能另外依照下列權限顯示，
 後端每個 API 也會獨立驗證權限。只有 `admin.view` 的帳號不能修改資料。
 
-| 權限 | 可執行的操作 |
-| --- | --- |
-| `roles.manage` | 建立、編輯、指派或移除自己有權限管理的角色 |
-| `users.moderate` | 查看帳號 email，限制或解除限制其他帳號 |
-| `users.sessions.revoke` | 撤銷自己有權限管理的帳號之網站、stable、lazer 登入 |
-| `beatmaps.moderate` | 審核圖譜狀態 |
-| `scores.moderate` | 審核成績，以及透過 API 進行有上限的 RX pp 重算 |
-| `audit.read` | 查看管理操作紀錄 |
-| `beatmaps.upload` / `beatmaps.import` | 上傳伺服器圖譜／從官方匯入圖譜 |
-| `chat.send` / `social.manage` | 發送聊天訊息／管理自己的好友與封鎖關係 |
+| 權限                                  | 可執行的操作                                       |
+| ------------------------------------- | -------------------------------------------------- |
+| `roles.manage`                        | 建立、編輯、指派或移除自己有權限管理的角色         |
+| `users.moderate`                      | 查看帳號 email，限制或解除限制其他帳號             |
+| `users.sessions.revoke`               | 撤銷自己有權限管理的帳號之網站、stable、lazer 登入 |
+| `beatmaps.moderate`                   | 審核圖譜狀態                                       |
+| `scores.moderate`                     | 審核成績，以及透過 API 進行有上限的 RX pp 重算     |
+| `announcements.manage`                | 建立公告草稿、編輯、發布、撤下與查看非公開公告     |
+| `audit.read`                          | 查看管理操作紀錄                                   |
+| `beatmaps.upload` / `beatmaps.import` | 上傳伺服器圖譜／從官方匯入圖譜                     |
+| `chat.send` / `social.manage`         | 發送聊天訊息／管理自己的好友與封鎖關係             |
 
 建議建立帶有 `admin.view` 與所需操作權限的自訂角色，再指派給工作人員。
 內建 `player`、`moderator`、`administrator` 保留原名稱且不能刪除；
@@ -38,20 +39,28 @@
 
 所有路由都位於 `/api/v1`，使用網站登入 cookie 與既有 Origin 檢查。
 
-| 路由 | 方法與內容 |
-| --- | --- |
-| `/admin/users?page=1&page_size=20&search=...` | GET 分頁帳號與角色摘要 |
-| `/admin/roles` | GET 角色、權限與持有人數；POST 建立角色 |
-| `/admin/roles/{id}` | PATCH 更新；DELETE 刪除未指派的自訂角色 |
-| `/admin/users/{id}` | PATCH `roles` 與／或 `is_restricted` |
-| `/admin/users/{id}/sessions/revoke` | POST 無需 request body，回傳 `revoked.web/stable/lazer` 筆數 |
-| `/admin/beatmaps/{id}` | PATCH `status` |
-| `/admin/scores/{id}` | PATCH `verification` |
-| `/admin/scores/recalculate-relax` | POST `score_ids`，1–16 個不重複正整數 ID |
+| 路由                                          | 方法與內容                                                          |
+| --------------------------------------------- | ------------------------------------------------------------------- |
+| `/admin/users?page=1&page_size=20&search=...` | GET 分頁帳號與角色摘要                                              |
+| `/admin/roles`                                | GET 角色、權限與持有人數；POST 建立角色                             |
+| `/admin/roles/{id}`                           | PATCH 更新；DELETE 刪除未指派的自訂角色                             |
+| `/admin/users/{id}`                           | PATCH `roles` 與／或 `is_restricted`                                |
+| `/admin/users/{id}/sessions/revoke`           | POST 無需 request body，回傳 `revoked.web/stable/lazer` 筆數        |
+| `/admin/beatmaps/{id}`                        | PATCH `status`                                                      |
+| `/admin/scores/{id}`                          | PATCH `verification`                                                |
+| `/admin/scores/recalculate-relax`             | POST `score_ids`，1–16 個不重複正整數 ID                            |
+| `/admin/announcements`                        | GET 依狀態分頁公告；POST 建立草稿                                   |
+| `/admin/announcements/{id}`                   | GET 指定公告的最新版本；PATCH 完整標題、內文、狀態與預期 `revision` |
 
 登入撤銷不會限制帳號，玩家可重新登入。lazer 筆數代表登入紀錄，同一筆
 紀錄的 access 與 refresh token 會一起失效。已開啟的長連線會在既有驗證
 週期或下一次需要驗證的操作發現撤銷；這個回應不代表已同步關閉所有視窗。
+
+公告公開 API 只回傳已發布內容，管理員也不能從公開路由讀取草稿或已撤下公告。
+公告建立與更新會在交易中重新驗證權限和登入，再與稽核紀錄一同提交。
+更新必須帶入目前 `revision`；版本不同回傳 409 `announcement_conflict`，
+不會覆蓋其他人的修改。內建管理員維持單一 `*` 權限；一般玩家與版主不會
+自動取得公告管理權限。面板入口仍需 `admin.view`。
 
 角色變更、限制、登入撤銷、圖譜／成績審核與 RX 重算均在資料庫交易中
 重新讀取操作者目前的登入、限制與權限。請求若在排隊期間被撤銷權限或

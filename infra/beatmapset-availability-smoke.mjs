@@ -130,7 +130,8 @@ try {
   await waitUntil(() => docker(['exec', ownedId, 'pg_isready', '-U', 'fixture', '-d', 'fixture'],
     undefined, true).status === 0, 'owned PostgreSQL readiness');
   const migrations = readdirSync(path.join(root, 'migrations')).filter((entry) => entry.endsWith('.sql')).sort();
-  assert.equal(migrations.length, 20);
+  assert.ok(migrations.length >= 20, 'availability boundary requires migrations through 0020');
+  assert.equal(migrations[19], '0020_beatmapset_availability.sql', 'keep the 0019→0020 upgrade boundary explicit');
   for (const filename of migrations.slice(0, 19)) sql(readFileSync(path.join(root, 'migrations', filename), 'utf8'));
   sql(`BEGIN;
     INSERT INTO users(id,username,email,password_hash,password_md5_hash) VALUES
