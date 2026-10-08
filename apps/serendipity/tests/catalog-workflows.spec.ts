@@ -188,6 +188,9 @@ async function boardFixtures(page: Page, map: ReturnType<typeof beatmap>) {
     if (url.pathname === '/api/v1/me') return route.fulfill({ status: 401, json: { error: { code: 'unauthorized' } } });
     if (url.pathname === '/api/v1/me/preferences') return route.fulfill({ json: preferences });
     if (url.pathname === `/api/v1/beatmaps/${map.id}`) return route.fulfill({ json: map });
+    if (url.pathname === `/api/v1/beatmaps/${map.id}/set/difficulties`) {
+      return route.fulfill({ json: listing([map], Number(url.searchParams.get('page') ?? 1)) });
+    }
     if (url.pathname === `/api/v1/beatmaps/${map.id}/scores`) {
       requests.push(url.searchParams);
       const mode = Number(url.searchParams.get('mode'));
@@ -210,7 +213,9 @@ for (const variant of ['vanilla', 'relax'] as const) {
     const state = await boardFixtures(page, map);
     await page.goto(`/beatmaps/${map.id}?mode=0&variant=${variant}`);
     const row = page.locator('.score-table tbody tr');
-    await expect(row.getByRole('link', { name: new RegExp(map.title) })).toHaveAttribute('href', '/scores/98503');
+    const details = row.locator('a.score-title');
+    await expect(details).toHaveAttribute('href', '/scores/98503');
+    await expect(details).toContainText(map.title);
     await expect(row).toContainText('Two circles');
     await expect(row).toContainText(variant === 'relax' ? '345.00' : '123.00');
     await expect(row.getByRole('link', { name: player.username, exact: true })).toHaveAttribute('href', `/players/${player.id}?mode=0&variant=${variant}`);

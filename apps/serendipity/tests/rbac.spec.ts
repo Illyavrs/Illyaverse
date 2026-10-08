@@ -756,7 +756,7 @@ test('final admin review captures in Traditional Chinese and Japanese', async ({
   await expect(userRow(page)).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
   await captureReview('desktop-admin-zh-TW');
-  await page.locator('.admin-toolbar button').nth(1).click();
+  await exactButton(page.locator('.admin-toolbar'), '角色與權限').click();
   await expect(page.locator('.admin-role-form')).toBeVisible();
   await captureReview('desktop-roles-zh-TW');
   await page
@@ -779,7 +779,8 @@ test('final admin review captures in Traditional Chinese and Japanese', async ({
     }),
   );
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.reload();
+  // The desktop roles tab persists in the URL; request users for this mobile capture.
+  await page.goto('/admin?tab=users');
   await expect(page.locator('html')).toHaveAttribute('lang', 'ja');
   await expect(userRow(page)).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
@@ -787,19 +788,18 @@ test('final admin review captures in Traditional Chinese and Japanese', async ({
     true,
   );
   await captureReview('mobile-admin-ja');
-  await page.locator('.admin-toolbar button').nth(1).click();
+  await exactButton(page.locator('.admin-toolbar'), '役割と権限').click();
   await expect(page.locator('.admin-role-form')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
   await captureReview('mobile-roles-ja');
+  expect(state.writes).toHaveLength(0);
   const metricsJson = JSON.stringify(metrics, null, 2);
   writeFileSync(path.join(reviewDirectory, 'qa-metrics.json'), metricsJson);
-  await test
-    .info()
-    .attach('admin-review-qa-metrics', {
-      body: Buffer.from(metricsJson),
-      contentType: 'application/json',
-    });
+  await test.info().attach('admin-review-qa-metrics', {
+    body: Buffer.from(metricsJson),
+    contentType: 'application/json',
+  });
   console.log(`RBAC review metrics: ${JSON.stringify(metrics)}`);
 });

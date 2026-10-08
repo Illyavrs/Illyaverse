@@ -8,6 +8,7 @@ import './globals.css';
 import '@/features/home.css';
 import '@/features/profile.css';
 import '@/styles/rank-history.css';
+import '@/features/score-presentation.css';
 import '@/features/announcements.css';
 import '@/styles/map-discovery.css';
 import { Providers } from '@/components/providers';

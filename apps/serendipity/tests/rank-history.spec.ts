@@ -264,9 +264,12 @@ test('actual observation gaps and unranked days interrupt lines; the full UTC wi
   await expect(page.locator('.profile-section-nav a[href="#profile-rank-history"]')).toHaveText(
     localeCopy['zh-TW'].title,
   );
-  expect(await panel(page).evaluate((element) => element.nextElementSibling?.id)).toBe(
-    'profile-about',
-  );
+  expect(
+    await page
+      .locator('#profile-rank-history, #profile-about, #profile-scores, #profile-uploads')
+      .evaluateAll((elements) => elements.map((element) => element.id)),
+  ).toEqual(['profile-rank-history', 'profile-about', 'profile-scores', 'profile-uploads']);
+  await expect(page.locator('#profile-about')).toContainText('Synthetic rank-history observations');
   const segments = await panel(page)
     .locator('.rank-history-segment')
     .evaluateAll((elements) =>

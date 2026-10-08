@@ -177,7 +177,6 @@ async function capture(page: Page, name: string) {
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
     .toBe(true);
   const hierarchy = process.env.ILLYA_MAP_DISCOVERY_CAPTURE === '1';
-  if (hierarchy && !['desktop-1440-dark-zh-banner', 'mobile-light-en-no-banner'].includes(name)) return;
   if (!hierarchy && process.env.ILLYA_WEB_SMOKE_CAPTURE !== '1') return;
   await expect(page.locator('.rank-history-empty-title')).toBeVisible();
   await page.evaluate(() => {
@@ -193,20 +192,32 @@ async function capture(page: Page, name: string) {
     fullPage: true,
     animations: 'disabled',
   });
-  if (hierarchy) writeFileSync(`${output}.json`, JSON.stringify({
-    viewport: page.viewportSize(),
-    route: new URL(page.url()).pathname + new URL(page.url()).search,
-    data: 'Synthetic intercepted profile; no real player activity or account changes.',
-    visual_facts: await page.evaluate(() => ({
-      locale: document.documentElement.lang,
-      theme: document.documentElement.className,
-      fonts: document.fonts.status,
-      scrollY: window.scrollY,
-      documentOverflow: document.documentElement.scrollWidth > innerWidth,
-      profileAccent: getComputedStyle(document.querySelector('.profile-page')!).getPropertyValue('--user-accent'),
-      selectedFill: getComputedStyle(document.querySelector('.profile-page')!).getPropertyValue('--selection-fill'),
-    })),
-  }, null, 2));
+  if (hierarchy)
+    writeFileSync(
+      `${output}.json`,
+      JSON.stringify(
+        {
+          viewport: page.viewportSize(),
+          route: new URL(page.url()).pathname + new URL(page.url()).search,
+          data: 'Synthetic intercepted profile; no real player activity or account changes.',
+          visual_facts: await page.evaluate(() => ({
+            locale: document.documentElement.lang,
+            theme: document.documentElement.className,
+            fonts: document.fonts.status,
+            scrollY: window.scrollY,
+            documentOverflow: document.documentElement.scrollWidth > innerWidth,
+            profileAccent: getComputedStyle(
+              document.querySelector('.profile-page')!,
+            ).getPropertyValue('--user-accent'),
+            selectedFill: getComputedStyle(
+              document.querySelector('.profile-page')!,
+            ).getPropertyValue('--selection-fill'),
+          })),
+        },
+        null,
+        2,
+      ),
+    );
 }
 
 test('compact no-banner profile exposes actual ranks, detailed statistics, grades and uploader navigation', async ({
@@ -216,7 +227,9 @@ test('compact no-banner profile exposes actual ranks, detailed statistics, grade
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`/players/${playerId}?mode=0&variant=vanilla`);
   await expect(page.locator('.profile-masthead')).toHaveClass(/no-banner/);
-  await expect(page.locator('.profile-cover')).toHaveCSS('height', '24px');
+  await expect(page.locator('.profile-cover')).toHaveCount(0);
+  const overview = await page.locator('.profile-masthead').boundingBox();
+  expect(overview!.height).toBeLessThan(360);
   await expect(page.locator('.profile-stats')).toContainText('#12');
   await expect(page.locator('.profile-stats')).toContainText('TW 排名');
   await expect(page.locator('.profile-stats')).toContainText('#3');
@@ -237,6 +250,7 @@ test('compact no-banner profile exposes actual ranks, detailed statistics, grade
   expect(state.uploads[0].searchParams.get('uploaded_by')).toBe(String(playerId));
   expect(state.uploads[0].searchParams.get('source')).toBe('local');
   expect(state.uploads[0].searchParams.get('page_size')).toBe('5');
+  await capture(page, 'desktop-1440-dark-zh-no-banner');
 });
 
 test('mobile banner crop matches profile settings and score rows keep all values with keyboard links', async ({
@@ -327,7 +341,9 @@ test('English mobile profile uses a compact header when no banner is uploaded', 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/players/${playerId}`);
   await expect(page.locator('.profile-masthead')).toHaveClass(/no-banner/);
-  await expect(page.locator('.profile-cover')).toHaveCSS('height', '24px');
+  await expect(page.locator('.profile-cover')).toHaveCount(0);
+  const overview = await page.locator('.profile-masthead').boundingBox();
+  expect(overview!.height).toBeLessThan(420);
   await expect(page.locator('#profile-uploads .map-row')).toHaveCount(1);
   await expect(page.locator('#profile-scores .profile-score-row')).toHaveCount(1);
   const gradeBounds = await page.locator('#profile-grades-hint').evaluate((hint) => {

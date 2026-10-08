@@ -170,21 +170,24 @@ export function MapMetadata({ map }: { map: Beatmap }) {
   return (
     <dl className="discovery-detail-metadata">
       {[
-        [t('stars'), `${map.stars.toFixed(2)} ★`],
+        [t('stars'), map.stars.toFixed(2)],
         [t('bpm'), map.bpm.toFixed(0)],
         [t('length'), mapDuration(map.length_seconds)],
         [c('combo'), `${map.max_combo}x`],
-      ].map(([label, value]) => (
+      ].map(([label, value], index) => (
         <div key={label}>
           <dt>{label}</dt>
-          <dd>{value}</dd>
+          <dd>
+            {index === 0 && <Star aria-hidden="true" />}
+            {value}
+          </dd>
         </div>
       ))}
     </dl>
   );
 }
 
-function difficultyLevel(stars: number) {
+export function difficultyLevel(stars: number) {
   return stars < 2
     ? 'easy'
     : stars < 2.7
@@ -223,8 +226,11 @@ export function DifficultyChip({
       aria-label={t('openDifficulty', { version: map.version, mode, stars: map.stars.toFixed(2) })}
       title={`${map.version} · ${mode} · ${map.stars.toFixed(2)} ★`}
     >
-      <span className="difficulty-mode">{mode}</span>
-      <span className="difficulty-version">{map.version}</span>
+      <span className="difficulty-marker" aria-hidden="true" />
+      <span className="difficulty-chip-copy">
+        <span className="difficulty-mode">{mode}</span>
+        <span className="difficulty-version">{map.version}</span>
+      </span>
       <span className="difficulty-rating">
         <Star aria-hidden="true" />
         {map.stars.toFixed(2)}
@@ -367,8 +373,16 @@ function MapSetCard({ set, returnTo }: { set: DiscoverySet; returnTo: string }) 
       <Link href={beatmapDifficultyHref(map, { returnTo })} className="discovery-set-main">
         <MapArtwork source={map.source} nativeSetId={set.native_set_id} />
         <div className="discovery-set-copy">
-          <span className="discovery-artist">{map.artist}</span>
+          <div className="discovery-set-statuses">
+            {set.matching_statuses.map((status) => (
+              <StatusLabel value={status} key={status} />
+            ))}
+            {map.source === 'local' && (
+              <span className="discovery-source">{t('source.local')}</span>
+            )}
+          </div>
           <h2>{map.title}</h2>
+          <span className="discovery-artist">{map.artist}</span>
           <p>{t('mappedBy', { creator: map.creator })}</p>
           <div className="discovery-set-meta">
             <span className="discovery-stars">
@@ -383,20 +397,10 @@ function MapSetCard({ set, returnTo }: { set: DiscoverySet; returnTo: string }) 
               {set.matching_modes.map((mode) => modes[mode] ?? t('unknownMode')).join(' / ')}
             </span>
           </div>
-          <div className="discovery-set-statuses">
-            {set.matching_statuses.map((status) => (
-              <StatusLabel value={status} key={status} />
-            ))}
-          </div>
         </div>
         <ArrowRight className="discovery-open" aria-hidden="true" />
       </Link>
       <div className="discovery-difficulties">
-        <div className="discovery-difficulty-heading">
-          <span>
-            {t('matchedStored', { matched: set.matching_count, stored: set.stored_count })}
-          </span>
-        </div>
         <div className="difficulty-strip">
           {set.preview.map((difficulty) => (
             <DifficultyChip
@@ -407,15 +411,20 @@ function MapSetCard({ set, returnTo }: { set: DiscoverySet; returnTo: string }) 
             />
           ))}
         </div>
-        {set.matching_count > set.preview.length && (
-          <Link
-            href={`${beatmapDifficultyHref(map, { returnTo })}#set-difficulties`}
-            className="discovery-more"
-          >
-            {t('moreDifficulties', { count: set.matching_count - set.preview.length })}
-            <ArrowRight aria-hidden="true" />
-          </Link>
-        )}
+        <div className="discovery-difficulty-heading">
+          <span>
+            {t('matchedStored', { matched: set.matching_count, stored: set.stored_count })}
+          </span>
+          {set.matching_count > set.preview.length && (
+            <Link
+              href={`${beatmapDifficultyHref(map, { returnTo })}#set-difficulties`}
+              className="discovery-more"
+            >
+              {t('moreDifficulties', { count: set.matching_count - set.preview.length })}
+              <ArrowRight aria-hidden="true" />
+            </Link>
+          )}
+        </div>
       </div>
     </article>
   );
@@ -518,7 +527,7 @@ export function MapDiscoveryPage() {
           </Button>
         )}
       </PageHeading>
-      <section className="discovery-controls glass" aria-label={t('filters')}>
+      <section className="discovery-controls" aria-label={t('filters')}>
         <SearchField key={search} value={search} onSearch={(value) => update('q', value)} />
         <div className="discovery-filter-row">
           <div className="field">
@@ -737,6 +746,8 @@ function SetDifficultySelectorContent({
         <>
           <div
             className="difficulty-strip set-difficulty-strip"
+            role="region"
+            tabIndex={0}
             aria-label={t('difficultyQuickLinks')}
           >
             {data.items.map((map) => (
@@ -744,7 +755,6 @@ function SetDifficultySelectorContent({
                 key={map.id}
                 map={map}
                 current={map.id === mapId}
-                compact
                 navigation={navigation}
               />
             ))}

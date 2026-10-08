@@ -240,7 +240,9 @@ test('Japanese mobile focal controls preserve presentation drafts through banner
   await expect(page.locator('.form-success')).toContainText('保存しました');
   expect(state.writes[0].banner_position_y).toBe(15);
   await page.goto(`/players/${state.user.id}`);
-  await expect(page.locator('.profile-cover')).toHaveCSS('background-image', 'none');
+  await expect(page.locator('.profile-cover')).toHaveCount(0);
+  const overview = await page.locator('.profile-masthead').boundingBox();
+  expect(overview!.height).toBeLessThan(420);
   await capture(page, 'public-mobile-dark-ja-no-banner');
 });
 

@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-10-08T04:11:43.557Z",
+  "captured_at": "2026-10-08T15:48:00.275Z",
   "url": "http://localhost:19000/beatmaps/980000",
   "locale": "zh-TW",
   "theme": "dark",
@@ -10,8 +10,9 @@
   "scroll_x": 0,
   "scroll_y": 0,
   "document_width": 1440,
-  "document_height": 1675,
+  "document_height": 1993,
   "actual_theme": "dark",
   "actual_locale": "zh-TW",
-  "font_status": "loaded"
+  "font_status": "loaded",
+  "reduced_motion": true
 }

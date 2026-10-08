@@ -1,11 +1,13 @@
 'use client';
 import { useFormatter, useTranslations } from 'next-intl';
 import Link from 'next/link';
-import { Download } from 'lucide-react';
+import { ArrowUpRight, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Avatar } from '@/components/common';
 import type { Score, ScoreBoardOrder } from '@/lib/types';
 import { scoreMods, scoreVerificationKey } from '@/lib/score-display';
+import './score-presentation.css';
 export function ScoreTable({
   scores,
   leaderboard = false,
@@ -23,34 +25,57 @@ export function ScoreTable({
   const f = useFormatter();
   return (
     <div
-      className="table-scroll"
-      tabIndex={profileBest ? 0 : undefined}
-      role={profileBest ? 'region' : undefined}
-      aria-label={profileBest ? p('best') : undefined}
+      className="table-scroll score-record-table"
+      tabIndex={0}
+      role="region"
+      aria-label={profileBest ? p('best') : c('tableScroll')}
     >
       <table className={`data-table score-table${profileBest ? ' profile-best-score-table' : ''}`}>
         <thead>
           <tr>
-            {(leaderboard || profileBest) && <th scope="col">{t('rankPosition')}</th>}
-            <th>{c('score')}</th>
-            {profileBest && (
-              <>
-                <th scope="col">pp</th>
-                <th scope="col">{p('ppWeight')}</th>
-                <th scope="col">{p('weightedPp')}</th>
-              </>
-            )}
-            {leaderboard && (
-              <th scope="col">
-                {orderedBy === 'pp' ? t('comparisonPp') : t('comparisonStandardised')}
+            {(leaderboard || profileBest) && (
+              <th scope="col" className="score-record-number">
+                {t('rankPosition')}
               </th>
             )}
+            <th scope="col" className="score-record-identity-heading">
+              {leaderboard ? c('username') : c('score')}
+            </th>
+            <th scope="col" className="score-record-primary-heading">
+              {profileBest
+                ? c('pp')
+                : leaderboard
+                  ? orderedBy === 'pp'
+                    ? t('comparisonPp')
+                    : t('comparisonStandardised')
+                  : p('scoreRaw')}
+            </th>
+            {profileBest && (
+              <>
+                <th scope="col" className="score-record-number">
+                  {p('ppWeight')}
+                </th>
+                <th scope="col" className="score-record-number">
+                  {p('weightedPp')}
+                </th>
+              </>
+            )}
             <th scope="col">{c('mods')}</th>
-            <th>{c('accuracy')}</th>
-            <th>{c('combo')}</th>
-            {!profileBest && (!leaderboard || orderedBy !== 'pp') && <th>pp</th>}
-            <th>{p('verification')}</th>
-            <th>{c('replay')}</th>
+            <th scope="col" className="score-record-number">
+              {c('accuracy')}
+            </th>
+            <th scope="col" className="score-record-number">
+              {c('combo')}
+            </th>
+            {!profileBest && (!leaderboard || orderedBy !== 'pp') && (
+              <th scope="col" className="score-record-number">
+                pp
+              </th>
+            )}
+            <th scope="col">{p('verification')}</th>
+            <th scope="col" className="score-record-replay">
+              {c('replay')}
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -63,39 +88,58 @@ export function ScoreTable({
               ].join(' ') || 'NM';
             const verificationKey = scoreVerificationKey(score.verification);
             return (
-              <tr key={score.id}>
+              <tr key={score.id} data-verification={score.verification}>
                 {(leaderboard || profileBest) && (
                   <td className="score-board-position">
                     {typeof score.position === 'number' ? f.number(score.position) : '—'}
                   </td>
                 )}
-                <td>
+                <td className="score-record-identity">
                   {leaderboard && (
                     <Link
-                      className="player-cell"
+                      className="player-cell score-record-player"
                       href={`/players/${score.user_id}?mode=${score.mode}&variant=${score.score_variant ?? 'vanilla'}`}
                     >
-                      {score.username}
+                      <span aria-hidden="true" className="contents">
+                        <Avatar name={score.username} />
+                      </span>
+                      <span>{score.username}</span>
                     </Link>
                   )}
                   <Link href={`/scores/${score.id}`} className="score-title">
-                    {score.title}
-                    <span>
-                      {score.version} <span className="dot">·</span> {f.number(score.score)}
+                    <span className="score-record-title-line">
+                      {score.title}
+                      <ArrowUpRight aria-hidden="true" />
                     </span>
+                    <span className="score-record-version">{score.version}</span>
                   </Link>
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="score-record-meta">
                     {score.score_variant === 'relax' && (
                       <Badge variant="secondary">{c('relax')}</Badge>
                     )}
-                    <small>{f.dateTime(new Date(score.created_at), { dateStyle: 'medium' })}</small>
+                    <time dateTime={score.created_at}>
+                      {f.dateTime(new Date(score.created_at), { dateStyle: 'medium' })}
+                    </time>
+                    {(leaderboard || profileBest) && (
+                      <span title={p('scoreRaw')}>{f.number(score.score)}</span>
+                    )}
                   </div>
+                </td>
+                <td
+                  className={`score-record-primary${leaderboard ? ' score-board-comparison' : ' pp-value'}`}
+                >
+                  {profileBest
+                    ? f.number(score.pp, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                    : leaderboard
+                      ? orderedBy === 'pp'
+                        ? score.pp.toFixed(2)
+                        : typeof score.standardised_score === 'number'
+                          ? f.number(score.standardised_score)
+                          : '—'
+                      : f.number(score.score)}
                 </td>
                 {profileBest && (
                   <>
-                    <td className="pp-value">
-                      {f.number(score.pp, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
                     <td className="score-weight">
                       {typeof score.pp_weight === 'number'
                         ? f.number(score.pp_weight, {
@@ -115,17 +159,10 @@ export function ScoreTable({
                     </td>
                   </>
                 )}
-                {leaderboard && (
-                  <td className="score-board-comparison">
-                    {orderedBy === 'pp'
-                      ? score.pp.toFixed(2)
-                      : typeof score.standardised_score === 'number'
-                        ? f.number(score.standardised_score)
-                        : '—'}
-                  </td>
-                )}
-                <td>{modText}</td>
-                <td>
+                <td className="score-record-mods" title={modText}>
+                  <span className="score-mod-labels">{modText}</span>
+                </td>
+                <td className="score-record-number">
                   {profileBest
                     ? f.number(score.accuracy / 100, {
                         style: 'percent',
@@ -134,18 +171,29 @@ export function ScoreTable({
                       })
                     : `${score.accuracy.toFixed(2)}%`}
                 </td>
-                <td>{profileBest ? f.number(score.max_combo) : score.max_combo}x</td>
+                <td className="score-record-number">
+                  {profileBest ? f.number(score.max_combo) : score.max_combo}x
+                </td>
                 {!profileBest && (!leaderboard || orderedBy !== 'pp') && (
-                  <td className="pp-value">{score.pp.toFixed(2)}</td>
+                  <td className="pp-value score-record-number">{score.pp.toFixed(2)}</td>
                 )}
                 <td>
-                  <Badge variant="secondary">
+                  <Badge
+                    variant="secondary"
+                    className="score-record-verification"
+                    data-verification={score.verification}
+                  >
                     {verificationKey ? t(verificationKey) : score.verification}
                   </Badge>
                 </td>
-                <td>
+                <td className="score-record-replay">
                   {score.has_replay ? (
-                    <Button asChild variant="ghost" size="icon" aria-label={c('download')}>
+                    <Button
+                      asChild
+                      variant="ghost"
+                      size="icon"
+                      aria-label={p('downloadReplay', { title: score.title })}
+                    >
                       <a href={`/api/v1/scores/${score.id}/replay`}>
                         <Download />
                       </a>

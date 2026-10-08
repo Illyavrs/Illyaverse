@@ -2,7 +2,16 @@
 import Link from 'next/link';
 import { useFormatter, useTranslations } from 'next-intl';
 import useSWR from 'swr';
-import { ArrowRight, Download, RefreshCw } from 'lucide-react';
+import {
+  ArrowRight,
+  Download,
+  RefreshCw,
+  Disc3,
+  Trophy,
+  MessagesSquare,
+  Palette,
+  Play,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSession } from '@/components/providers';
 import { Avatar, Loading, LoadError } from '@/components/common';
@@ -32,10 +41,10 @@ export function HomePage() {
     scores.data?.items.filter((score) => score.verification === 'verified') ?? [];
   const profileHref = user ? `/players/${user.id}` : '/register';
   const capabilities = [
-    { title: 'playTitle', description: 'playDescription', href: '/rankings' },
-    { title: 'mapsTitle', description: 'mapsDescription', href: '/beatmaps' },
-    { title: 'profileTitle', description: 'profileDescription', href: '/settings?tab=appearance' },
-    { title: 'communityTitle', description: 'communityFeatures', href: '/chat' },
+    { title: 'mapsTitle', href: '/beatmaps', icon: Disc3 },
+    { title: 'playTitle', href: '/rankings', icon: Trophy },
+    { title: 'communityTitle', href: '/chat', icon: MessagesSquare },
+    { title: 'profileTitle', href: '/settings?tab=appearance', icon: Palette },
   ] as const;
 
   return (
@@ -45,30 +54,31 @@ export function HomePage() {
           <h1 id="home-title">{t('title')}</h1>
           <p className="home-subtitle">{t('titleEnd')}</p>
           <p className="home-description">{t('description')}</p>
-          <div className="home-primary-actions">
-            <Button asChild size="lg">
-              <Link href={profileHref}>
-                {user ? n('profile') : t('join')}
-                <ArrowRight aria-hidden="true" />
-              </Link>
-            </Button>
-            <Button asChild variant="outline" size="lg">
-              <Link href="/connect">{t('connect')}</Link>
-            </Button>
-          </div>
         </div>
-        <nav className="home-capabilities" aria-label={t('features')}>
-          {capabilities.map((capability) => (
-            <Link key={capability.title} href={capability.href}>
-              <span>
-                <strong>{t(capability.title)}</strong>
-                <small>{t(capability.description)}</small>
-              </span>
+        <div className="home-primary-actions">
+          <Button asChild size="lg">
+            <Link href={profileHref}>
+              {user ? n('profile') : t('join')}
               <ArrowRight aria-hidden="true" />
             </Link>
-          ))}
-        </nav>
+          </Button>
+          <Button asChild variant="outline" size="lg">
+            <Link href="/connect">
+              <Play aria-hidden="true" />
+              {t('connect')}
+            </Link>
+          </Button>
+        </div>
       </section>
+      <nav className="home-capabilities" aria-label={t('features')}>
+        {capabilities.map((capability) => (
+          <Link key={capability.title} href={capability.href}>
+            <capability.icon aria-hidden="true" />
+            <strong>{t(capability.title)}</strong>
+            <ArrowRight className="home-capability-arrow" aria-hidden="true" />
+          </Link>
+        ))}
+      </nav>
 
       <section className="home-server-status" aria-label={t('status')} aria-busy={status.isLoading}>
         <div className="home-status-label">
@@ -115,7 +125,10 @@ export function HomePage() {
           <section aria-labelledby="home-maps-title" className="home-catalogue">
             <header className="home-section-heading">
               <div>
-                <h2 id="home-maps-title">{t('explore')}</h2>
+                <h2 id="home-maps-title">
+                  <Disc3 aria-hidden="true" />
+                  {t('explore')}
+                </h2>
                 <p>{t('exploreDescription')}</p>
               </div>
               <Link href="/beatmaps" className="text-link">
@@ -146,7 +159,10 @@ export function HomePage() {
           <section aria-labelledby="home-scores-title" className="home-recent-scores">
             <header className="home-section-heading">
               <div>
-                <h2 id="home-scores-title">{t('recentScores')}</h2>
+                <h2 id="home-scores-title">
+                  <Trophy aria-hidden="true" />
+                  {t('recentScores')}
+                </h2>
                 <p>{t('recentScoresDescription')}</p>
               </div>
             </header>

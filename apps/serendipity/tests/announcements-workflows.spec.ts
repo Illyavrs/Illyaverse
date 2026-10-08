@@ -353,7 +353,7 @@ test('staff navigation stays contained at tablet and narrow phone widths', async
         }),
       ),
     ).toBe(true);
-    if (width <= 1280) {
+    if (width <= 800) {
       const menu = page.getByRole('button', { name: 'Open navigation', exact: true });
       await menu.focus();
       await page.keyboard.press('Enter');
@@ -365,6 +365,13 @@ test('staff navigation stays contained at tablet and narrow phone widths', async
       ).toBeVisible();
       await page.keyboard.press('Escape');
       await expect(menu).toBeFocused();
+    } else {
+      await expect(
+        page.locator('.desktop-nav').getByRole('link', { name: 'Announcements', exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.locator('.desktop-nav').getByRole('link', { name: 'Administration', exact: true }),
+      ).toBeVisible();
     }
   }
 });

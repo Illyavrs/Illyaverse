@@ -1,0 +1,37 @@
+{
+  "scope": "October 8 community website redesign",
+  "build_path": "code",
+  "image": "sha256:2d70e54739a003aef5d6de9ddf61257d9b127309a0741cab1b56d2f29fe7fe8f",
+  "reference_world": "User-pinned osu-web and Sunset; original composition, no copied source or art",
+  "independent_review": {
+    "role_substitution": "Dedicated roles unavailable; fresh independent agents used",
+    "initial_disposition": "fix",
+    "material_findings": [
+      "320px catalogue difficulty preview used eight widely spaced rows"
+    ],
+    "correction": "Two columns, four rows, 44px targets; full names and remaining-difficulty link preserved",
+    "verdict": "ship",
+    "verdict_scope": "Scored mobile catalogue density correction; other promises matched in the initial full review",
+    "regressions": [],
+    "recaptures": [
+      "map-discovery-mobile-dark-ja-320.png",
+      "map-discovery-mobile-light-en.png"
+    ]
+  },
+  "checks": {
+    "lint": "passed",
+    "typecheck": "passed",
+    "production_build": "passed",
+    "browser_tests": 191,
+    "browser_failures": 0,
+    "owned_project": "illya-web-smoke-c670d777f38370de",
+    "disposable_cleanup": "verified",
+    "detector_passes": 1,
+    "detector_advisories": 182,
+    "detector_blockers": 0
+  },
+  "documentation": ["DESIGN.md", ".impeccable/design.json", "docs/website-redesign.md"],
+  "production_art": "No new shipping raster; runtime official covers and user uploads retain existing provenance",
+  "retained_deployment": "Both Web services updated; eight non-Web identities, schema22 and original data IDs preserved",
+  "native_client_operation": false
+}

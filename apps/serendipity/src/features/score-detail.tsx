@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import useSWR from 'swr';
 import { useFormatter, useTranslations } from 'next-intl';
-import { Download, LoaderCircle, Upload } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, Download, LoaderCircle, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +12,7 @@ import { useSession } from '@/components/providers';
 import { api, ApiError, fetcher } from '@/lib/api';
 import { scoreMods, scoreVerificationKey } from '@/lib/score-display';
 import type { Beatmap, User, Score } from '@/lib/types';
+import './score-presentation.css';
 type ScoreDetail = Score & {
   user: User;
   beatmap: Beatmap;
@@ -291,13 +292,13 @@ export function ScorePage({ id }: { id: number }) {
   }
   if (sessionLoading || isLoading)
     return (
-      <div className="page-container">
+      <div className="page-container score-detail-page">
         <Loading />
       </div>
     );
   if (denied || (error && !score))
     return (
-      <div className="page-container">
+      <div className="page-container score-detail-page">
         <LoadError retry={retryScore} />
         {denied && (denied.status === 401 || denied.status === 403) && (
           <Link href="/login" className="text-link">
@@ -321,58 +322,76 @@ export function ScorePage({ id }: { id: number }) {
       .map(([key, value]) => ({ mod: mod.acronym, key, value })),
   );
   return (
-    <div className="page-container">
+    <div className="page-container score-detail-page">
       <Link className="back-link" href={`/players/${score.user_id}?${selection}`}>
+        <ArrowLeft aria-hidden="true" />
         {c('back')}
       </Link>
-      <header className="score-detail-header glass">
-        <div>
-          <Link href={`/beatmaps/${score.beatmap_id}?${selection}`}>
-            <h1>{score.title}</h1>
-          </Link>
-          <p>
-            {score.version} · {score.beatmap.artist}
-          </p>
-          <Link href={`/players/${score.user_id}?${selection}`} className="player-cell">
-            <Avatar name={score.username} url={score.user.avatar_url} />
-            {score.username}
-          </Link>
-        </div>
-        <div className="score-performance">
-          <strong>
-            {score.pp.toFixed(2)} <span>pp</span>
-          </strong>
-          <Badge variant="secondary">
-            {verificationKey ? t(verificationKey) : score.verification}
-          </Badge>
-          {score.score_variant === 'relax' && <Badge variant="secondary">{c('relax')}</Badge>}
-          {score.has_replay && (
-            <Button asChild>
-              <a href={`/api/v1/scores/${id}/replay`}>
-                <Download />
-                {c('replay')}
-              </a>
-            </Button>
-          )}
-        </div>
-      </header>
-      <dl className="score-detail-values glass">
-        {[
-          [p('scoreRaw'), f.number(score.score)],
-          [c('accuracy'), `${score.accuracy.toFixed(2)}%`],
-          [c('combo'), `${score.max_combo}x`],
-          [c('mods'), modText],
-          [
-            c('date'),
-            f.dateTime(new Date(score.created_at), { dateStyle: 'medium', timeStyle: 'short' }),
-          ],
-        ].map(([label, value]) => (
-          <div key={label}>
-            <dt>{label}</dt>
-            <dd>{value}</dd>
+      <section className="score-detail-record glass" aria-labelledby="score-record-title">
+        <header className="score-detail-header">
+          <div className="score-detail-identity">
+            <Link
+              className="score-detail-map-link"
+              href={`/beatmaps/${score.beatmap_id}?${selection}`}
+            >
+              <h1 id="score-record-title">{score.title}</h1>
+              <ArrowUpRight aria-hidden="true" />
+            </Link>
+            <p className="score-detail-map-meta">
+              <span>{score.beatmap.artist}</span>
+              <strong>{score.version}</strong>
+            </p>
+            <div className="score-detail-player-line">
+              <Link href={`/players/${score.user_id}?${selection}`} className="player-cell">
+                <Avatar name={score.username} url={score.user.avatar_url} />
+                <span>{score.username}</span>
+              </Link>
+              <time dateTime={score.created_at}>
+                {f.dateTime(new Date(score.created_at), {
+                  dateStyle: 'medium',
+                  timeStyle: 'short',
+                })}
+              </time>
+            </div>
           </div>
-        ))}
-      </dl>
+          <div className="score-performance">
+            <strong>
+              {score.pp.toFixed(2)} <span>pp</span>
+            </strong>
+            <div className="score-detail-status-line">
+              <Badge
+                variant="secondary"
+                className="score-record-verification"
+                data-verification={score.verification}
+              >
+                {verificationKey ? t(verificationKey) : score.verification}
+              </Badge>
+              {score.score_variant === 'relax' && <Badge variant="secondary">{c('relax')}</Badge>}
+            </div>
+            {score.has_replay && (
+              <Button asChild>
+                <a href={`/api/v1/scores/${id}/replay`}>
+                  <Download />
+                  {c('replay')}
+                </a>
+              </Button>
+            )}
+          </div>
+        </header>
+        <dl className="score-detail-values">
+          {[
+            [p('scoreRaw'), f.number(score.score)],
+            [c('accuracy'), `${score.accuracy.toFixed(2)}%`],
+            [c('combo'), `${score.max_combo}x`],
+            [c('mods'), modText],
+          ].map(([label, value]) => (
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
       {user?.id === score.user_id && (
         <ReplayAttachment
           key={`${id}:${user.id}`}
@@ -381,82 +400,101 @@ export function ScorePage({ id }: { id: number }) {
           onRefresh={refreshScore}
         />
       )}
-      {score.score_scale_status && (
-        <section className="glass content-panel score-judgements mb-6">
-          <h2>{p('scoreScales')}</h2>
-          {score.score_scale_status !== 'unavailable' && (
-            <dl>
-              {[
-                [p('scoreStandardised'), score.standardised_score],
-                [p('scoreClassic'), score.classic_score],
-              ].map(([label, value]) => (
-                <div key={String(label)}>
-                  <dt>{label}</dt>
-                  <dd>{typeof value === 'number' ? f.number(value) : '—'}</dd>
-                </div>
-              ))}
-            </dl>
-          )}
-          <p className="hint">
-            {p(
-              {
-                native_reported: 'scoreNativeReported',
-                legacy_estimated: 'scoreLegacyEstimated',
-                legacy_scorev2: 'scoreLegacyScoreV2',
-                unavailable: 'scoreScaleUnavailable',
-              }[score.score_scale_status],
-            )}
-          </p>
-        </section>
-      )}
-      {modSettings.length > 0 && (
-        <section className="glass content-panel score-judgements mb-6">
-          <h2>{c('modSettings')}</h2>
+      <div
+        className={`score-detail-analysis glass${score.score_scale_status || modSettings.length > 0 ? ' has-supporting-details' : ''}`}
+      >
+        <section
+          className="score-judgements score-detail-judgements"
+          aria-labelledby="score-judgements-title"
+        >
+          <h2 id="score-judgements-title">{c('judgements')}</h2>
           <dl>
-            {modSettings.map(({ mod, key, value }) => (
-              <div key={`${mod}-${key}`}>
-                <dt>
-                  {mod} ·{' '}
-                  {c.has(`modSettingsLabels.${key}`)
-                    ? c(`modSettingsLabels.${key}`)
-                    : key.replaceAll('_', ' ')}
-                </dt>
-                <dd>
-                  {typeof value === 'number'
-                    ? f.number(value)
-                    : typeof value === 'boolean'
-                      ? c(value ? 'enabled' : 'disabled')
-                      : value}
-                </dd>
+            {Object.entries(score.hit_counts).map(([key, value]) => (
+              <div className="score-detail-judgement" key={key} data-judgement={key}>
+                <dt>{key.replace(/^n/, '').replaceAll('_', ' ')}</dt>
+                <dd>{f.number(value)}</dd>
               </div>
             ))}
           </dl>
+          <div className="score-detail-verification-copy" data-verification={score.verification}>
+            <p className="hint">
+              {score.verification === 'rejected'
+                ? t('rejectedHint')
+                : score.verification === 'verified'
+                  ? p('scoreVerified')
+                  : score.verification === 'pending'
+                    ? p('scorePending')
+                    : score.verification}
+            </p>
+            {score.pp_eligible === false && <p className="hint">{p('scorePpExcluded')}</p>}
+            {score.has_replay && score.replay_complete === false && (
+              <p className="hint">{p('scoreReplayIncomplete')}</p>
+            )}
+          </div>
         </section>
-      )}
-      <section className="glass content-panel score-judgements">
-        <h2>{c('judgements')}</h2>
-        <dl>
-          {Object.entries(score.hit_counts).map(([key, value]) => (
-            <div key={key}>
-              <dt>{key.replace(/^n/, '').replaceAll('_', ' ')}</dt>
-              <dd>{f.number(value)}</dd>
-            </div>
-          ))}
-        </dl>
-        <p className="hint">
-          {score.verification === 'rejected'
-            ? t('rejectedHint')
-            : score.verification === 'verified'
-              ? p('scoreVerified')
-              : score.verification === 'pending'
-                ? p('scorePending')
-                : score.verification}
-        </p>
-        {score.pp_eligible === false && <p className="hint">{p('scorePpExcluded')}</p>}
-        {score.has_replay && score.replay_complete === false && (
-          <p className="hint">{p('scoreReplayIncomplete')}</p>
+        {(score.score_scale_status || modSettings.length > 0) && (
+          <aside className="score-detail-supporting">
+            {score.score_scale_status && (
+              <section
+                className="score-detail-support-section"
+                aria-labelledby="score-scales-title"
+              >
+                <h2 id="score-scales-title">{p('scoreScales')}</h2>
+                {score.score_scale_status !== 'unavailable' && (
+                  <dl>
+                    {[
+                      [p('scoreStandardised'), score.standardised_score],
+                      [p('scoreClassic'), score.classic_score],
+                    ].map(([label, value]) => (
+                      <div key={String(label)}>
+                        <dt>{label}</dt>
+                        <dd>{typeof value === 'number' ? f.number(value) : '—'}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+                <p className="hint">
+                  {p(
+                    {
+                      native_reported: 'scoreNativeReported',
+                      legacy_estimated: 'scoreLegacyEstimated',
+                      legacy_scorev2: 'scoreLegacyScoreV2',
+                      unavailable: 'scoreScaleUnavailable',
+                    }[score.score_scale_status],
+                  )}
+                </p>
+              </section>
+            )}
+            {modSettings.length > 0 && (
+              <section
+                className="score-detail-support-section"
+                aria-labelledby="score-mod-settings-title"
+              >
+                <h2 id="score-mod-settings-title">{c('modSettings')}</h2>
+                <dl>
+                  {modSettings.map(({ mod, key, value }) => (
+                    <div key={`${mod}-${key}`}>
+                      <dt>
+                        <span className="score-detail-setting-mod">{mod}</span> ·{' '}
+                        {c.has(`modSettingsLabels.${key}`)
+                          ? c(`modSettingsLabels.${key}`)
+                          : key.replaceAll('_', ' ')}
+                      </dt>
+                      <dd>
+                        {typeof value === 'number'
+                          ? f.number(value)
+                          : typeof value === 'boolean'
+                            ? c(value ? 'enabled' : 'disabled')
+                            : value}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+            )}
+          </aside>
         )}
-      </section>
+      </div>
     </div>
   );
 }

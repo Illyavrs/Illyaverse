@@ -46,6 +46,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
       key={href}
       href={href}
       className={pathname === href || (href !== '/' && pathname.startsWith(href)) ? 'active' : ''}
+      aria-current={
+        pathname === href || (href !== '/' && pathname.startsWith(href)) ? 'page' : undefined
+      }
       onClick={() => setNavOpen(false)}
     >
       {t(key)}
@@ -66,9 +69,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
               Illya<span>verse</span>
             </span>
           </Link>
-          <nav className="desktop-nav" aria-label={t('menu')}>
-            {navigation}
-          </nav>
           <div className="header-tools">
             <select
               aria-label={t('language')}
@@ -159,6 +159,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
               </SheetContent>
             </Sheet>
           </div>
+        </div>
+        <div className="site-navigation">
+          <nav className="desktop-nav" aria-label={t('menu')}>
+            {navigation}
+          </nav>
         </div>
         {error && (
           <div className="shell-error" role="alert">

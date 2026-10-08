@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-10-08T04:11:31.106Z",
+  "captured_at": "2026-10-08T15:47:44.762Z",
   "route": "/",
   "viewport": {
     "width": 390,
@@ -18,10 +18,10 @@
   "state": "Guest; status/map failures and empty public score/ranking collections.",
   "data": "Synthetic QA fixtures intercepted at existing public API routes; no native-client or live activity claims.",
   "sources": {
-    "src/features/home.tsx": "ecac2a63d9069baa059800ba6d8c75a35fa4ab433323c4eee42b93264f6971f2",
-    "src/features/home.css": "eee1a52dc10d8eef4a20b42e455404d08cb927bc551c59657f1cc08576863c4d",
-    "src/app/globals.css": "03b0c35adfb0449d89793c35dd45da88f85e19237765cc0cfcea70ec0ca9168e",
-    "src/app/layout.tsx": "fd459c03edefb0e161cd3806e898237ca48648f5f99fb82997bb37a22c691342",
+    "src/features/home.tsx": "9eac409e94b2d5a61e95a5536b13c168e8a1c0da714f1128909a6fb12fd1f520",
+    "src/features/home.css": "f6acab22cc3c7b632e20839f94352b998ca3ac98d7fd2833ebc4ca5b6c10a408",
+    "src/app/globals.css": "a4b4c5fdbf5e59643baa74bc6b0a5519d3604a5cad533315e6f686bf371980fc",
+    "src/app/layout.tsx": "861753bb73037d20cc21175af45d08ba626db6c9d8265f87d28b8adfa1265235",
     "messages/zh-TW.json": "3d0f21bb91c7db558274cc200fa31ba17a4db78b2e10b83e88da18f26c833ff4",
     "messages/en.json": "085a58330d51e9752ca565e4834982e5f7c955c743985b24b3df3cbb3a666dec",
     "messages/ja.json": "86ed87bc2a7b3c9061393118cb24bec60b78748ac9dfebdd675ca892c528948e"

@@ -28,10 +28,15 @@
   --border: #ffffff16;
   --input: #ffffff25;
   --ring: var(--readable-accent);
-  --surface: rgb(26 26 26 / var(--panel-opacity));
-  --surface-strong: rgb(38 38 38 / clamp(0, calc(var(--panel-opacity) + 0.15), 1));
-  --surface-raised: rgb(42 42 42 / var(--panel-opacity));
-  --surface-subtle: rgb(18 18 18 / var(--panel-opacity));
+  --surface: rgb(24 24 27 / var(--panel-opacity));
+  --surface-strong: rgb(32 32 36 / clamp(0, calc(var(--panel-opacity) + 0.15), 1));
+  --surface-raised: rgb(46 46 52 / var(--panel-opacity));
+  --surface-subtle: rgb(16 16 19 / var(--panel-opacity));
+  --status-success: #91d8b1;
+  --status-warning: #edce84;
+  --status-info: #9cbff0;
+  --grade-gold: #edcf86;
+  --grade-silver: #c5d5e8;
   --divider-strong: #ffffff30;
   --selection-fill: color-mix(in srgb, var(--user-accent) 16%, var(--background));
   --page-ground: #000000;
@@ -62,6 +67,11 @@
   --selection-fill: color-mix(in srgb, var(--user-accent) 12%, var(--background));
   --page-ground: #f5f5f5;
   --secondary-text: #606060;
+  --status-success: #256b48;
+  --status-warning: #785414;
+  --status-info: #345e93;
+  --grade-gold: #80580f;
+  --grade-silver: #476078;
 }
 @theme inline {
   --color-background: var(--background);
@@ -94,7 +104,7 @@
 }
 html {
   scroll-behavior: smooth;
-  scroll-padding-top: 88px;
+  scroll-padding-top: 120px;
   color-scheme: dark;
   scrollbar-color: var(--muted) var(--page-ground);
 }
@@ -158,7 +168,7 @@ h3 {
   letter-spacing: -0.025em;
 }
 h1 {
-  font-size: clamp(2rem, 3.6vw, 3.25rem);
+  font-size: 30px;
 }
 h2 {
   font-size: 1.4rem;
@@ -257,19 +267,19 @@ svg {
   border-bottom: 1px solid var(--border);
 }
 .header-inner {
-  height: 76px;
-  max-width: 1320px;
+  height: 60px;
+  max-width: 1200px;
   margin: auto;
   padding: 0 32px;
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 20px;
 }
 .brand {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 900;
   letter-spacing: -0.04em;
   white-space: nowrap;
@@ -288,24 +298,32 @@ svg {
   color: var(--readable-accent);
 }
 .brand-mark svg {
-  width: 30px;
-  height: 30px;
+  width: 27px;
+  height: 27px;
   stroke-width: 1.6;
+}
+.site-navigation {
+  border-top: 1px solid var(--border);
+  background: var(--surface-subtle);
 }
 .desktop-nav {
   display: flex;
-  height: 100%;
+  height: 40px;
   align-items: center;
-  gap: 16px;
-  flex: 1;
+  gap: 28px;
+  max-width: 1200px;
+  padding: 0 32px;
+  margin: auto;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 .desktop-nav a {
   position: relative;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--secondary-text);
   font-weight: 700;
   white-space: nowrap;
-  padding: 25px 0;
+  padding: 9px 0;
 }
 .desktop-nav a:hover {
   color: var(--foreground);
@@ -318,15 +336,25 @@ svg {
   position: absolute;
   height: 2px;
   background: var(--user-accent);
-  bottom: 15px;
+  bottom: 0;
   left: 0;
   right: 0;
   border-radius: 3px;
+  animation: route-underline 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes route-underline {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
 }
 .header-tools {
   display: flex;
   align-items: center;
   gap: 4px;
+  margin-left: auto;
 }
 .language-select {
   background: transparent;
@@ -676,7 +704,7 @@ svg {
   font-size: 14px;
 }
 .site-footer {
-  max-width: 1256px;
+  max-width: 1200px;
   margin: 16px auto 0;
   padding: 32px;
   display: flex;
@@ -719,26 +747,26 @@ svg {
   opacity: 0.85;
 }
 .page-container {
-  max-width: 1192px;
+  max-width: 1200px;
   margin: auto;
-  padding: 52px 32px 60px;
+  padding: 32px 32px 48px;
 }
 .page-container.narrow {
   max-width: 850px;
 }
 .page-heading {
-  margin-bottom: 36px;
+  margin-bottom: 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding-bottom: 24px;
+  padding-bottom: 20px;
   border-bottom: 1px solid var(--divider-strong);
 }
 .page-heading p {
-  margin-top: 12px;
+  margin-top: 6px;
   color: var(--secondary-text);
-  font-size: 16px;
+  font-size: 14px;
 }
 .actions {
   display: flex;
@@ -789,7 +817,12 @@ svg {
   min-width: 115px;
   color: var(--foreground);
 }
-.mode-control,
+.mode-control {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
 .segmented {
   display: flex;
   gap: 4px;
@@ -798,7 +831,20 @@ svg {
   padding: 4px;
   border: 1px solid var(--border);
 }
-.mode-control button,
+.mode-control button {
+  position: relative;
+  padding: 8px 14px;
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--secondary-text);
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+.mode-control button[aria-pressed='true'] {
+  color: var(--readable-accent);
+  border-bottom-color: var(--user-accent);
+  background: var(--selection-fill);
+}
 .segmented button {
   padding: 5px 12px;
   border-radius: calc(var(--radius) * 0.45);
@@ -806,7 +852,6 @@ svg {
   font-size: 13px;
   color: var(--secondary-text);
 }
-.mode-control button[aria-pressed='true'],
 .segmented button[aria-pressed='true'] {
   background: var(--selection-fill);
   color: var(--readable-accent);
@@ -2702,13 +2747,13 @@ input[type='checkbox'] {
     transition: none !important;
   }
 }
-@media (max-width: 1320px) {
+@media (max-width: 800px) {
   .user-link > span:last-child {
     display: none;
   }
 }
-@media (max-width: 1280px) {
-  .desktop-nav {
+@media (max-width: 800px) {
+  .site-navigation {
     display: none;
   }
   .mobile-menu {
@@ -2738,7 +2783,7 @@ input[type='checkbox'] {
     padding: 0 24px;
   }
   .desktop-nav {
-    gap: 18px;
+    gap: 24px;
   }
   .desktop-nav a {
     font-size: 12px;
@@ -2759,7 +2804,7 @@ input[type='checkbox'] {
 @media (max-width: 860px) {
   .header-inner {
     gap: 16px;
-    height: 68px;
+    height: 60px;
   }
   .home-body {
     grid-template-columns: 1fr;
@@ -2961,16 +3006,16 @@ input[type='checkbox'] {
     font-size: 11px;
   }
   .page-container {
-    padding: 32px 16px 40px;
+    padding: 24px 16px 36px;
   }
   .page-heading {
-    margin-bottom: 28px;
+    margin-bottom: 20px;
   }
   .page-heading p {
     font-size: 14px;
   }
   .page-heading h1 {
-    font-size: 31px;
+    font-size: 26px;
   }
   .filter-bar {
     padding: 12px;

@@ -291,7 +291,6 @@ async function stableLayout(page: BrowserPage) {
 async function capture(page: BrowserPage, name: string, state: string) {
   await stableLayout(page);
   const hierarchy = process.env.ILLYA_MAP_DISCOVERY_CAPTURE === '1';
-  if (hierarchy && !['1440-dark-zh-TW-populated', '390-light-en-error-empty'].includes(name)) return;
   if (!hierarchy && process.env.ILLYA_CAPTURE_WORKFLOW_REVIEW !== '1') return;
   await page.evaluate(() => {
     document.documentElement.style.setProperty('scroll-behavior', 'auto', 'important');
@@ -300,7 +299,10 @@ async function capture(page: BrowserPage, name: string, state: string) {
   });
   await page.mouse.move(0, 0);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
-  const output = path.resolve('../../.impeccable/review', `${hierarchy ? 'map-hierarchy-home' : 'community-home'}-${name}`);
+  const output = path.resolve(
+    '../../.impeccable/review',
+    `${hierarchy ? 'map-hierarchy-home' : 'community-home'}-${name}`,
+  );
   await page.screenshot({ path: `${output}.png`, fullPage: true, animations: 'disabled' });
   const sourceFiles = [
     'src/features/home.tsx',

@@ -11,6 +11,7 @@ export function ProfileScoreList({ scores, best }: { scores: Score[]; best: bool
   const c = useTranslations('common');
   const p = useTranslations('profile');
   const t = useTranslations('scores');
+  const h = useTranslations('home');
   const f = useFormatter();
   const decimal = (value: number) =>
     f.number(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -28,7 +29,7 @@ export function ProfileScoreList({ scores, best }: { scores: Score[]; best: bool
           ].join(' ') || 'NM';
         const verification = scoreVerificationKey(score.verification);
         return (
-          <li className="profile-score-row" key={score.id}>
+          <li className="profile-score-row" key={score.id} data-verification={score.verification}>
             {best && (
               <span className="profile-score-position" aria-label={t('rankPosition')}>
                 {typeof score.position === 'number' ? f.number(score.position) : '—'}
@@ -36,7 +37,18 @@ export function ProfileScoreList({ scores, best }: { scores: Score[]; best: bool
             )}
             <div className="profile-score-main">
               <Link href={`/scores/${score.id}`} className="score-title">
-                <strong>{score.title}</strong>
+                <strong>
+                  {!score.passed && (
+                    <span
+                      className="profile-score-failed"
+                      title={h('failedScore')}
+                      aria-label={h('failedScore')}
+                    >
+                      F
+                    </span>
+                  )}
+                  {score.title}
+                </strong>
                 <span>{score.version}</span>
               </Link>
               <div className="profile-score-meta">
@@ -46,15 +58,27 @@ export function ProfileScoreList({ scores, best }: { scores: Score[]; best: bool
                 <span>
                   {p('scoreRaw')}: {f.number(score.score)}
                 </span>
-                <Badge variant="secondary">
+                <span className="profile-score-verification" data-verification={score.verification}>
                   {verification ? t(verification) : score.verification}
-                </Badge>
+                </span>
                 {score.score_variant === 'relax' && <Badge variant="secondary">{c('relax')}</Badge>}
               </div>
               <dl className="profile-score-details">
                 <div>
                   <dt>{c('mods')}</dt>
-                  <dd>{modText}</dd>
+                  <dd className="profile-score-mods" title={modText}>
+                    {mods.labels.length
+                      ? mods.labels.map((label, index) => (
+                          <span key={`${label}-${index}`}>
+                            {label}
+                            {index < mods.labels.length - 1 ? ' ' : ''}
+                          </span>
+                        ))
+                      : !mods.unknownBits && <span>NM</span>}
+                    {mods.unknownBits && (
+                      <span>{t('modsUnknown', { bits: mods.unknownBits })}</span>
+                    )}
+                  </dd>
                 </div>
                 <div>
                   <dt>{c('accuracy')}</dt>
@@ -65,6 +89,12 @@ export function ProfileScoreList({ scores, best }: { scores: Score[]; best: bool
                   <dd>{f.number(score.max_combo)}x</dd>
                 </div>
               </dl>
+            </div>
+            <div className="profile-score-performance">
+              <Link href={`/scores/${score.id}`} className="pp-value">
+                {decimal(score.pp)} <small>pp</small>
+              </Link>
+              {score.pp_eligible === false && <small>{p('ppExcluded')}</small>}
               {best && (
                 <dl className="profile-score-contribution">
                   <div>
@@ -87,12 +117,11 @@ export function ProfileScoreList({ scores, best }: { scores: Score[]; best: bool
                   </div>
                 </dl>
               )}
+              {score.has_replay && score.replay_complete === false && (
+                <small>{p('scoreReplayIncomplete')}</small>
+              )}
             </div>
-            <div className="profile-score-performance">
-              <span className="pp-value">
-                {decimal(score.pp)} <small>pp</small>
-              </span>
-              {score.pp_eligible === false && <small>{p('ppExcluded')}</small>}
+            <div className="profile-score-replay">
               {score.has_replay ? (
                 <Button asChild variant="ghost" size="icon">
                   <a
@@ -103,10 +132,10 @@ export function ProfileScoreList({ scores, best }: { scores: Score[]; best: bool
                   </a>
                 </Button>
               ) : (
-                <span className="profile-replay-unavailable">{p('replayUnavailable')}</span>
-              )}
-              {score.has_replay && score.replay_complete === false && (
-                <small>{p('scoreReplayIncomplete')}</small>
+                <span className="profile-replay-unavailable" title={p('replayUnavailable')}>
+                  <span aria-hidden="true">—</span>
+                  <span className="sr-only">{p('replayUnavailable')}</span>
+                </span>
               )}
             </div>
           </li>

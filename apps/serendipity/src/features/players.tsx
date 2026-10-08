@@ -67,80 +67,82 @@ export function RankingsPage() {
   if (country.length === 2) query.set('country', country);
   const { data, error, isLoading, mutate } = useSWR<Page<Leader>>(`/leaderboard?${query}`, fetcher);
   return (
-    <div className="page-container">
+    <div className="page-container rankings-page">
       <PageHeading title={t('title')} description={t('subtitle')} />
-      <div className="filter-bar glass">
-        <GameMode
-          value={mode}
-          onChange={(v) => {
-            select(v, variant);
-            setPage(1);
-          }}
-        />
-        <ScoreVariantControl
-          mode={mode}
-          value={variant}
-          onChange={(v) => {
-            select(mode, v);
-            setPage(1);
-          }}
-        />
-        <input
-          className="native-select country-input"
-          placeholder="TW"
-          maxLength={2}
-          aria-label={t('country')}
-          value={country}
-          onChange={(e) => {
-            setCountry(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''));
-            setPage(1);
-          }}
-        />
-        <p className="hint">{t('modeNotice')}</p>
-      </div>
-      {mode === '3' && <p className="hint">{c('relaxUnsupported')}</p>}
-      <section className="glass content-panel">
-        {isLoading ? (
-          <Loading />
-        ) : error ? (
-          <LoadError retry={() => mutate()} />
-        ) : !data?.items.length ? (
-          <Empty title={t('emptyTitle')} description={t('emptyDescription')} />
-        ) : (
-          <div className="table-scroll">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>{t('rank')}</th>
-                  <th>{t('player')}</th>
-                  <th>{c('country')}</th>
-                  <th>{t('performance')}</th>
-                  <th>{c('accuracy')}</th>
-                  <th>{t('playCount')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.items.map((player) => (
-                  <tr key={player.id}>
-                    <td className="rank-cell">#{player.rank}</td>
-                    <td>
-                      <Link href={href(`/players/${player.id}`)} className="player-cell">
-                        <Avatar name={player.username} url={player.avatar_url} />
-                        {player.username}
-                      </Link>
-                    </td>
-                    <td>{player.country}</td>
-                    <td className="pp-value">
-                      {f.number(player.pp, { maximumFractionDigits: 2 })} pp
-                    </td>
-                    <td>{player.accuracy.toFixed(2)}%</td>
-                    <td>{f.number(player.play_count)}</td>
+      <section className="rankings-records glass" aria-label={t('title')}>
+        <div className="filter-bar rankings-toolbar">
+          <GameMode
+            value={mode}
+            onChange={(v) => {
+              select(v, variant);
+              setPage(1);
+            }}
+          />
+          <ScoreVariantControl
+            mode={mode}
+            value={variant}
+            onChange={(v) => {
+              select(mode, v);
+              setPage(1);
+            }}
+          />
+          <input
+            className="native-select country-input"
+            placeholder="TW"
+            maxLength={2}
+            aria-label={t('country')}
+            value={country}
+            onChange={(e) => {
+              setCountry(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''));
+              setPage(1);
+            }}
+          />
+          <p className="hint">{t('modeNotice')}</p>
+        </div>
+        {mode === '3' && <p className="hint">{c('relaxUnsupported')}</p>}
+        <div className="rankings-results">
+          {isLoading ? (
+            <Loading />
+          ) : error ? (
+            <LoadError retry={() => mutate()} />
+          ) : !data?.items.length ? (
+            <Empty title={t('emptyTitle')} description={t('emptyDescription')} />
+          ) : (
+            <div className="table-scroll" tabIndex={0} role="region" aria-label={t('title')}>
+              <table className="data-table rankings-table">
+                <thead>
+                  <tr>
+                    <th scope="col">{t('rank')}</th>
+                    <th scope="col">{t('player')}</th>
+                    <th scope="col">{c('country')}</th>
+                    <th scope="col">{t('performance')}</th>
+                    <th scope="col">{c('accuracy')}</th>
+                    <th scope="col">{t('playCount')}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody>
+                  {data.items.map((player) => (
+                    <tr key={player.id} data-rank={player.rank <= 3 ? player.rank : undefined}>
+                      <td className="rank-cell">#{f.number(player.rank)}</td>
+                      <td>
+                        <Link href={href(`/players/${player.id}`)} className="player-cell">
+                          <Avatar name={player.username} url={player.avatar_url} />
+                          {player.username}
+                        </Link>
+                      </td>
+                      <td>{player.country}</td>
+                      <td className="pp-value">
+                        {f.number(player.pp, { maximumFractionDigits: 2 })} <span>pp</span>
+                      </td>
+                      <td>{player.accuracy.toFixed(2)}%</td>
+                      <td>{f.number(player.play_count)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </section>
       {data && <Pagination page={page} total={data.total} onChange={setPage} />}
     </div>
@@ -227,6 +229,7 @@ export function PlayerPage({ id }: { id: number }) {
   const selection = new URLSearchParams({ mode, variant });
   const profileKey = `/users/${id}?${selection}`;
   const [accessFailures, setAccessFailures] = useState<Record<string, ApiError>>({});
+  const [activeSection, setActiveSection] = useState('profile-overview');
   function clearAccessFailure(key: string) {
     setAccessFailures((current) => {
       if (!current[key]) return current;
@@ -326,6 +329,24 @@ export function PlayerPage({ id }: { id: number }) {
     if (boundedPage !== page || (rawPage !== null && rawPage !== String(boundedPage)))
       updateProfileScoreSelection({ page: boundedPage }, true);
   }, [pathname, mode, variant, view, page, search, scores, scoreError]);
+  useEffect(() => {
+    if (!player?.id || error) return;
+    const sectionInset = window.matchMedia('(max-width: 800px)').matches ? 100 : 160;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        if (visible) setActiveSection(visible.target.id);
+      },
+      { rootMargin: `-${sectionInset}px 0px -50% 0px`, threshold: 0 },
+    );
+    for (const section of ['overview', 'rank-history', 'about', 'scores', 'uploads']) {
+      const target = document.getElementById(`profile-${section}`);
+      if (target) observer.observe(target);
+    }
+    return () => observer.disconnect();
+  }, [player?.id, error]);
   return (
     <div
       className={`page-container profile-page${player ? ' profile-accent-scope' : ''}`}
@@ -341,31 +362,19 @@ export function PlayerPage({ id }: { id: number }) {
             <section
               className={`profile-masthead glass${player.banner_url ? ' has-banner' : ' no-banner'}`}
               id="profile-overview"
-              aria-label={t('stats')}
+              aria-label={t('title')}
             >
-              <div className="profile-mode-rail">
-                <GameMode
-                  value={mode}
-                  onChange={(nextMode) => updateProfileScoreSelection({ mode: nextMode })}
+              {player.banner_url && (
+                <div
+                  className="profile-cover"
+                  style={{
+                    backgroundImage: `url(${JSON.stringify(player.banner_url)})`,
+                    backgroundPosition: `${bannerPosition(player.banner_position_x)}% ${bannerPosition(player.banner_position_y)}%`,
+                  }}
+                  role="img"
+                  aria-label={t('banner')}
                 />
-                <ScoreVariantControl
-                  mode={mode}
-                  value={variant}
-                  onChange={(nextVariant) => updateProfileScoreSelection({ variant: nextVariant })}
-                />
-                {mode === '3' && <p className="hint">{c('relaxUnsupported')}</p>}
-              </div>
-              <div
-                className="profile-cover"
-                style={{
-                  backgroundImage: player.banner_url
-                    ? `url(${JSON.stringify(player.banner_url)})`
-                    : undefined,
-                  backgroundPosition: `${bannerPosition(player.banner_position_x)}% ${bannerPosition(player.banner_position_y)}%`,
-                }}
-                role={player.banner_url ? 'img' : undefined}
-                aria-label={player.banner_url ? t('banner') : undefined}
-              />
+              )}
               <div className="profile-identity">
                 <Avatar name={player.username} url={player.avatar_url} size="large" />
                 <div className="profile-player-name">
@@ -394,7 +403,19 @@ export function PlayerPage({ id }: { id: number }) {
                   <RelationshipActions target={id} targetUsername={player.username} />
                 </div>
               </div>
-              <div className="profile-statistics">
+              <div className="profile-mode-rail">
+                <GameMode
+                  value={mode}
+                  onChange={(nextMode) => updateProfileScoreSelection({ mode: nextMode })}
+                />
+                <ScoreVariantControl
+                  mode={mode}
+                  value={variant}
+                  onChange={(nextVariant) => updateProfileScoreSelection({ variant: nextVariant })}
+                />
+                {mode === '3' && <p className="hint">{c('relaxUnsupported')}</p>}
+              </div>
+              <div className="profile-rank-band">
                 <dl className="profile-stats">
                   <div>
                     <dt>pp</dt>
@@ -417,98 +438,120 @@ export function PlayerPage({ id }: { id: number }) {
                     </dd>
                   </div>
                 </dl>
-                <dl className="profile-detail-stats">
-                  <div>
-                    <dt>{c('accuracy')}</dt>
-                    <dd>
-                      {typeof player.statistics?.accuracy === 'number'
-                        ? `${f.number(player.statistics.accuracy, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`
-                        : '—'}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>{c('plays')}</dt>
-                    <dd>{f.number(player.play_count)}</dd>
-                  </div>
-                  <div>
-                    <dt>{t('maximumCombo')}</dt>
-                    <dd>
-                      {typeof player.statistics?.maximum_combo === 'number'
-                        ? `${f.number(player.statistics.maximum_combo)}x`
-                        : '—'}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>{t('totalHits')}</dt>
-                    <dd>
-                      {typeof player.statistics?.total_hits === 'number'
-                        ? f.number(player.statistics.total_hits)
-                        : '—'}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>{t('rankedScore')}</dt>
-                    <dd>
-                      {typeof player.statistics?.ranked_score === 'number'
-                        ? f.number(player.statistics.ranked_score)
-                        : '—'}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>{t('totalScore')}</dt>
-                    <dd>
-                      {typeof player.statistics?.total_score === 'number'
-                        ? f.number(player.statistics.total_score)
-                        : '—'}
-                    </dd>
-                  </div>
-                </dl>
-                {player.statistics?.score_scale === 'unavailable_for_relax' ? (
-                  <p className="hint profile-totals-note">{t('relaxTotalsUnavailable')}</p>
-                ) : (
-                  player.statistics?.score_scale === 'classic_display' && (
-                    <p className="hint profile-totals-note">
-                      {t(
-                        player.statistics.score_totals_complete
-                          ? 'scoreTotalsClassic'
-                          : 'scoreTotalsPartial',
-                      )}
-                    </p>
-                  )
-                )}
-                {player.statistics?.grade_counts && (
-                  <div className="profile-grade-strip" aria-describedby="profile-grades-hint">
-                    <h2>{t('gradeCounts')}</h2>
-                    <dl>
-                      {(['ssh', 'ss', 'sh', 's', 'a', 'b', 'c', 'd', 'f'] as const).map((grade) => (
-                        <div key={grade}>
-                          <dt>
-                            {grade === 'ssh' ? 'SS+' : grade === 'sh' ? 'S+' : grade.toUpperCase()}
-                          </dt>
-                          <dd>
-                            {typeof player.statistics?.grade_counts?.[grade] === 'number'
-                              ? f.number(player.statistics.grade_counts[grade]!)
-                              : '—'}
-                          </dd>
-                        </div>
-                      ))}
-                    </dl>
-                    <p className="hint" id="profile-grades-hint">
-                      {t('gradeCountsHint')}
-                    </p>
-                  </div>
-                )}
               </div>
             </section>
             <nav className="profile-section-nav" aria-label={t('sections')}>
-              <a href="#profile-overview">{t('stats')}</a>
-              <a href="#profile-rank-history">{rankHistory('title')}</a>
-              <a href="#profile-about">{t('about')}</a>
-              <a href="#profile-scores">{t('scoreView')}</a>
-              <a href="#profile-uploads">{t('uploadedMaps')}</a>
+              {[
+                ['profile-overview', t('stats')],
+                ['profile-rank-history', rankHistory('title')],
+                ['profile-about', t('about')],
+                ['profile-scores', t('scoreView')],
+                ['profile-uploads', t('uploadedMaps')],
+              ].map(([section, label]) => (
+                <a
+                  key={section}
+                  href={`#${section}`}
+                  aria-current={activeSection === section ? 'location' : undefined}
+                  onClick={() => setActiveSection(section)}
+                >
+                  {label}
+                </a>
+              ))}
             </nav>
             <div className="profile-layout">
-              <RankHistoryPanel id={id} mode={mode} variant={variant} />
+              <div className="profile-performance glass">
+                <RankHistoryPanel id={id} mode={mode} variant={variant} />
+                <section className="profile-statistics" aria-labelledby="profile-statistics-title">
+                  <h2 id="profile-statistics-title">{t('stats')}</h2>
+                  <dl className="profile-detail-stats">
+                    <div>
+                      <dt>{c('accuracy')}</dt>
+                      <dd>
+                        {typeof player.statistics?.accuracy === 'number'
+                          ? `${f.number(player.statistics.accuracy, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`
+                          : '—'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{c('plays')}</dt>
+                      <dd>{f.number(player.play_count)}</dd>
+                    </div>
+                    <div>
+                      <dt>{t('maximumCombo')}</dt>
+                      <dd>
+                        {typeof player.statistics?.maximum_combo === 'number'
+                          ? `${f.number(player.statistics.maximum_combo)}x`
+                          : '—'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{t('totalHits')}</dt>
+                      <dd>
+                        {typeof player.statistics?.total_hits === 'number'
+                          ? f.number(player.statistics.total_hits)
+                          : '—'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{t('rankedScore')}</dt>
+                      <dd>
+                        {typeof player.statistics?.ranked_score === 'number'
+                          ? f.number(player.statistics.ranked_score)
+                          : '—'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{t('totalScore')}</dt>
+                      <dd>
+                        {typeof player.statistics?.total_score === 'number'
+                          ? f.number(player.statistics.total_score)
+                          : '—'}
+                      </dd>
+                    </div>
+                  </dl>
+                  {player.statistics?.score_scale === 'unavailable_for_relax' ? (
+                    <p className="hint profile-totals-note">{t('relaxTotalsUnavailable')}</p>
+                  ) : (
+                    player.statistics?.score_scale === 'classic_display' && (
+                      <p className="hint profile-totals-note">
+                        {t(
+                          player.statistics.score_totals_complete
+                            ? 'scoreTotalsClassic'
+                            : 'scoreTotalsPartial',
+                        )}
+                      </p>
+                    )
+                  )}
+                  {player.statistics?.grade_counts && (
+                    <div className="profile-grade-strip" aria-describedby="profile-grades-hint">
+                      <h2>{t('gradeCounts')}</h2>
+                      <dl>
+                        {(['ssh', 'ss', 'sh', 's', 'a', 'b', 'c', 'd', 'f'] as const).map(
+                          (grade) => (
+                            <div key={grade} className={`profile-grade grade-${grade}`}>
+                              <dt>
+                                {grade === 'ssh'
+                                  ? 'SS+'
+                                  : grade === 'sh'
+                                    ? 'S+'
+                                    : grade.toUpperCase()}
+                              </dt>
+                              <dd>
+                                {typeof player.statistics?.grade_counts?.[grade] === 'number'
+                                  ? f.number(player.statistics.grade_counts[grade]!)
+                                  : '—'}
+                              </dd>
+                            </div>
+                          ),
+                        )}
+                      </dl>
+                      <p className="hint" id="profile-grades-hint">
+                        {t('gradeCountsHint')}
+                      </p>
+                    </div>
+                  )}
+                </section>
+              </div>
               <section
                 className="profile-about glass"
                 id="profile-about"

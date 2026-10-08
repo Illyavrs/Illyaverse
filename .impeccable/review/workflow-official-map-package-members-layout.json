@@ -7,9 +7,7 @@
       "viewport_width": 1440,
       "document_width": 1440,
       "scroll_y": 0,
-      "theme": "dark",
-      "sha256": "796f6984a97f161a5c23d81aa7bbda6a25c6589792bd5b104e0adb9f9394e27f",
-      "captured_at_utc": "2026-10-07T17:26:28.074540+00:00"
+      "theme": "dark"
     },
     {
       "layout": "desktop",
@@ -17,9 +15,7 @@
       "viewport_width": 1440,
       "document_width": 1440,
       "scroll_y": 0,
-      "theme": "light",
-      "sha256": "2a0eece971c1ced82ad2eebce46d849ff530ac20e505204be3a69cf5a6a059b8",
-      "captured_at_utc": "2026-10-07T17:26:28.419014+00:00"
+      "theme": "light"
     },
     {
       "layout": "mobile",
@@ -27,9 +23,7 @@
       "viewport_width": 390,
       "document_width": 390,
       "scroll_y": 0,
-      "theme": "dark",
-      "sha256": "ec34751727179e2709ace6363719ddeefa352e9f647737949483532de87ce307",
-      "captured_at_utc": "2026-10-07T17:26:28.632828+00:00"
+      "theme": "dark"
     },
     {
       "layout": "mobile",
@@ -37,13 +31,7 @@
       "viewport_width": 390,
       "document_width": 390,
       "scroll_y": 0,
-      "theme": "light",
-      "sha256": "e75258cab265de18010799ec8e4d212a0eada7110cde5693f53f99a787265add",
-      "captured_at_utc": "2026-10-07T17:26:28.836235+00:00"
+      "theme": "light"
     }
-  ],
-  "source_ui_commit": "f2bbde5",
-  "source_proxy_commit": "cdc6eef",
-  "serendipity_image_id": "sha256:3fb96b85a2ccb0c48e20a8a67e1a91279c60fa670a6dd758b061799fcfdf5e91",
-  "browser_evidence": "data-official-archives/web-official-final.log"
+  ]
 }

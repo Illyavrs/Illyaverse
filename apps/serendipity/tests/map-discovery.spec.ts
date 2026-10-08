@@ -255,6 +255,9 @@ async function noOverflow(page: Page) {
 }
 
 async function capture(page: Page, name: string, locale: string, theme: string) {
+  // Native focus scrolling follows html's smooth-scroll preference too. Keep
+  // review captures deterministic before the mobile keyboard navigation check.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.evaluate(() => document.fonts.ready);
   await expect(page.locator('html')).toHaveClass(new RegExp(theme));
   await page.evaluate(() =>
@@ -271,7 +274,15 @@ async function capture(page: Page, name: string, locale: string, theme: string) 
       ),
     )
     .toBe(true);
-  await page.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' }));
+  await page.evaluate(async () => {
+    const settleLayout = () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      );
+    await settleLayout();
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    await settleLayout();
+  });
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   await noOverflow(page);
   if (process.env.ILLYA_MAP_DISCOVERY_CAPTURE !== '1') return;
@@ -289,6 +300,7 @@ async function capture(page: Page, name: string, locale: string, theme: string) 
     actual_theme: document.documentElement.classList.contains('light') ? 'light' : 'dark',
     actual_locale: document.documentElement.lang,
     font_status: document.fonts.status,
+    reduced_motion: matchMedia('(prefers-reduced-motion: reduce)').matches,
   }));
   await writeFile(
     `${imagePath}.json`,
@@ -315,7 +327,9 @@ test('set results show matched and stored counts, eight previews and server page
   const state = await fixture(page);
   await page.goto('/beatmaps');
   await expect(page.locator('.discovery-set')).toHaveCount(24);
-  await expect(page.locator('.discovery-result-count')).toHaveText(/^30 beatmap sets\s*Showing 1–24$/);
+  await expect(page.locator('.discovery-result-count')).toHaveText(
+    /^30 beatmap sets\s*Showing 1–24$/,
+  );
   await expect(page.locator('.discovery-result-count > span')).toHaveText('Showing 1–24');
   const first = page.locator('.discovery-set').first();
   await expect(first.getByText('28 matching · 28 stored difficulties')).toBeVisible();
@@ -638,6 +652,8 @@ test('review capture matrix uses document top and writes per-capture metadata', 
   await capture(page, 'desktop-dark-zh', 'zh-TW', 'dark');
   await page.setViewportSize({ width: 1280, height: 720 });
   await capture(page, '1280-dark-zh', 'zh-TW', 'dark');
+  await page.setViewportSize({ width: 1254, height: 714 });
+  await capture(page, '1254-dark-zh', 'zh-TW', 'dark');
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByRole('button', { name: '列表', exact: true }).click();
   await capture(page, 'desktop-dark-zh-list', 'zh-TW', 'dark');
@@ -659,5 +675,32 @@ for (const { locale, theme, width, name } of [
     await page.setViewportSize({ width, height: 844 });
     await page.goto('/beatmaps');
     await expect(page.locator('.discovery-set')).toHaveCount(4);
+    const preview = page.locator('.discovery-set').first().locator('.difficulty-strip');
+    await expect(preview.getByRole('link')).toHaveCount(8);
+    // Eight touch targets occupy four compact rows, leaving the next set nearby.
+    expect(
+      await preview.evaluate((element) => element.getBoundingClientRect().height),
+    ).toBeLessThan(210);
+    await expect(preview.getByRole('link').first()).toHaveAccessibleName(/Difficulty 1.*1[.,]25/);
+    await expect(preview.getByRole('link').last()).toContainText('3.21');
     await capture(page, name, locale, theme);
+    await page.goto('/beatmaps/980000');
+    await expect(page.locator('.set-difficulty-row')).toHaveCount(24);
+    const quickLinks = page.locator('.set-difficulty-strip');
+    // All 24 difficulties stay reachable without pushing the board below a long stack of buttons.
+    expect(
+      await quickLinks.evaluate((element) => element.getBoundingClientRect().height),
+    ).toBeLessThan(180);
+    const lastDifficulty = quickLinks.getByRole('link').last();
+    await lastDifficulty.focus();
+    await expect(lastDifficulty).toBeFocused();
+    await expect(lastDifficulty).toBeInViewport();
+    await quickLinks.evaluate((element) => {
+      // Assert focus/visibility above, then release focus before resetting the
+      // rail so the browser does not scroll the focused last link back into view.
+      if (document.activeElement instanceof HTMLElement && element.contains(document.activeElement))
+        document.activeElement.blur();
+      element.scrollTo({ left: 0, top: 0, behavior: 'instant' });
+    });
+    await capture(page, `detail-${name}`, locale, theme);
   });

@@ -1,10 +1,19 @@
 'use client';
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import useSWR, { unstable_serialize, useSWRConfig } from 'swr';
-import { ArrowRight, Download, Music2, Star, Clock, Upload, LoaderCircle } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Download,
+  Music2,
+  Star,
+  Clock,
+  Upload,
+  LoaderCircle,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -34,6 +43,7 @@ import {
   MapArtwork,
   MapMetadata,
   SetDifficultySelector,
+  difficultyLevel,
   safeCatalogueReturn,
 } from './map-discovery';
 export { MapDiscoveryPage as BeatmapsPage } from './map-discovery';
@@ -171,19 +181,38 @@ export function MapRows({ items, compact = false }: { items: Beatmap[]; compact?
   const t = useTranslations('maps');
   const c = useTranslations('common');
   return (
-    <div className={`map-list ${compact ? 'compact' : ''}`}>
+    <div className={`map-list map-record-list ${compact ? 'compact' : ''}`}>
       {items.map((map) => (
-        <Link href={`/beatmaps/${map.id}`} key={map.id} className="map-row">
-          <span className={`map-art mode-${map.mode}`} aria-hidden="true">
-            <MapArtwork source={map.source} nativeSetId={map.native_set_id} />
+        <Link
+          href={`/beatmaps/${map.id}`}
+          key={map.id}
+          className="map-row map-record"
+          style={
+            {
+              '--difficulty-color': `var(--difficulty-${difficultyLevel(map.stars)})`,
+            } as CSSProperties
+          }
+        >
+          <span className="map-art" aria-hidden="true">
+            <MapArtwork
+              source={map.source}
+              nativeSetId={map.native_set_id ?? map.package?.native_set_id}
+            />
           </span>
           <div className="map-main">
             <strong>{map.title}</strong>
-            <span>
-              {map.artist} <span className="dot">·</span> {t('creator')} {map.creator}
+            <span className="map-record-artist">{map.artist}</span>
+            <span className="map-record-mapper">
+              {t('creator')} {map.creator}
             </span>
             <div className="map-tags">
-              <Badge variant="secondary">{map.version}</Badge>
+              <span className="map-record-difficulty">
+                <span className="difficulty-marker" aria-hidden="true" />
+                <span>{map.version}</span>
+              </span>
+              <span className="map-record-mode">
+                {['osu!', 'taiko', 'catch', 'mania'][map.mode]}
+              </span>
               <span className={`status-text status-${map.status}`}>
                 {c(
                   ['pending', 'ranked', 'loved', 'unranked'].includes(map.status)
@@ -196,15 +225,15 @@ export function MapRows({ items, compact = false }: { items: Beatmap[]; compact?
           </div>
           <div className="map-numbers">
             <strong>
-              <Star />
+              <Star aria-hidden="true" />
               {map.stars.toFixed(2)}
             </strong>
             <span>
-              <Clock />
+              <Clock aria-hidden="true" />
               {duration(map.length_seconds)}
             </span>
           </div>
-          <ArrowRight className="row-arrow" />
+          <ArrowRight className="row-arrow" aria-hidden="true" />
         </Link>
       ))}
     </div>
@@ -350,8 +379,9 @@ export function BeatmapPage({ id }: { id: number }) {
     fetcher,
   );
   return (
-    <div className="page-container">
+    <div className="page-container beatmap-detail">
       <Link href={reviewReturn ?? catalogueReturn ?? '/beatmaps'} className="back-link">
+        <ArrowLeft aria-hidden="true" />
         {reviewReturn ? review('backToQueue') : t('back')}
       </Link>
       {management && sessionLoading ? (
@@ -372,58 +402,80 @@ export function BeatmapPage({ id }: { id: number }) {
         map && (
           <>
             {error && <LoadError retry={() => mutate()} />}
-            <section className="map-detail-cover glass">
-              <MapArtwork
-                source={map.source}
-                nativeSetId={map.native_set_id ?? map.package?.native_set_id}
-                className="map-detail-art"
-                priority
-              />
-              <div>
-                <span className="map-artist">{map.artist}</span>
-                <h1>{map.title}</h1>
-                <p>
-                  {map.version} <span className="dot">·</span> {t('creator')} {map.creator}
-                </p>
-                <div className="map-tags">
-                  <Badge>{c(map.status)}</Badge>
-                  <Badge variant="secondary">
-                    {c(map.source === 'local' ? 'local' : 'official')}
-                  </Badge>
-                  {management && (
-                    <Badge variant="outline">
-                      {availability(withdrawn ? 'withdrawn' : 'active')}
-                    </Badge>
+            <div className="beatmap-overview">
+              <section className="map-detail-cover glass">
+                <MapArtwork
+                  source={map.source}
+                  nativeSetId={map.native_set_id ?? map.package?.native_set_id}
+                  className="map-detail-art"
+                  priority
+                />
+                <div className="map-detail-identity">
+                  <div className="map-tags">
+                    <span className={`status-text status-${map.status}`}>{c(map.status)}</span>
+                    <span className="map-detail-source">
+                      {c(map.source === 'local' ? 'local' : 'official')}
+                    </span>
+                    {management && (
+                      <Badge variant="outline">
+                        {availability(withdrawn ? 'withdrawn' : 'active')}
+                      </Badge>
+                    )}
+                  </div>
+                  <h1>{map.title}</h1>
+                  <span className="map-artist">{map.artist}</span>
+                  <p>
+                    {t('creator')} <strong>{map.creator}</strong>
+                  </p>
+                </div>
+                <div className="map-detail-actions">
+                  {!withdrawn && <MapDownloads map={map} />}
+                  {management && canReview && (
+                    <BeatmapAvailabilityAction
+                      map={map}
+                      disabled={availabilityStale}
+                      changed={refreshAvailability}
+                      accepted={(value) =>
+                        setAcceptedAvailability((current) => ({
+                          ...current,
+                          [serializedKey]: value,
+                        }))
+                      }
+                    />
+                  )}
+                  {canManage && (
+                    <Button asChild variant="outline">
+                      <Link
+                        href={
+                          reviewReturn ??
+                          `/admin?${new URLSearchParams({ tab: 'beatmaps', q: boundedReviewSearch(map.title), mode: String(map.mode), source: map.source, availability: withdrawn ? 'withdrawn' : 'active' })}`
+                        }
+                      >
+                        {review('manageMap')}
+                      </Link>
+                    </Button>
                   )}
                 </div>
+              </section>
+              <aside
+                className="map-selected-difficulty glass"
+                aria-label={t('currentDifficulty')}
+                style={
+                  {
+                    '--difficulty-color': `var(--difficulty-${difficultyLevel(map.stars)})`,
+                  } as CSSProperties
+                }
+              >
+                <div className="map-selected-name">
+                  <span className="difficulty-marker" aria-hidden="true" />
+                  <div>
+                    <h2>{map.version}</h2>
+                    <span>{['osu!', 'taiko', 'catch', 'mania'][map.mode]}</span>
+                  </div>
+                </div>
                 <MapMetadata map={map} />
-              </div>
-              <div className="map-detail-actions">
-                {!withdrawn && <MapDownloads map={map} />}
-                {management && canReview && (
-                  <BeatmapAvailabilityAction
-                    map={map}
-                    disabled={availabilityStale}
-                    changed={refreshAvailability}
-                    accepted={(value) =>
-                      setAcceptedAvailability((current) => ({ ...current, [serializedKey]: value }))
-                    }
-                  />
-                )}
-                {canManage && (
-                  <Button asChild variant="outline">
-                    <Link
-                      href={
-                        reviewReturn ??
-                        `/admin?${new URLSearchParams({ tab: 'beatmaps', q: boundedReviewSearch(map.title), mode: String(map.mode), source: map.source, availability: withdrawn ? 'withdrawn' : 'active' })}`
-                      }
-                    >
-                      {review('manageMap')}
-                    </Link>
-                  </Button>
-                )}
-              </div>
-            </section>
+              </aside>
+            </div>
             {management && (
               <section
                 className="glass content-panel map-availability-summary"
@@ -482,7 +534,7 @@ export function BeatmapPage({ id }: { id: number }) {
               />
             )}
             {!withdrawn && (
-              <section className="glass content-panel">
+              <section className="glass content-panel beatmap-leaderboard">
                 <header className="section-heading">
                   <h2>{t('leaderboard')}</h2>
                 </header>
