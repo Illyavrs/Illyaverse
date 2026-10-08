@@ -332,7 +332,13 @@ test('a session revoker gets the player directory without role assignment or mod
   const state = await fixture(page, ['admin.view', 'users.sessions.revoke']);
   state.players[0].can_manage_roles = false;
   await openAdmin(page);
-  await expect(page.locator('.admin-toolbar button')).toHaveCount(1);
+  const sections = page.locator('.admin-toolbar');
+  await expect(exactButton(sections, 'Players')).toBeVisible();
+  await expect(exactButton(sections, 'Beatmaps')).toBeVisible();
+  for (const name of ['Roles & permissions', 'Scores', 'Audit log', 'Announcements']) {
+    await expect(exactButton(sections, name)).toHaveCount(0);
+  }
+  await expect(sections.locator('button')).toHaveCount(2);
   await expect(exactButton(page, 'Save roles')).toHaveCount(0);
   await expect(exactButton(page, 'Restrict')).toHaveCount(0);
   await expect(exactButton(userRow(page), 'Revoke sessions')).toBeEnabled();

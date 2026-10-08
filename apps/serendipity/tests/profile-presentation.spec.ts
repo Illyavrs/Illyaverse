@@ -292,10 +292,6 @@ test('profile publication disables conflicting controls until its saved snapshot
   await expect(page.locator('.form-success')).toHaveText('已儲存變更');
   await expect(page.locator('#profile-accent')).toBeEnabled();
   await page.goto(`/players/${state.user.id}`);
-  const foreground = await page
-    .locator('.profile-page')
-    .evaluate((element) =>
-      getComputedStyle(element).getPropertyValue('--primary-foreground').trim(),
-    );
-  expect(foreground).toBe('#000000');
+  await expect(page.getByRole('heading', { name: state.user.username, exact: true })).toBeVisible();
+  await expect(page.locator('.profile-page')).toHaveCSS('--primary-foreground', '#000000');
 });
