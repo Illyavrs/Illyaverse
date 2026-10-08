@@ -84,8 +84,12 @@ impl StableSubmission {
         if plaintext.len() > MAX_ENVELOPE_BYTES {
             return Err(ProtocolError::Limit("score envelope"));
         }
-        let fields: Vec<_> = plaintext.split(':').collect();
-        if fields.len() != 18 {
+        // The first 18 fields are the canonical stable score. Newer clients
+        // may append opaque extension data; never interpret it as score,
+        // account, checksum or replay authority. Keep the tail in one slice
+        // so a bounded envelope cannot expand the field allocation.
+        let fields: Vec<_> = plaintext.splitn(19, ':').collect();
+        if fields.len() < 18 {
             return Err(ProtocolError::Invalid("score field count"));
         }
         if !is_md5(fields[0]) || !is_md5(fields[2]) {
@@ -317,6 +321,92 @@ mod tests {
         format!(
             "0123456789abcdef0123456789abcdef:Illya:00000000000000000000000000000000:10:0:0:0:0:0:1000:10:True:X:0:True:0:261007120000:{version}"
         )
+    }
+
+    #[test]
+    fn stable_canonical_prefix_ignores_opaque_extensions_without_changing_identity() {
+        for version in ["20261007", "b20261007"] {
+            let unsigned = envelope_with_version(version);
+            let checksum = StableSubmission::parse(&unsigned).unwrap().online_checksum(
+                "20261007",
+                "synthetic-client",
+                "",
+            );
+            let input = unsigned.replacen(&"0".repeat(32), &checksum, 1);
+            let baseline = StableSubmission::parse(&input).unwrap();
+            let replay = baseline.replay_container(20261007, &[1, 2, 3], 42).unwrap();
+            for tail in [
+                "",
+                "12345",
+                "synthetic-opaque-extension",
+                "synthetic:first:second:third",
+            ] {
+                for flag_spaces in [0, 512] {
+                    let extended = format!("{input}{}:{tail}", " ".repeat(flag_spaces));
+                    let parsed = StableSubmission::parse(&extended).unwrap();
+                    assert_eq!(parsed.client_version, version);
+                    assert_eq!(parsed.checksum, checksum);
+                    parsed
+                        .validate_checksum("20261007", "synthetic-client", "")
+                        .unwrap();
+                    assert_eq!(
+                        parsed.replay_container(20261007, &[1, 2, 3], 42).unwrap(),
+                        replay,
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn stable_opaque_extensions_do_not_bypass_canonical_field_validation() {
+        let input = envelope_with_version("20261007");
+        assert_eq!(input.split(':').count(), 18);
+        let truncated = input.rsplit_once(':').unwrap().0;
+        assert_eq!(truncated.split(':').count(), 17);
+        assert_eq!(
+            StableSubmission::parse(truncated).unwrap_err(),
+            ProtocolError::Invalid("score field count"),
+        );
+        for (index, value, reason) in [
+            (0, "invalid-digest", "score digest"),
+            (1, "", "score username"),
+            (2, "invalid-checksum", "score digest"),
+            (3, "-1", "score hit counts"),
+            (9, "-1", "score total"),
+            (10, "-1", "score combo"),
+            (11, "true", "score boolean"),
+            (12, "Z", "score grade"),
+            (13, "4294967295", "score mods"),
+            (14, "false", "score boolean"),
+            (15, "4", "score mode"),
+            (16, "invalid-date", "score timestamp"),
+            (17, "short", "score client version"),
+        ] {
+            let mut fields: Vec<_> = input.split(':').collect();
+            fields[index] = value;
+            let extended = format!("{}:opaque:extra", fields.join(":"));
+            assert_eq!(
+                StableSubmission::parse(&extended).unwrap_err(),
+                ProtocolError::Invalid(reason),
+            );
+        }
+    }
+
+    #[test]
+    fn stable_opaque_tail_remains_subject_to_full_envelope_bound() {
+        let prefix = format!("{}:", envelope_with_version("20261007"));
+        let input = format!("{prefix}{}", "x".repeat(MAX_ENVELOPE_BYTES - prefix.len()));
+        assert_eq!(input.len(), MAX_ENVELOPE_BYTES);
+        assert_eq!(input.split(':').count(), 19);
+        assert_eq!(
+            StableSubmission::parse(&input).unwrap().client_version,
+            "20261007"
+        );
+        assert_eq!(
+            StableSubmission::parse(&format!("{input}x")).unwrap_err(),
+            ProtocolError::Limit("score envelope"),
+        );
     }
 
     #[test]

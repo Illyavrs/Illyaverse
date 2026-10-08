@@ -613,14 +613,15 @@ fn parse_score_submission(decoded: &str) -> Result<StableSubmission, ApiError> {
             _ => "other",
         };
         let envelope_field_count = decoded.split(':').count();
-        let client_version = if envelope_field_count == 18 {
-            decoded.rsplit(':').next()
+        let client_version = if envelope_field_count >= 18 {
+            decoded.split(':').nth(17)
         } else {
             None
         };
         tracing::warn!(
             parse_reason,
             envelope_field_count,
+            extension_field_count = envelope_field_count.saturating_sub(18),
             envelope_bytes = decoded.len(),
             client_version_raw_bytes = client_version.map(str::len),
             client_version_normalized_bytes = client_version.map(|value| value.trim().len()),

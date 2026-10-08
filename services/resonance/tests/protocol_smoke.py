@@ -775,11 +775,17 @@ def run():
         frame_text.append(f"{sample[8] % 16 + 1}|{x:.6f}|{y:.6f}|{sample[9] % 4},")
     frames = lzma.compress(("".join(frame_text) + "-12345|0|0|12345,").encode(), format=lzma.FORMAT_ALONE)
     assert 32768 < len(frames) < 16 * 1024 * 1024
-    fields = [("score", encrypt(envelope)), ("iv", base64.b64encode(iv).decode()), ("osuver", version), ("pass", digest(player_password)), ("bmk", map_hash), ("sbk", ""), ("s", encrypt(client_hash))]
+    # Start with the observed 19-field shape, using only original synthetic
+    # extension data. Canonical prefix validation still owns the saved score.
+    fields = [("score", encrypt(envelope + ":synthetic-tail")), ("iv", base64.b64encode(iv).decode()), ("osuver", version), ("pass", digest(player_password)), ("bmk", map_hash), ("sbk", ""), ("s", encrypt(client_hash))]
     body, headers = multipart(fields, [("score", "replay.osr", frames)])
     stable = gateway.request("POST", "/web/osu-submit-modular-selector.php", body, headers)[0].decode()
     assert stable.startswith(f"beatmapId:{map_id}|beatmapSetId:{set_id}|"), "Pending success chart lost canonical map identities"
     stable_id = int(re.search(r"onlineScoreId:(\d+)", stable).group(1))
+    for suffix in (None, "", "17", "synthetic:opaque:extensions"):
+        prefix_fields = [(name, encrypt(envelope if suffix is None else envelope + ":" + suffix) if name == "score" else value) for name, value in fields]
+        prefix_body, prefix_headers = multipart(prefix_fields, [("score", "replay.osr", frames)])
+        assert f"onlineScoreId:{stable_id}|" in gateway.request("POST", "/web/osu-submit-modular-selector.php", prefix_body, prefix_headers)[0].decode()
     alternate_body, alternate_headers = multipart(fields, [("score", "replay.osr", frames)], name_attribute="Name", filename_attribute="FileName")
     again = gateway.request("POST", "/web/osu-submit-modular-selector.php", alternate_body, alternate_headers)[0].decode()
     assert f"onlineScoreId:{stable_id}|" in again
@@ -814,6 +820,14 @@ def run():
     unauthorized_fields = [(name, digest("independent-invalid-password") if name == "pass" else value) for name, value in fields]
     unauthorized_body, unauthorized_headers = multipart(unauthorized_fields, [("score", "replay.osr", frames)], file_disposition="attachment", name_attribute="Name", filename_attribute="FileName", file_content_type=False)
     gateway.request("POST", "/web/osu-submit-modular-selector.php", unauthorized_body, unauthorized_headers, expected=401)
+    for malformed_envelope, invalid_password, expected_status in (
+        (envelope.rsplit(":", 1)[0], False, 400),
+        (envelope.replace(checksum, "0" * 32) + ":synthetic-tail", False, 400),
+        (envelope + ":synthetic-tail", True, 401),
+    ):
+        prefix_failure_fields = [(name, encrypt(malformed_envelope) if name == "score" else digest("independent-invalid-password") if name == "pass" and invalid_password else value) for name, value in fields]
+        prefix_failure_body, prefix_failure_headers = multipart(prefix_failure_fields, [("score", "replay.osr", frames)])
+        gateway.request("POST", "/web/osu-submit-modular-selector.php", prefix_failure_body, prefix_failure_headers, expected=expected_status)
     for invalid_parameters, expected_status in [(invalid_fields, 400), (unauthorized_fields, 401)]:
         extension_failure_body, extension_failure_headers = multipart(invalid_parameters, [("score", "replay.osr", frames)], trailing_fields=[("probe", ancillary)])
         gateway.request("POST", "/web/osu-submit-modular-selector.php", extension_failure_body, extension_failure_headers, expected=expected_status)
@@ -1330,6 +1344,7 @@ def run():
     checks.append("stable multipart request boundary preserves 400/413 static errors without payload leakage or publication")
     checks.append("unknown ordinary stable extensions drain without retention or score/replay authority and preserve auth/checksum/retry")
     checks.append("stable ASCII-space version flags preserve checksum receipt and replay while normalized version stays bounded")
+    checks.append("stable canonical 18-field prefix persists 19-field envelopes and ignores bounded opaque extensions without authority")
     checks.extend(["raw CP932 ZIP names decode before separators and preserve stable/lazer filename selectors",
                    "CP932 package same-owner retry IDs and original .osz/.osu download bytes",
                    "all duplicate raw ZIP records and invalid flagged UTF-8 reject without publication"])

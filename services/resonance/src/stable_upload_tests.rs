@@ -895,6 +895,29 @@ async fn score_envelope_parse_diagnostics_preserve_status_and_redact() {
     assert_eq!(accepted.username, "SECRET_USERNAME_MARKER");
     assert_eq!(accepted.client_version, "b20261008");
     assert!(captured.0.lock().unwrap().is_empty());
+    let extension_sets = [
+        vec!["SECRET_EXTENSION_MARKER"],
+        vec![
+            "SECRET_EXTENSION_MARKER",
+            "pass=SECRET_EXTENSION_MARKER",
+            "",
+            " bSECRET_TRAILING_VERSION_MARKER     ",
+        ],
+    ];
+    for extensions in &extension_sets {
+        let mut fields = valid_fields.clone();
+        fields.extend(extensions.iter().map(|value| (*value).to_owned()));
+        let extended = parse_score_submission(&fields.join(":"))
+            .expect("opaque trailing extensions must preserve the canonical score");
+        assert_eq!(extended.username, accepted.username);
+        assert_eq!(extended.client_version, accepted.client_version);
+        assert_eq!(extended.beatmap_md5, accepted.beatmap_md5);
+        assert_eq!(extended.checksum, accepted.checksum);
+        assert_eq!(extended.hit_counts, accepted.hit_counts);
+        assert_eq!(extended.total_score, accepted.total_score);
+        assert_eq!(extended.mods, accepted.mods);
+        assert!(captured.0.lock().unwrap().is_empty());
+    }
 
     let mut cases = Vec::new();
     for (reason, field_index, replacement) in [
@@ -921,8 +944,16 @@ async fn score_envelope_parse_diagnostics_preserve_status_and_redact() {
     assert!(overlong_version[17].trim_end_matches(' ').len() > 128);
     cases.push(("client_version", overlong_version.join(":")));
     let mut wrong_count = valid_fields.clone();
-    wrong_count.push("SECRET_FIELD_MARKER".into());
+    wrong_count.truncate(17);
     cases.push(("field_count", wrong_count.join(":")));
+    // Trailing extensions never repair a malformed canonical prefix, and
+    // diagnostic version metrics must come from field 18 rather than the tail.
+    for extensions in &extension_sets {
+        let mut fields = valid_fields.clone();
+        fields[0] = "SECRET_FIELD_MARKER".into();
+        fields.extend(extensions.iter().map(|value| (*value).to_owned()));
+        cases.push(("digest", fields.join(":")));
+    }
     cases.push((
         "envelope_limit",
         "SECRET_FIELD_MARKER".repeat(
@@ -956,8 +987,8 @@ async fn score_envelope_parse_diagnostics_preserve_status_and_redact() {
             format!("envelope_field_count={field_count}"),
             format!("envelope_bytes={}", decoded.len()),
         ];
-        if field_count == 18 {
-            let client_version = decoded.rsplit(':').next().unwrap();
+        if field_count >= 18 {
+            let client_version = decoded.split(':').nth(17).unwrap();
             metrics.extend([
                 format!("client_version_raw_bytes={}", client_version.len()),
                 format!(
@@ -970,8 +1001,8 @@ async fn score_envelope_parse_diagnostics_preserve_status_and_redact() {
                 ),
             ]);
         } else {
-            // A final substring in a malformed field count has no established
-            // client-version meaning and must not acquire version diagnostics.
+            // A truncated canonical prefix has no client-version field and
+            // must not acquire version diagnostics from another substring.
             for key in [
                 "client_version_raw_bytes=",
                 "client_version_normalized_bytes=",
@@ -990,6 +1021,8 @@ async fn score_envelope_parse_diagnostics_preserve_status_and_redact() {
             "SECRET_USERNAME_MARKER",
             "SECRET_FIELD_MARKER",
             "SECRET_VERSION_MARKER",
+            "SECRET_EXTENSION_MARKER",
+            "SECRET_TRAILING_VERSION_MARKER",
         ] {
             assert!(
                 !event.contains(marker) && !body.contains(marker),
