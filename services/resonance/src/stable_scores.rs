@@ -378,7 +378,16 @@ async fn read_score_upload(mut multipart: Multipart) -> Result<ScoreUpload, ApiE
         metadata.parser_name_matches_resolved = Some(field.name() == disposition.name.as_deref());
         let name = disposition.name.unwrap_or_default();
         let is_file = disposition.filename_present;
-        let limit = if name == "score" && is_file {
+        // Extensions are not score inputs. Drain only ordinary, named form parts
+        // we do not use, without retaining their contents or guessing a replay.
+        // Case variants of known names stay on the strict parameter path.
+        let discard_extension = !name.is_empty()
+            && !is_file
+            && metadata.disposition.kind == "form-data"
+            && upload_field_category(&name.to_ascii_lowercase()) == "unknown";
+        let limit = if discard_extension {
+            MAX_SCORE_UPLOAD_BYTES
+        } else if name == "score" && is_file {
             resonance_protocol::replay::MAX_REPLAY_BYTES
         } else {
             MAX_SCORE_PARAMETER_BYTES
@@ -387,23 +396,24 @@ async fn read_score_upload(mut multipart: Multipart) -> Result<ScoreUpload, ApiE
         metadata.resolved_name_length = name.len();
         metadata.score_name_case_variant = name != "score" && name.eq_ignore_ascii_case("score");
         metadata.limit = limit;
+        let mut part_bytes = 0usize;
         while let Some(chunk) = field.chunk().await.map_err(|error| {
             reject_score_upload(
                 &metadata,
-                bytes.len(),
+                part_bytes,
                 total,
                 "multipart_chunk",
                 score_multipart_error(error),
             )
         })? {
             total = total.saturating_add(chunk.len());
-            let part_bytes = bytes.len().saturating_add(chunk.len());
-            if part_bytes > limit || total > MAX_SCORE_UPLOAD_BYTES {
+            part_bytes = part_bytes.saturating_add(chunk.len());
+            if (!discard_extension && part_bytes > limit) || total > MAX_SCORE_UPLOAD_BYTES {
                 return Err(reject_score_upload(
                     &metadata,
                     part_bytes,
                     total,
-                    if part_bytes > limit {
+                    if !discard_extension && part_bytes > limit {
                         "part_limit"
                     } else {
                         "total_limit"
@@ -411,7 +421,23 @@ async fn read_score_upload(mut multipart: Multipart) -> Result<ScoreUpload, ApiE
                     ApiError(StatusCode::PAYLOAD_TOO_LARGE, "score_upload_too_large"),
                 ));
             }
-            bytes.extend(chunk);
+            if !discard_extension {
+                bytes.extend(chunk);
+            }
+        }
+        if discard_extension {
+            if part_bytes > MAX_SCORE_PARAMETER_BYTES {
+                tracing::info!(
+                    field_category = "unknown",
+                    part_index,
+                    part_bytes,
+                    total_bytes = total,
+                    envelope_present = envelope.is_some(),
+                    replay_present = replay.is_some(),
+                    "stable score unused form part discarded"
+                );
+            }
+            continue;
         }
         if name == "score" && is_file {
             if replay.replace(bytes).is_some() {

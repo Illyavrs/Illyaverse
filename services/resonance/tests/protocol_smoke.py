@@ -64,11 +64,15 @@ class Client:
         return json.loads(self.request(method, path, body, headers, expected, native)[0])
 
 
-def multipart(fields, files=(), *, file_disposition="form-data", name_attribute="name", filename_attribute="filename", file_content_type=True):
+def multipart(fields, files=(), *, file_disposition="form-data", name_attribute="name", filename_attribute="filename", file_content_type=True, trailing_fields=()):
     boundary = "Illyaverse-" + uuid.uuid4().hex
     body = bytearray()
+    def append_field(name, value):
+        body.extend(f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n'.encode())
+        body.extend(value if isinstance(value, bytes) else str(value).encode())
+        body.extend(b"\r\n")
     for name, value in fields:
-        body.extend(f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode())
+        append_field(name, value)
     for name, filename, value in files:
         body.extend(f'--{boundary}\r\nContent-Disposition: {file_disposition}; {name_attribute}="{name}"; {filename_attribute}="{filename}"\r\n'.encode())
         if file_content_type:
@@ -76,6 +80,8 @@ def multipart(fields, files=(), *, file_disposition="form-data", name_attribute=
         body.extend(b"\r\n")
         body.extend(value)
         body.extend(b"\r\n")
+    for name, value in trailing_fields:
+        append_field(name, value)
     body.extend(f"--{boundary}--\r\n".encode())
     return bytes(body), {"Content-Type": f"multipart/form-data; boundary={boundary}"}
 
@@ -779,6 +785,13 @@ def run():
     assert f"onlineScoreId:{stable_id}|" in again
     attachment_body, attachment_headers = multipart(fields, [("score", "replay.osr", frames)], file_disposition="attachment", name_attribute="NAME", filename_attribute="FILENAME", file_content_type=False)
     assert f"onlineScoreId:{stable_id}|" in gateway.request("POST", "/web/osu-submit-modular-selector.php", attachment_body, attachment_headers)[0].decode()
+    # Structural regression for the actual rejected fourteenth ordinary part.
+    # The name and contents are original synthetic data, not a captured upload.
+    extended_fields = fields + [("x", "0"), ("ft", "0"), ("fs", ""), ("st", "0"), ("c1", "synthetic")]
+    ancillary = (bytes(range(256)) * 315)[:80486]
+    assert len(extended_fields) == 12 and len(ancillary) == 80486
+    extended_body, extended_headers = multipart(extended_fields, [("score", "replay.osr", frames)], trailing_fields=[("probe", ancillary)])
+    assert f"onlineScoreId:{stable_id}|" in gateway.request("POST", "/web/osu-submit-modular-selector.php", extended_body, extended_headers)[0].decode()
     query = urllib.parse.urlencode({"u": player_name, "h": digest(player_password), "c": stable_id, "m": 0})
     assert gateway.request("GET", "/web/osu-getreplay.php?" + query)[0] == frames
     stable_score = gateway.json("GET", f"/api/v2/scores/{stable_id}", headers=bearer)
@@ -791,6 +804,9 @@ def run():
     unauthorized_fields = [(name, digest("independent-invalid-password") if name == "pass" else value) for name, value in fields]
     unauthorized_body, unauthorized_headers = multipart(unauthorized_fields, [("score", "replay.osr", frames)], file_disposition="attachment", name_attribute="Name", filename_attribute="FileName", file_content_type=False)
     gateway.request("POST", "/web/osu-submit-modular-selector.php", unauthorized_body, unauthorized_headers, expected=401)
+    for invalid_parameters, expected_status in [(invalid_fields, 400), (unauthorized_fields, 401)]:
+        extension_failure_body, extension_failure_headers = multipart(invalid_parameters, [("score", "replay.osr", frames)], trailing_fields=[("probe", ancillary)])
+        gateway.request("POST", "/web/osu-submit-modular-selector.php", extension_failure_body, extension_failure_headers, expected=expected_status)
     leaderboard_query = urllib.parse.urlencode({"u": player_name, "h": digest(player_password), "c": map_hash, "m": 0})
     score_line = re.compile(rf"^{stable_id}\|{re.escape(player_name)}\|", re.MULTILINE)
     pending_board = gateway.request("GET", "/web/osu-osz2-getscores.php?" + leaderboard_query)[0].decode()
@@ -1302,6 +1318,7 @@ def run():
                    "uncached official set terminal withdrawal without upstream discovery",
                    "stable same-checksum changed-judgement retry conflict before/after withdrawal"])
     checks.append("stable multipart request boundary preserves 400/413 static errors without payload leakage or publication")
+    checks.append("unknown ordinary stable extensions drain without retention or score/replay authority and preserve auth/checksum/retry")
     checks.extend(["raw CP932 ZIP names decode before separators and preserve stable/lazer filename selectors",
                    "CP932 package same-owner retry IDs and original .osz/.osu download bytes",
                    "all duplicate raw ZIP records and invalid flagged UTF-8 reject without publication"])

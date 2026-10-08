@@ -90,9 +90,10 @@ fn multipart_bytes(parts: Vec<Part>) -> Vec<u8> {
         if let Some(filename) = part.filename {
             bytes.extend_from_slice(format!("; filename=\"{filename}\"").as_bytes());
         }
-        bytes.extend_from_slice(
-            format!("\r\nContent-Type: {}\r\n\r\n", part.content_type).as_bytes(),
-        );
+        if !part.content_type.is_empty() {
+            bytes.extend_from_slice(format!("\r\nContent-Type: {}", part.content_type).as_bytes());
+        }
+        bytes.extend_from_slice(b"\r\n\r\n");
         bytes.extend_from_slice(&part.bytes);
         bytes.extend_from_slice(b"\r\n");
     }
@@ -324,6 +325,145 @@ async fn score_upload_keeps_envelope_and_binary_replay() {
 }
 
 #[tokio::test]
+async fn score_upload_discards_large_ancillary_part_without_losing_score_parts() {
+    let _guard = UPLOAD_TEST_LOCK.lock().await;
+    let parameter_names = [
+        "osuver", "iv", "pass", "s", "bmk", "sbk", "x", "ft", "fs", "c1", "st", "i",
+    ];
+    let envelope = "synthetic-encrypted-envelope";
+    let replay = vec![0x81; SCALAR_BYTES + 913];
+    // Only the structural shape and length reflect the observed native retry:
+    // 13 valid parts, then a five-byte unknown name without filename or MIME.
+    // No native field name or payload is retained in this synthetic fixture.
+    let ancillary: Vec<u8> = (0..80_486).map(|index| (index % 256) as u8).collect();
+    assert!(String::from_utf8(ancillary.clone()).is_err());
+    for reverse in [false, true] {
+        for chunked in [false, true] {
+            let mut parts = vec![Part::text("score", envelope.as_bytes().to_vec())];
+            parts.extend(
+                parameter_names
+                    .map(|name| Part::text(name, format!("synthetic-{name}").into_bytes())),
+            );
+            assert_eq!(parts.len(), 13);
+            let mut ignored = Part::text("probe", ancillary.clone());
+            ignored.content_type.clear();
+            parts.push(ignored);
+            parts.push(Part::file("score", "synthetic.osr", replay.clone()));
+            if reverse {
+                parts.reverse();
+            }
+            let parsed = accepted(upload(parts, chunked).await);
+            assert_eq!(parsed.envelope.as_deref(), Some(envelope));
+            assert_eq!(parsed.replay.as_deref(), Some(replay.as_slice()));
+            assert_eq!(parsed.fields.len(), parameter_names.len());
+            assert!(!parsed.fields.contains_key("probe"));
+            for name in parameter_names {
+                assert_eq!(parsed.fields[name], format!("synthetic-{name}"));
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn score_upload_discards_unknown_form_data_independently_of_mime_and_duplicates() {
+    let _guard = UPLOAD_TEST_LOCK.lock().await;
+    for content_type in [None, Some("text/plain"), Some("application/octet-stream")] {
+        let parsed = accepted(
+            read_body(
+                custom_disposition_body(
+                    r#"FORM-DATA; NaMe="probe"; ignored="x; filename=not-a-parameter""#,
+                    content_type,
+                    &vec![0xff; SCALAR_BYTES + 1],
+                ),
+                true,
+            )
+            .await,
+        );
+        assert!(parsed.fields.is_empty());
+        assert!(parsed.envelope.is_none());
+        assert!(parsed.replay.is_none());
+    }
+    // Ignored ancillary duplicates neither occupy the retained parameter map
+    // nor acquire the identity of a score envelope or replay.
+    let parsed = accepted(
+        upload(
+            vec![
+                Part::text("probe", vec![0xff; SCALAR_BYTES + 1]),
+                Part::text("probe", vec![0xfe; SCALAR_BYTES + 1]),
+                Part::text("pass", b"synthetic-password-hash".to_vec()),
+            ],
+            true,
+        )
+        .await,
+    );
+    assert_eq!(parsed.fields.len(), 1);
+    assert_eq!(parsed.fields["pass"], "synthetic-password-hash");
+    assert!(parsed.envelope.is_none());
+    assert!(parsed.replay.is_none());
+}
+
+#[tokio::test]
+async fn score_upload_ancillary_discard_keeps_ambiguous_and_critical_parts_strict() {
+    let _guard = UPLOAD_TEST_LOCK.lock().await;
+    let payload = vec![0xff; SCALAR_BYTES + 1];
+    for disposition in [
+        r#"form-data; name="""#,
+        "form-data",
+        r#"form-data; name="probe"; filename="""#,
+        r#"form-data; name="Score""#,
+        r#"form-data; name="PASS""#,
+        r#"form-data; name="OsUvEr""#,
+        r#"attachment; name="probe""#,
+        r#"file; name="probe""#,
+        r#"unrecognized; name="probe""#,
+    ] {
+        rejected(
+            read_body(custom_disposition_body(disposition, None, &payload), true).await,
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "score_upload_too_large",
+        );
+    }
+    for name in [
+        "score", "osuver", "iv", "pass", "s", "bmk", "sbk", "x", "ft", "fs", "c1", "st", "i",
+    ] {
+        for name in [name.to_owned(), name.to_ascii_uppercase()] {
+            rejected(
+                upload(vec![Part::text(&name, payload.clone())], true).await,
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "score_upload_too_large",
+            );
+        }
+    }
+    // A small unknown file is still ignored by the original file handling;
+    // it must never populate the actual replay slot.
+    let parsed = accepted(upload(vec![Part::file("probe", "other.bin", vec![0xff])], true).await);
+    assert!(parsed.fields.is_empty());
+    assert!(parsed.envelope.is_none());
+    assert!(parsed.replay.is_none());
+}
+
+#[tokio::test]
+async fn score_upload_discarded_ancillary_part_keeps_exact_total_boundary() {
+    let _guard = UPLOAD_TEST_LOCK.lock().await;
+    for chunked in [false, true] {
+        let parsed =
+            accepted(upload(vec![Part::text("probe", vec![0xff; TOTAL_BYTES])], chunked).await);
+        assert!(parsed.fields.is_empty());
+        assert!(parsed.envelope.is_none());
+        assert!(parsed.replay.is_none());
+        rejected(
+            upload(
+                vec![Part::text("probe", vec![0xff; TOTAL_BYTES + 1])],
+                chunked,
+            )
+            .await,
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "score_upload_too_large",
+        );
+    }
+}
+
+#[tokio::test]
 async fn score_upload_replay_classification_preserves_filename_semantics() {
     let _guard = UPLOAD_TEST_LOCK.lock().await;
     let replay = vec![0xff; SCALAR_BYTES + 1];
@@ -525,23 +665,27 @@ fn score_upload_disposition_resolver_boundaries_and_duplicate_headers() {
 async fn score_upload_scalar_and_replay_size_boundaries() {
     let _guard = UPLOAD_TEST_LOCK.lock().await;
     for chunked in [false, true] {
-        let parsed = accepted(
-            upload(
-                vec![Part::text("osuver", vec![b'v'; SCALAR_BYTES])],
-                chunked,
-            )
-            .await,
-        );
-        assert_eq!(parsed.fields["osuver"].len(), SCALAR_BYTES);
-        rejected(
-            upload(
-                vec![Part::text("osuver", vec![b'v'; SCALAR_BYTES + 1])],
-                chunked,
-            )
-            .await,
-            StatusCode::PAYLOAD_TOO_LARGE,
-            "score_upload_too_large",
-        );
+        for name in ["osuver", "pass", "score"] {
+            let parsed =
+                accepted(upload(vec![Part::text(name, vec![b'v'; SCALAR_BYTES])], chunked).await);
+            if name == "score" {
+                assert_eq!(parsed.envelope.as_ref().unwrap().len(), SCALAR_BYTES);
+                assert!(parsed.fields.is_empty());
+            } else {
+                assert_eq!(parsed.fields[name].len(), SCALAR_BYTES);
+                assert!(parsed.envelope.is_none());
+            }
+            assert!(parsed.replay.is_none());
+            rejected(
+                upload(
+                    vec![Part::text(name, vec![b'v'; SCALAR_BYTES + 1])],
+                    chunked,
+                )
+                .await,
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "score_upload_too_large",
+            );
+        }
         let parsed = accepted(
             upload(
                 vec![Part::file("score", "limit.osr", vec![0x81; REPLAY_BYTES])],
@@ -591,13 +735,13 @@ async fn score_upload_total_size_boundary() {
     let _guard = UPLOAD_TEST_LOCK.lock().await;
     let parsed = accepted(upload(total_limit_parts(false), true).await);
     assert_eq!(parsed.replay.as_ref().unwrap().len(), REPLAY_BYTES);
-    assert_eq!(parsed.fields.len(), 128);
-    assert_eq!(
-        parsed.fields.values().map(String::len).sum::<usize>(),
-        TOTAL_BYTES - REPLAY_BYTES
+    assert!(
+        parsed.fields.is_empty(),
+        "drained ancillary fields must not be retained"
     );
     drop(parsed);
-    // Every part remains individually valid; the final one-byte scalar exceeds the sum limit.
+    // The 128 drained ancillary fields still count toward the aggregate cap;
+    // a final discarded byte must fail even though none is retained.
     rejected(
         upload(total_limit_parts(true), true).await,
         StatusCode::PAYLOAD_TOO_LARGE,
@@ -861,7 +1005,7 @@ async fn score_upload_parser_and_resolver_diagnostics_remain_redacted() {
     for (disposition, parser, length, variant, names_match) in [
         (r#"form-data; name="Score""#, "unknown", 5, true, true),
         (
-            r#"form-data; name="PRIVATE_FIELD_MARKER""#,
+            r#"attachment; name="PRIVATE_FIELD_MARKER""#,
             "unknown",
             20,
             false,
@@ -870,7 +1014,7 @@ async fn score_upload_parser_and_resolver_diagnostics_remain_redacted() {
         // Multer can find a name-shaped substring inside an unrelated quoted
         // parameter. The bounded resolver identifies the actual parameter.
         (
-            r#"form-data; ignored="x; name=score ; extra"; name="PRIVATE_FIELD_MARKER""#,
+            r#"attachment; ignored="x; name=score ; extra"; name="PRIVATE_FIELD_MARKER""#,
             "score",
             20,
             false,
@@ -878,7 +1022,7 @@ async fn score_upload_parser_and_resolver_diagnostics_remain_redacted() {
         ),
         // Categories and lengths alone do not identify parser disagreement.
         (
-            r#"form-data; ignored="x; name=OTHER_FIELD_MARKERXX ; extra"; name="PRIVATE_FIELD_MARKER""#,
+            r#"attachment; ignored="x; name=OTHER_FIELD_MARKERXX ; extra"; name="PRIVATE_FIELD_MARKER""#,
             "unknown",
             20,
             false,

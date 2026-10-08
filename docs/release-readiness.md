@@ -24,16 +24,18 @@
 
 網站／圖譜檢查對應 `1e49045`。最後一輪有 75 項圖譜／首頁／個人頁操作及 17 項外觀／排名回歸通過；十張桌面、手機、三語系截圖經獨立審查。兩套部署另有 38 項唯讀 HTTP 檢查通過，schema 22 與原有資料保持一致。精確 image、來源與截圖 hash、範圍和跳過項目記錄於 [證據](../.impeccable/review/map-discovery-evidence.json)。
 
-兩套保留資料庫各有兩個帳號、十四筆當日排名觀察；主站有零張圖譜，客戶端測試站有四十四個難度。兩者都沒有實際保存的成績或 Replay。這些數量是核對時的資料，不是演示活動。
+圖譜改版部署時，兩套保留資料庫各有兩個帳號、十四筆當日排名觀察；主站有零張圖譜，客戶端測試站有四十四個難度。兩者當時都沒有實際保存的成績或 Replay。這些數量是該 checkpoint 的資料，不是演示活動。
 
-這組 Sanctuary／Resonance 映像另完成一次全新的隔離協定回歸：458 次 HTTP 請求、55 類檢查通過，schema 22；涵蓋加密 stable 送分、lazer、RX、聊天、Replay、圖譜包與下架／復原。55 是涵蓋類別數，不是 assertion 數。這輪只執行 PostgreSQL、Sanctuary 與 Resonance；網站和 Caddy 的 image 僅核對 pin，網站操作證據仍來自前述檢查。
+圖譜改版當時的 Sanctuary／Resonance 映像另完成一次全新的隔離協定回歸：458 次 HTTP 請求、55 類檢查通過，schema 22；涵蓋加密 stable 送分、lazer、RX、聊天、Replay、圖譜包與下架／復原。55 是涵蓋類別數，不是 assertion 數。這輪只執行 PostgreSQL、Sanctuary 與 Resonance；網站和 Caddy 的 image 僅核對 pin，網站操作證據仍來自前述檢查。
 
 三個測試容器、兩個 volume、一個 network 與產生的環境檔已按擁有者身分核對後清除。協定與清理通過後，外層 runner 的環境復原檢查因未設定值被還原成空字串而失敗；修正 helper 後，另以未設定／空字串／有值三種情況確認精確復原，沒有重跑協定。影響範圍僅限已結束的子 PowerShell process；保留的失敗紀錄與各檢查範圍見 [完成度證據](release-readiness-evidence.json)。
 
+其後 stable 附加欄位排空修正的 Resonance 映像 `sha256:d2d4252932a7833ebb8ce1e3baa283c961ee13ae78c0f42015b0d5d793ebb8c9` 通過 25 個 multipart tests、Clippy 及一輪全新的 461 HTTP／56 類隔離加密協定回歸；runner、環境還原及擁有者清理均 exit 0。兩套本機服務已於 2026-10-08 09:36 UTC（台灣 17:36）更新 Resonance，十個容器健康、其餘八個容器與原有資料 ID／schema 保留。更新時 client 有四十五個難度，兩套都仍為零成績／Replay；實際送分成功待新重試確認。確切來源、備份範圍與實機狀態另記在 [附加欄位修正證據](stable-ancillary-evidence.json)，不覆寫早期 checkpoint 的結果。
+
 ## 尚需完成
 
-1. 取得新的真人 stable 送分診斷，辨識先前第十四個未知 multipart 欄位；依實際 header 結構建立 regression，再驗證修正。現有 metadata 不足以把該欄位認定為 Replay。見 [原生成績提交](native-score-submission.md)。
+1. 確認真人 stable 在未知普通 multipart 附加欄位排空修正後能成功保存成績與 Replay；2026-10-08 的新診斷已排除大小寫解析問題，25 個 parser regression 已通過。附加欄位不參與成績驗證，不被猜測為 Replay，其 bytes 仍計入原有總量限制。部署後實機確認仍待完成。見 [原生成績提交](native-score-submission.md)。
 2. 由玩家執行 [原生 release checklist](protocol-compatibility.md#native-client-release-checklist)，記錄 client 版本、時間與結果，涵蓋 stable／lazer 登入、聊天、官方／本地圖譜、各模式、RX、成績、Replay 與重連。
 3. 由玩家確認 Kaleidoscope 的真實啟動／關閉並重新啟動，以及遊戲結束後外掛清理；異常中斷後依復原流程檢查。
 
-目前日誌已核對到 2026-10-08 04:23:07 UTC：保留的 Caddy metadata 有二十七次 stable 送分 POST，最後一次為 2026-10-07 13:59:16 UTC、HTTP 413；診斷更新後沒有新的送分請求。這是保留日誌的範圍，不代表日誌以外的客戶端狀態。自動測試及本機服務健康不能取代上述玩家操作。
+2026-10-08 09:15:29 UTC 的更新核對已有四十一次 stable 送分 POST；其中十四次新請求在 Resonance 均因同一普通附加欄位超過 32 KiB 而拒絕，最新為 09:15:16 UTC、HTTP 413。先前 04:23 UTC 的二十七次／沒有新請求記錄只描述當時的保留範圍，見完成度證據 checkpoint。自動測試及本機服務健康不能取代上述玩家操作。
