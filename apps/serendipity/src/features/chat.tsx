@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Send, LoaderCircle, Plus, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -50,12 +51,15 @@ export function ChatPage() {
 }
 
 function AccountChat({ user }: { user: User | null }) {
+  const search = useSearchParams();
+  const rawRecipient = search.get('recipient')?.trim() ?? '';
+  const recipient = rawRecipient.length <= 24 ? rawRecipient : '';
   const { refresh: refreshSession } = useSession();
   const t = useTranslations('chat');
   const common = useTranslations('common');
   const f = useFormatter();
   const [selected, setSelected] = useState<ChatTarget | null>(null);
-  const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const [sidebarExpanded, setSidebarExpanded] = useState(!!recipient && !!user);
   const chat = useChatData(user?.id, selected, refreshSession);
   const { markRead } = chat;
   const initial = chat.channels.items[0];
@@ -83,7 +87,7 @@ function AccountChat({ user }: { user: User | null }) {
   const [sendErrors, setSendErrors] = useState<Record<string, string | null>>({});
   const attempts = useRef(new Map<string, SendAttempt>());
   const inFlight = useRef(new Set<string>());
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState(user ? recipient : '');
   const usernameRef = useRef(username);
   const [creating, setCreating] = useState(false);
   const creatingRef = useRef(false);
@@ -109,6 +113,20 @@ function AccountChat({ user }: { user: User | null }) {
     key: null,
   });
   const announcedIds = useRef(new Map<string, number>());
+  const recipientInput = useRef<HTMLInputElement>(null);
+  const previousRecipient = useRef(recipient);
+
+  useEffect(() => {
+    if (!user || !recipient || previousRecipient.current === recipient) return;
+    previousRecipient.current = recipient;
+    queueMicrotask(() => {
+      usernameRef.current = recipient;
+      setUsername(recipient);
+      setSidebarExpanded(true);
+      setCreateError(null);
+      recipientInput.current?.focus();
+    });
+  }, [recipient, user]);
 
   // Persist the initial channel as a target so the hook can load its history.
   useEffect(() => {
@@ -405,11 +423,12 @@ function AccountChat({ user }: { user: User | null }) {
                   <label htmlFor="chat-recipient">{t('newConversation')}</label>
                   <div>
                     <Input
+                      ref={recipientInput}
                       id="chat-recipient"
                       name="target_username"
                       value={username}
                       placeholder={t('username')}
-                      maxLength={32}
+                      maxLength={24}
                       autoComplete="off"
                       aria-invalid={!!createError}
                       aria-describedby={createError ? 'chat-create-error' : undefined}

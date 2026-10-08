@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
-import { UserPlus, UserMinus, Ban, LoaderCircle } from 'lucide-react';
+import { UserPlus, UserMinus, Ban, LoaderCircle, MessageCircle } from 'lucide-react';
 import { useSession } from '@/components/providers';
 import { Button } from '@/components/ui/button';
 import { Avatar, Loading, LoadError, Empty } from '@/components/common';
@@ -22,7 +22,13 @@ function useRelationships() {
     api('/me/relationships'),
   );
 }
-export function RelationshipActions({ target }: { target: number }) {
+export function RelationshipActions({
+  target,
+  targetUsername,
+}: {
+  target: number;
+  targetUsername?: string;
+}) {
   const t = useTranslations('social');
   const c = useTranslations('common');
   const { user } = useSession();
@@ -30,7 +36,10 @@ export function RelationshipActions({ target }: { target: number }) {
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState('');
-  if (!user || user.id === target || !hasPermission(user.permissions, 'social.manage')) return null;
+  if (!user || user.id === target) return null;
+  const canManage = hasPermission(user.permissions, 'social.manage');
+  const canMessage = hasPermission(user.permissions, 'chat.send') && !!targetUsername;
+  if (!canManage && !canMessage) return null;
   const friend = data?.friends.some((r) => r.target_id === target);
   const blocked = data?.blocks.some((r) => r.target_id === target);
   async function change(kind: 'friend' | 'block', remove = false) {
@@ -56,32 +65,41 @@ export function RelationshipActions({ target }: { target: number }) {
   }
   return (
     <div className="relationship-actions">
-      {loadError ? (
-        <Button variant="outline" onClick={() => mutate()}>
-          {c('retry')}
+      {canMessage && (
+        <Button asChild variant="outline">
+          <Link href={`/chat?recipient=${encodeURIComponent(targetUsername!)}`}>
+            <MessageCircle />
+            {t('message')}
+          </Link>
         </Button>
-      ) : (
-        <div className="actions">
-          {!blocked && (
-            <Button
-              variant="outline"
-              disabled={!data || busy}
-              onClick={() => change('friend', friend)}
-            >
-              {busy ? <LoaderCircle className="spin" /> : friend ? <UserMinus /> : <UserPlus />}
-              {t(friend ? 'removeFriend' : 'addFriend')}
-            </Button>
-          )}
-          <Button
-            variant="ghost"
-            disabled={!data || busy}
-            onClick={() => (blocked ? change('block', true) : setConfirm(true))}
-          >
-            <Ban />
-            {t(blocked ? 'unblock' : 'block')}
-          </Button>
-        </div>
       )}
+      {canManage &&
+        (loadError ? (
+          <Button variant="outline" onClick={() => mutate()}>
+            {c('retry')}
+          </Button>
+        ) : (
+          <div className="actions">
+            {!blocked && (
+              <Button
+                variant="outline"
+                disabled={!data || busy}
+                onClick={() => change('friend', friend)}
+              >
+                {busy ? <LoaderCircle className="spin" /> : friend ? <UserMinus /> : <UserPlus />}
+                {t(friend ? 'removeFriend' : 'addFriend')}
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              disabled={!data || busy}
+              onClick={() => (blocked ? change('block', true) : setConfirm(true))}
+            >
+              <Ban />
+              {t(blocked ? 'unblock' : 'block')}
+            </Button>
+          </div>
+        ))}
       {confirm && (
         <div className="relationship-confirm" role="group" aria-label={t('block')}>
           <p>{t('blockConfirm')}</p>
@@ -127,7 +145,7 @@ export function RelationshipList() {
                       {r.mutual && kind === 'friends' && <small>{t('mutual')}</small>}
                     </span>
                   </Link>
-                  <RelationshipActions target={r.target_id} />
+                  <RelationshipActions target={r.target_id} targetUsername={r.target.username} />
                 </li>
               ))}
             </ul>

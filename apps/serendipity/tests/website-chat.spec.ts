@@ -265,7 +265,7 @@ test('desktop private history, unread acknowledgement, older pages and live lowe
     .locator('.messages')
     .getByRole('button', { name: '載入較早的訊息', exact: true })
     .click();
-  await expect(page.locator('.messages')).toContainText('測試訊息 1');
+  await expect(page.locator('.messages .message[data-message-id="1"]')).toBeAttached();
   const list = page.locator('.messages');
   await list.evaluate((element) => {
     element.scrollTop = 0;
@@ -414,6 +414,22 @@ test('reconnect refetches history, keeps draft, and guest access exposes only pu
   await expect(page.locator('.conversation-list')).toHaveCount(0);
   await expect(page.locator('.chat-new-conversation')).toHaveCount(0);
   await expect(page.locator('.messages')).not.toContainText('Reconnect recovered fixture');
+});
+
+test('profile recipient link fills the form without creating or sending until requested', async ({
+  page,
+}) => {
+  const state = await fixture(page, 'en');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/chat?recipient=Illya%20fixture');
+  await expect(page.locator('#chat-recipient')).toBeVisible();
+  await expect(page.locator('#chat-recipient')).toHaveValue('Illya fixture');
+  expect(state.creates).toEqual([]);
+  expect(state.sends).toEqual([]);
+  await page.getByRole('button', { name: 'Open conversation', exact: true }).click();
+  await expect.poll(() => state.creates).toEqual(['Illya fixture']);
+  await expect(page.locator('.messages')).toHaveAttribute('data-channel-id', '101');
+  expect(state.sends).toEqual([]);
 });
 
 test('live permission refresh updates public controls and revoked sessions clear private state', async ({

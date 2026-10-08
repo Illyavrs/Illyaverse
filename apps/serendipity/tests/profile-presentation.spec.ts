@@ -50,6 +50,8 @@ async function fixture(page: Page, locale = 'zh-TW', mode = 'dark') {
     if (url.pathname === '/api/v1/me/preferences') return route.fulfill({ json: preferences });
     if (url.pathname === '/api/v1/me/relationships')
       return route.fulfill({ json: { friends: [], blocks: [] } });
+    if (url.pathname === '/api/v1/beatmaps')
+      return route.fulfill({ json: { items: [], total: 0, page: 1, page_size: 5 } });
     if (url.pathname === `/api/v1/users/${user.id}`) {
       const publicUser = Object.fromEntries(
         Object.entries(state.user).filter(([key]) => !['email', 'permissions'].includes(key)),

@@ -86,6 +86,8 @@ async function fixture(page: Page, locale = 'en', theme = 'dark') {
     if (url.pathname === '/api/v1/me/preferences') return route.fulfill({ json: preferences });
     if (url.pathname === '/api/v1/me/relationships')
       return route.fulfill({ json: { friends: [], blocks: [] } });
+    if (url.pathname === '/api/v1/beatmaps')
+      return route.fulfill({ json: { items: [], total: 0, page: 1, page_size: 5 } });
     if (url.pathname === '/api/v1/auth/logout') {
       state.viewer = false;
       return route.fulfill({ status: 204 });
@@ -166,14 +168,14 @@ test('best displays supplied pp order, weights, original scores and replay links
   await fixture(page, 'zh-TW');
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`/players/${ownerId}`);
-  const table = page.locator('.profile-best-score-table');
-  await expect(table.locator('tbody tr')).toHaveCount(3);
-  const first = table.locator('tbody tr').first();
+  const list = page.locator('.profile-best-score-list');
+  await expect(list.locator('li')).toHaveCount(3);
+  const first = list.locator('li').first();
   await expect(first).toContainText('100,000');
   await expect(first).toContainText('490.00');
   await expect(first.locator('.score-weight')).toHaveText('100.00%');
-  await expect(table.locator('tbody tr').nth(1).locator('.score-weight')).toHaveText('95.00%');
-  await expect(table.locator('tbody tr').nth(1).locator('.score-weighted-pp')).toHaveText('456.00');
+  await expect(list.locator('li').nth(1).locator('.score-weight')).toHaveText('95.00%');
+  await expect(list.locator('li').nth(1).locator('.score-weighted-pp')).toHaveText('456.00');
   await expect(first.locator('a.score-title')).toHaveAttribute('href', '/scores/989201');
   await expect(first.locator('a[href$="/replay"]')).toHaveAttribute(
     'href',
@@ -190,7 +192,7 @@ test('mobile light best failure names recovery and retry restores the collection
   state.failBest = true;
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/players/${ownerId}`);
-  const panel = page.locator('.profile-layout section');
+  const panel = page.locator('#profile-scores');
   await expect(panel.getByRole('alert')).toBeVisible();
   await expect(
     panel.getByRole('button', { name: 'Best performances', exact: true }),
@@ -198,12 +200,14 @@ test('mobile light best failure names recovery and retry restores the collection
   await capture(page, 'mobile-light-en-error');
   state.failBest = false;
   await panel.getByRole('button', { name: 'Try again', exact: true }).click();
-  await expect(page.locator('.profile-best-score-table tbody tr')).toHaveCount(3);
+  await expect(page.locator('.profile-best-score-list li')).toHaveCount(3);
   await expect(panel.getByRole('alert')).toHaveCount(0);
-  const region = panel.getByRole('region', { name: 'Best performances', exact: true });
-  await region.focus();
-  await page.keyboard.press('ArrowRight');
-  await expect.poll(() => region.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  const resultLink = panel.locator('a.score-title').first();
+  await resultLink.focus();
+  await expect(resultLink).toBeFocused();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
 });
 
 test('Japanese empty best differs from owner recent pending history', async ({ page }) => {
@@ -217,7 +221,7 @@ test('Japanese empty best differs from owner recent pending history', async ({ p
   await capture(page, 'mobile-dark-ja-empty');
   await page.locator('.profile-score-collection button').nth(1).click();
   await expect(page.locator('.score-table')).toContainText('Private pending fixture');
-  await expect(page.locator('.profile-best-score-table')).toHaveCount(0);
+  await expect(page.locator('.profile-best-score-list')).toHaveCount(0);
   expect(new URL(page.url()).searchParams.get('score_view')).toBe('recent');
 });
 
@@ -227,7 +231,7 @@ test('rapid collection and mode changes preserve URL selection and browser histo
   const state = await fixture(page);
   state.bestCount = 26;
   await page.goto(`/players/${ownerId}`);
-  await expect(page.locator('.profile-best-score-table tbody tr')).toHaveCount(24);
+  await expect(page.locator('.profile-best-score-list li')).toHaveCount(24);
   await page.getByRole('button', { name: 'Recent scores', exact: true }).click();
   await page.getByRole('button', { name: 'taiko', exact: true }).click();
   await expect.poll(() => new URL(page.url()).searchParams.get('score_view')).toBe('recent');
@@ -236,12 +240,12 @@ test('rapid collection and mode changes preserve URL selection and browser histo
   await page.getByRole('button', { name: 'Relax (RX)', exact: true }).click();
   await expect.poll(() => state.queries.at(-1)?.variant).toBe('relax');
   await page.getByRole('button', { name: 'Best performances', exact: true }).click();
-  await expect(page.locator('.profile-best-score-table tbody tr')).toHaveCount(24);
+  await expect(page.locator('.profile-best-score-list li')).toHaveCount(24);
   await page.getByRole('button', { name: 'Next', exact: true }).click();
-  await expect(page.locator('.profile-best-score-table tbody tr')).toHaveCount(2);
+  await expect(page.locator('.profile-best-score-list li')).toHaveCount(2);
   expect(new URL(page.url()).searchParams.get('page')).toBe('2');
   await page.goBack();
-  await expect(page.locator('.profile-best-score-table tbody tr')).toHaveCount(24);
+  await expect(page.locator('.profile-best-score-list li')).toHaveCount(24);
   await page.getByRole('button', { name: 'mania', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Relax (RX)', exact: true })).toBeDisabled();
   await expect.poll(() => state.queries.at(-1)?.variant).toBe('vanilla');
@@ -252,13 +256,13 @@ test('page two retains global server position and decayed contribution', async (
   const state = await fixture(page);
   state.bestCount = 26;
   await page.goto(`/players/${ownerId}?mode=0&variant=vanilla&page=2`);
-  const first = page.locator('.profile-best-score-table tbody tr').first();
+  const first = page.locator('.profile-best-score-list li').first();
   await expect(first).toContainText('Best performance fixture 25');
-  await expect(first.locator('td').first()).toHaveText('25');
+  await expect(first.locator('.profile-score-position')).toHaveText('25');
   await expect(first.locator('.score-weight')).toHaveText('29.20%');
   await expect(first.locator('.score-weighted-pp')).toHaveText('73.00');
   await page.getByRole('button', { name: 'Recent scores', exact: true }).click();
-  await expect(page.locator('.score-table tbody tr')).toHaveCount(2);
+  await expect(page.locator('.profile-score-list li')).toHaveCount(2);
   expect(new URL(page.url()).searchParams.get('page')).toBeNull();
 });
 
@@ -270,14 +274,14 @@ test('logout removes private recent rows when returning to the same profile', as
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
   await page.goto(path);
-  await expect(page.locator('.score-table tbody tr')).toHaveCount(1);
+  await expect(page.locator('.profile-score-list li')).toHaveCount(1);
   await expect(page.locator('.score-table')).not.toContainText('Private pending fixture');
 });
 
 test('an empty out-of-range best page returns to its current last page', async ({ page }) => {
   const state = await fixture(page);
   await page.goto(`/players/${ownerId}?mode=0&variant=vanilla&page=999999`);
-  await expect(page.locator('.profile-best-score-table tbody tr')).toHaveCount(3);
+  await expect(page.locator('.profile-best-score-list li')).toHaveCount(3);
   await expect.poll(() => Number(new URL(page.url()).searchParams.get('page') ?? 1)).toBe(1);
   expect(state.queries.some((query) => query.page === 999999)).toBe(true);
   expect(state.queries.some((query) => query.page === 1)).toBe(true);
@@ -291,9 +295,9 @@ test('private recent access failure purges cached rows and recovers only after r
   await expect(page.locator('.score-table')).toContainText('Private pending fixture');
   state.denyRecent = true;
   await page.getByRole('button', { name: 'Best performances', exact: true }).click();
-  await expect(page.locator('.profile-best-score-table tbody tr')).toHaveCount(3);
+  await expect(page.locator('.profile-best-score-list li')).toHaveCount(3);
   await page.getByRole('button', { name: 'Recent scores', exact: true }).click();
-  const panel = page.locator('.profile-layout section');
+  const panel = page.locator('#profile-scores');
   await expect(panel.getByRole('alert')).toBeVisible();
   await expect(page.locator('.score-table')).toHaveCount(0);
   state.denyRecent = false;

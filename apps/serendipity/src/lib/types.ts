@@ -35,6 +35,13 @@ export type User = {
     country_rank: number | null;
     play_count: number;
     accuracy: number;
+    maximum_combo?: number;
+    total_hits?: number;
+    total_score?: number | null;
+    ranked_score?: number | null;
+    score_totals_complete?: boolean;
+    score_scale?: 'classic_display' | 'unavailable_for_relax';
+    grade_counts?: Partial<Record<'ss' | 'ssh' | 's' | 'sh' | 'a' | 'b' | 'c' | 'd' | 'f', number>>;
   };
   email?: string;
   email_verified?: boolean;
@@ -75,6 +82,7 @@ export type BeatmapPackage = {
   source?: 'local' | 'official';
 };
 export type Beatmap = BeatmapDifficulty & {
+  uploaded_by?: number | null;
   native_set_id?: number;
   availability?: BeatmapAvailability;
   official_id: number | null;

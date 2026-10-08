@@ -259,16 +259,21 @@ export function BeatmapsPage() {
   const t = useTranslations('maps');
   const c = useTranslations('common');
   const { user } = useSession();
+  const params = useSearchParams();
+  const uploader = params.get('uploaded_by');
   const [search, setSearch] = useState('');
   const q = useDeferredValue(search);
   const [mode, setMode] = useState('all');
   const [status, setStatus] = useState('all');
-  const [source, setSource] = useState('all');
+  const [source, setSource] = useState(() =>
+    ['official', 'local'].includes(params.get('source') ?? '') ? params.get('source')! : 'all',
+  );
   const [page, setPage] = useState(1);
   const query = new URLSearchParams({ page: String(page), page_size: '24', q });
   if (mode !== 'all') query.set('mode', mode);
   if (status !== 'all') query.set('status', status);
   if (source !== 'all') query.set('source', source);
+  if (uploader !== null) query.set('uploaded_by', uploader);
   const { data, error, isLoading, mutate } = useSWR<Page<Beatmap>>(`/beatmaps?${query}`, fetcher);
   return (
     <div className="page-container">
@@ -340,6 +345,26 @@ export function BeatmapsPage() {
           all
         />
       </div>
+      {uploader !== null && (
+        <div className="filter-context">
+          <p>{t('uploaderFilter', { id: uploader })}</p>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              const next = new URLSearchParams(window.location.search);
+              next.delete('uploaded_by');
+              window.history.replaceState(
+                null,
+                '',
+                `${window.location.pathname}${next.size ? `?${next}` : ''}`,
+              );
+              setPage(1);
+            }}
+          >
+            {t('clearUploader')}
+          </Button>
+        </div>
+      )}
       <section className="glass content-panel">
         {isLoading ? (
           <Loading />

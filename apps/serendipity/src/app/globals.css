@@ -194,6 +194,20 @@ svg {
 .relationship-actions {
   margin-block: 12px;
 }
+.relationship-actions > [data-slot='button'] {
+  margin-bottom: 8px;
+}
+.filter-context {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 0 0 20px;
+  color: var(--secondary-text);
+}
+.filter-context p {
+  overflow-wrap: anywhere;
+}
 .relationship-confirm {
   margin-top: 12px;
   padding: 16px;
@@ -254,6 +268,11 @@ svg {
 }
 .brand > span > span {
   color: var(--readable-accent);
+}
+@media (max-width: 360px) {
+  .brand > span:not(.brand-mark) {
+    display: none;
+  }
 }
 .brand-mark {
   display: flex;

@@ -1,0 +1,19 @@
+{
+  "captured_at": "2026-10-08T01:32:23.711Z",
+  "route": "/",
+  "viewport": {
+    "width": 1254,
+    "height": 1000
+  },
+  "state": "Guest; populated public maps/rankings/verified scores with rejected private fixture excluded.",
+  "data": "Synthetic QA fixtures intercepted at existing public API routes; no native-client or live activity claims.",
+  "sources": {
+    "src/features/home.tsx": "fcf07a452d1ccdfad967cead8099b226d22c46348f85b679fe626fd72595285b",
+    "src/features/home.css": "eee1a52dc10d8eef4a20b42e455404d08cb927bc551c59657f1cc08576863c4d",
+    "src/app/globals.css": "42f354142af9aaa3f27ced2d70c5f6ba68585b268307714208b3959a4b1cc545",
+    "src/app/layout.tsx": "67bb36512520052cf67aa94e0eeed6f25513340efa3e66f35cb359cf7a751b1e",
+    "messages/zh-TW.json": "fbbaf80751164d1b9153e8ea4d3c633b3229e5397c3db713d00f4f17f81bb4cb",
+    "messages/en.json": "df094c997165167d12acd73671b4b12e9e12beeca5c912a783ab704bf08f6087",
+    "messages/ja.json": "a1737109f711b9516911d5cd18b3cd628b630bfd87c2d488f9bc4f9b512a94be"
+  }
+}

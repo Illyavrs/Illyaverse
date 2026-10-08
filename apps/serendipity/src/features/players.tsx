@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useFormatter, useTranslations } from 'next-intl';
 import useSWR, { unstable_serialize, useSWRConfig } from 'swr';
-import { Pencil } from 'lucide-react';
+import { ArrowUpRight, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -18,8 +18,9 @@ import {
 } from '@/components/common';
 import { useSession } from '@/components/providers';
 import { ApiError, fetcher } from '@/lib/api';
-import type { BestScorePage, Leader, Page, User, Score, ScoreVariant } from '@/lib/types';
-import { ScoreTable } from './scores';
+import type { Beatmap, BestScorePage, Leader, Page, User, Score, ScoreVariant } from '@/lib/types';
+import { ProfileScoreList } from '@/components/profile-score-list';
+import { MapRows } from './beatmaps';
 import { RelationshipActions } from './social';
 import { ScoreVariantControl, useScoreSelection } from '@/components/score-selection';
 
@@ -284,6 +285,28 @@ export function PlayerPage({ id }: { id: number }) {
     },
   );
   const scoreError = scoreRequestError ?? accessFailures[serializedScoreKey];
+  const uploadsPath = `/beatmaps?uploaded_by=${id}&source=local&page_size=5&page=1`;
+  const uploadsKey =
+    player?.id === id && !error && !sessionLoading
+      ? ([uploadsPath, user?.id ?? 'guest'] as const)
+      : null;
+  const serializedUploadsKey = uploadsKey ? unstable_serialize(uploadsKey) : '';
+  const {
+    data: uploadedMaps,
+    error: uploadsRequestError,
+    mutate: reloadUploads,
+  } = useSWR<Page<Beatmap>>(
+    uploadsKey,
+    (key: readonly [string, number | string]) => fetcher<Page<Beatmap>>(key[0]),
+    {
+      keepPreviousData: false,
+      dedupingInterval: 0,
+      shouldRetryOnError: (requestError) => !isProfileAccessError(requestError),
+      onError: handleAccessError,
+      onSuccess: (_data, requestedKey) => clearAccessFailure(requestedKey),
+    },
+  );
+  const uploadsError = uploadsRequestError ?? accessFailures[serializedUploadsKey];
   useEffect(() => {
     const live = readProfileScoreSelection(new URLSearchParams(window.location.search));
     if (
@@ -313,90 +336,191 @@ export function PlayerPage({ id }: { id: number }) {
       ) : (
         player && (
           <>
-            <div
-              className="profile-cover"
-              style={{
-                backgroundImage: player.banner_url
-                  ? `url(${JSON.stringify(player.banner_url)})`
-                  : undefined,
-                backgroundPosition: `${bannerPosition(player.banner_position_x)}% ${bannerPosition(player.banner_position_y)}%`,
-              }}
-              role={player.banner_url ? 'img' : undefined}
-              aria-label={player.banner_url ? t('banner') : undefined}
-            />
-            <section className="profile-identity">
-              <Avatar name={player.username} url={player.avatar_url} size="large" />
-              <div>
-                <h1>{player.username}</h1>
-                <p>
-                  {player.country} <span className="dot">·</span> {t('joined')}{' '}
-                  {f.dateTime(new Date(player.joined_at), { dateStyle: 'medium' })}
-                </p>
-                <div className="map-tags">
-                  {player.roles.map((role) => (
-                    <Badge variant="secondary" key={role}>
-                      {role}
-                    </Badge>
-                  ))}
+            <section
+              className={`profile-masthead glass${player.banner_url ? ' has-banner' : ' no-banner'}`}
+              id="profile-overview"
+              aria-label={t('stats')}
+            >
+              <div className="profile-mode-rail">
+                <GameMode
+                  value={mode}
+                  onChange={(nextMode) => updateProfileScoreSelection({ mode: nextMode })}
+                />
+                <ScoreVariantControl
+                  mode={mode}
+                  value={variant}
+                  onChange={(nextVariant) => updateProfileScoreSelection({ variant: nextVariant })}
+                />
+                {mode === '3' && <p className="hint">{c('relaxUnsupported')}</p>}
+              </div>
+              <div
+                className="profile-cover"
+                style={{
+                  backgroundImage: player.banner_url
+                    ? `url(${JSON.stringify(player.banner_url)})`
+                    : undefined,
+                  backgroundPosition: `${bannerPosition(player.banner_position_x)}% ${bannerPosition(player.banner_position_y)}%`,
+                }}
+                role={player.banner_url ? 'img' : undefined}
+                aria-label={player.banner_url ? t('banner') : undefined}
+              />
+              <div className="profile-identity">
+                <Avatar name={player.username} url={player.avatar_url} size="large" />
+                <div className="profile-player-name">
+                  <h1>{player.username}</h1>
+                  <p>
+                    {player.country} <span className="dot">·</span> {t('joined')}{' '}
+                    {f.dateTime(new Date(player.joined_at), { dateStyle: 'medium' })}
+                  </p>
+                  <div className="map-tags">
+                    {player.roles.map((role) => (
+                      <Badge variant="secondary" key={role}>
+                        {role}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+                <div className="profile-owner-actions">
+                  {user?.id === id && (
+                    <Button variant="outline" asChild>
+                      <Link href="/settings?tab=profile">
+                        <Pencil />
+                        {t('edit')}
+                      </Link>
+                    </Button>
+                  )}
+                  <RelationshipActions target={id} targetUsername={player.username} />
                 </div>
               </div>
-              {user?.id === id && (
-                <Button variant="outline" asChild>
-                  <Link href="/settings?tab=profile">
-                    <Pencil />
-                    {t('edit')}
-                  </Link>
-                </Button>
-              )}
-            </section>
-            <RelationshipActions target={id} />
-            <div className="filter-bar glass">
-              <GameMode
-                value={mode}
-                onChange={(nextMode) => updateProfileScoreSelection({ mode: nextMode })}
-              />
-              <ScoreVariantControl
-                mode={mode}
-                value={variant}
-                onChange={(nextVariant) => updateProfileScoreSelection({ variant: nextVariant })}
-              />
-              {mode === '3' && <p className="hint">{c('relaxUnsupported')}</p>}
-            </div>
-            <div className="profile-layout">
-              <aside className="profile-about glass">
-                <h2>{t('about')}</h2>
-                <p className="profile-bio">{player.bio || t('noBio')}</p>
+              <div className="profile-statistics">
                 <dl className="profile-stats">
                   <div>
                     <dt>pp</dt>
-                    <dd>{f.number(player.pp, { maximumFractionDigits: 2 })}</dd>
+                    <dd>
+                      {f.number(player.pp, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>{t('globalRank')}</dt>
+                    <dd>
+                      {player.statistics?.rank ? `#${f.number(player.statistics.rank)}` : '—'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>{t('countryRank', { country: player.country })}</dt>
+                    <dd>
+                      {player.statistics?.country_rank
+                        ? `#${f.number(player.statistics.country_rank)}`
+                        : '—'}
+                    </dd>
+                  </div>
+                </dl>
+                <dl className="profile-detail-stats">
+                  <div>
+                    <dt>{c('accuracy')}</dt>
+                    <dd>
+                      {typeof player.statistics?.accuracy === 'number'
+                        ? `${f.number(player.statistics.accuracy, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`
+                        : '—'}
+                    </dd>
                   </div>
                   <div>
                     <dt>{c('plays')}</dt>
                     <dd>{f.number(player.play_count)}</dd>
                   </div>
-                  {player.statistics && (
-                    <>
-                      <div>
-                        <dt>{t('globalRank')}</dt>
-                        <dd>
-                          {player.statistics.rank ? `#${f.number(player.statistics.rank)}` : '—'}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>{c('accuracy')}</dt>
-                        <dd>
-                          {f.number(player.statistics.accuracy, { maximumFractionDigits: 2 })}%
-                        </dd>
-                      </div>
-                    </>
-                  )}
+                  <div>
+                    <dt>{t('maximumCombo')}</dt>
+                    <dd>
+                      {typeof player.statistics?.maximum_combo === 'number'
+                        ? `${f.number(player.statistics.maximum_combo)}x`
+                        : '—'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>{t('totalHits')}</dt>
+                    <dd>
+                      {typeof player.statistics?.total_hits === 'number'
+                        ? f.number(player.statistics.total_hits)
+                        : '—'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>{t('rankedScore')}</dt>
+                    <dd>
+                      {typeof player.statistics?.ranked_score === 'number'
+                        ? f.number(player.statistics.ranked_score)
+                        : '—'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>{t('totalScore')}</dt>
+                    <dd>
+                      {typeof player.statistics?.total_score === 'number'
+                        ? f.number(player.statistics.total_score)
+                        : '—'}
+                    </dd>
+                  </div>
                 </dl>
-              </aside>
-              <section className="content-panel glass">
+                {player.statistics?.score_scale === 'unavailable_for_relax' ? (
+                  <p className="hint profile-totals-note">{t('relaxTotalsUnavailable')}</p>
+                ) : (
+                  player.statistics?.score_scale === 'classic_display' && (
+                    <p className="hint profile-totals-note">
+                      {t(
+                        player.statistics.score_totals_complete
+                          ? 'scoreTotalsClassic'
+                          : 'scoreTotalsPartial',
+                      )}
+                    </p>
+                  )
+                )}
+                {player.statistics?.grade_counts && (
+                  <div className="profile-grade-strip" aria-describedby="profile-grades-hint">
+                    <h2>{t('gradeCounts')}</h2>
+                    <dl>
+                      {(['ssh', 'ss', 'sh', 's', 'a', 'b', 'c', 'd', 'f'] as const).map((grade) => (
+                        <div key={grade}>
+                          <dt>
+                            {grade === 'ssh' ? 'SS+' : grade === 'sh' ? 'S+' : grade.toUpperCase()}
+                          </dt>
+                          <dd>
+                            {typeof player.statistics?.grade_counts?.[grade] === 'number'
+                              ? f.number(player.statistics.grade_counts[grade]!)
+                              : '—'}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                    <p className="hint" id="profile-grades-hint">
+                      {t('gradeCountsHint')}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </section>
+            <nav className="profile-section-nav" aria-label={t('sections')}>
+              <a href="#profile-overview">{t('stats')}</a>
+              <a href="#profile-about">{t('about')}</a>
+              <a href="#profile-scores">{t('scoreView')}</a>
+              <a href="#profile-uploads">{t('uploadedMaps')}</a>
+            </nav>
+            <div className="profile-layout">
+              <section
+                className="profile-about glass"
+                id="profile-about"
+                aria-labelledby="profile-about-heading"
+              >
+                <h2 id="profile-about-heading">{t('about')}</h2>
+                <p className="profile-bio">{player.bio || t('noBio')}</p>
+              </section>
+              <section
+                className="content-panel glass profile-scores"
+                id="profile-scores"
+                aria-labelledby="profile-scores-title"
+              >
                 <header className="section-heading profile-scores-header">
                   <div className="profile-scores-heading">
-                    <h2>{t(view === 'best' ? 'best' : 'scores')}</h2>
+                    <h2 id="profile-scores-title">{t(view === 'best' ? 'best' : 'scores')}</h2>
                     <Badge variant="secondary">{c(variant)}</Badge>
                   </div>
                   <ProfileScoreCollectionControl
@@ -415,7 +539,7 @@ export function PlayerPage({ id }: { id: number }) {
                   <Loading />
                 ) : scores.items.length ? (
                   <>
-                    <ScoreTable scores={scores.items} profileBest={view === 'best'} />
+                    <ProfileScoreList scores={scores.items} best={view === 'best'} />
                     <Pagination
                       page={page}
                       total={scores.total}
@@ -428,6 +552,36 @@ export function PlayerPage({ id }: { id: number }) {
                     title={t(view === 'best' ? 'emptyBestTitle' : 'emptyScores')}
                     description={view === 'best' ? t('emptyBestDescription') : undefined}
                   />
+                )}
+              </section>
+              <section
+                className="content-panel glass profile-uploads"
+                id="profile-uploads"
+                aria-labelledby="profile-uploads-title"
+              >
+                <header className="section-heading">
+                  <div className="profile-scores-heading">
+                    <h2 id="profile-uploads-title">{t('uploadedMaps')}</h2>
+                    {uploadedMaps && !uploadsError && (
+                      <Badge variant="secondary">{f.number(uploadedMaps.total)}</Badge>
+                    )}
+                  </div>
+                  <Button asChild variant="ghost">
+                    <Link href={`/beatmaps?uploaded_by=${id}&source=local`}>
+                      {t('viewUploadedMaps')}
+                      <ArrowUpRight />
+                    </Link>
+                  </Button>
+                </header>
+                <p className="hint">{t('uploadedMapsHint')}</p>
+                {uploadsError ? (
+                  <LoadError retry={() => reloadUploads()} />
+                ) : !uploadedMaps ? (
+                  <Loading />
+                ) : uploadedMaps.items.length ? (
+                  <MapRows items={uploadedMaps.items} compact />
+                ) : (
+                  <Empty title={t('emptyUploadedMaps')} />
                 )}
               </section>
             </div>

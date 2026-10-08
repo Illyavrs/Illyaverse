@@ -157,7 +157,7 @@ test('operator can inspect permissions and audit without revealing secrets', asy
   if (!env.BOOTSTRAP_ADMIN_USERNAME || !env.BOOTSTRAP_ADMIN_PASSWORD)
     throw new Error('The disposable stack must provide its bootstrap account.');
   await page.goto('/login');
-  await page.getByLabel('使用者名稱', { exact: true }).fill(env.BOOTSTRAP_ADMIN_USERNAME);
+  await page.getByLabel('使用者名稱或電子郵件', { exact: true }).fill(env.BOOTSTRAP_ADMIN_USERNAME);
   await page.getByLabel('密碼', { exact: true }).fill(env.BOOTSTRAP_ADMIN_PASSWORD);
   await page.getByRole('button', { name: '登入', exact: true }).click();
   await expect(page).toHaveURL(/\/players\/\d+$/);

@@ -5,6 +5,8 @@ import '@fontsource-variable/nunito';
 import '@fontsource/noto-sans-tc/400.css';
 import '@fontsource/noto-sans-tc/600.css';
 import './globals.css';
+import '@/features/home.css';
+import '@/features/profile.css';
 import { Providers } from '@/components/providers';
 import { Shell } from '@/components/shell';
 export const metadata: Metadata = {
