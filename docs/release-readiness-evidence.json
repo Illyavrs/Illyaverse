@@ -1,0 +1,99 @@
+{
+  "record_kind": "sanitized_release_readiness_checkpoint",
+  "functional_head": "1e4904595224de0989b3b324ae29e18d6e697e23",
+  "original_goal_status": "active; real native client verification remains incomplete",
+  "map_and_visual_hierarchy": {
+    "status": "implemented, browser-tested and locally deployed",
+    "evidence": "../.impeccable/review/map-discovery-evidence.json",
+    "review": "map-discovery-review.md",
+    "browser_cases_passed": 75,
+    "appearance_and_rank_cases_passed": 17,
+    "retained_read_only_get_assertions_passed": 38,
+    "native_gameplay_certified": false
+  },
+  "current_isolated_protocol": {
+    "status": "passed",
+    "started_at_utc": "2026-10-08T04:37:14.423Z",
+    "finished_at_utc": "2026-10-08T04:37:38.801Z",
+    "fixture_project": "illya-smoke-ad13136e44aec460",
+    "executed_services": ["postgres", "sanctuary", "resonance"],
+    "schema": 22,
+    "http_requests": 458,
+    "coverage_categories": 55,
+    "individual_assertion_count": null,
+    "count_note": "The Python result reports coverage-category count, not individual assertions.",
+    "source_manifest": "../data-server-readiness-20261008/readiness-manifest.json",
+    "source_manifest_sha256": "856c566fabd9210815e8d835dfbdf1d3e0e01c530c61daca37a27b3bc36664cd",
+    "tested_image_ids": {
+      "sanctuary": "sha256:f68711b230dde3990148a35978b3199d00e7ddfa0e14a706dd5b45c889291021",
+      "resonance": "sha256:8fac03733eb6713d2e322d07fc8e0431316a900d4adf7bc437afc19599092b0d",
+      "postgres": "sha256:1bea307dfb3ee30541a7acf7de14b58bcd6948da98e5d31a04c627c4d35ec64b"
+    },
+    "reference_image_ids_only": {
+      "serendipity": "sha256:85a70493fc24a9f33f59b2b4cafbb58ca033e096fdc0a936bf7f76a836b980ea",
+      "caddy": "sha256:f77f856a30f0004200b36b322d61da17fade31e24875699d77fb968399b9eb77"
+    },
+    "offline_assembly_gates_executed": false,
+    "scope_note": "Synthetic HTTP against fresh isolated containers; no real stable/lazer game or launcher GUI was operated.",
+    "owned_fixture_cleanup": {
+      "exact_identities_checked": true,
+      "created_containers": 3,
+      "created_volumes": 2,
+      "created_networks": 1,
+      "remaining_containers": 0,
+      "remaining_volumes": 0,
+      "remaining_networks": 0,
+      "generated_environment_removed": true
+    }
+  },
+  "outer_runner_environment_restoration": {
+    "original_guard": "failed after successful protocol and owned-fixture cleanup",
+    "original_runner_exit_code": 1,
+    "cause": "An absent process environment entry was restored as an empty string by nullable-string binding.",
+    "failed_log": "../data-server-readiness-20261008/runner.log",
+    "separate_fixed_helper_proof": "passed for exact absent, empty and defined states",
+    "independently_checked_keys": 25,
+    "restoration_state_proofs": 75,
+    "proof_log": "../data-server-readiness-20261008/restoration-audit.log",
+    "proof_log_sha256": "524b04fc84acfad6862c611667ad4c8473c5b2c9963d8dd64abdf0b4690ab0a2",
+    "protocol_rerun_after_fix": false,
+    "scope": "Only the completed child PowerShell process environment was changed; parent and persistent User/Machine environments were not changed.",
+    "limitation": "The first failing key was not captured. A separate absent-entry case reproduces the same defect; it does not rewrite the original runner result."
+  },
+  "post_gate_retained_lifecycle_audit": {
+    "status": "passed within stated evidence limits",
+    "source_report": "../data-server-readiness-20261008/retained-and-assembly-manifest.json",
+    "source_report_sha256": "d97c964445b1615191e2b71aaddbdc7d16bff2413e26d1fcb58a3c537eb0ae37",
+    "audited_at_utc": "2026-10-08T04:45:20.6809982+00:00",
+    "retained_exact_pinned_healthy_containers": 10,
+    "all_created_and_last_started_before_gate": true,
+    "postgres_and_caddy_prior_deployment_id_matches": 4,
+    "resonance_prior_deployment_id_matches": 2,
+    "five_reference_tags_current_exact": true,
+    "pre_gate_ten_id_snapshot_persisted": false,
+    "limitation": "The runner's in-memory pre-gate ten-container snapshot was lost after the later environment guard exception. This is an independent current ID/image/health/timestamp audit plus six prior deployment ID comparisons, not a recovered ten-ID before/after comparison.",
+    "assembly_availability_only": true,
+    "assembly_or_native_host_gates_executed": false
+  },
+  "native_stable_submission": {
+    "status": "new human-operated diagnostic retry pending",
+    "source_report": "../data-server-readiness-20261008/native-diagnostic-audit.json",
+    "source_report_sha256": "cf19a98bd0dfa7509663da3c61cc0e3f613c20df2f029737d3487199444a7dd1",
+    "artifact_digest_note": "This digest identifies the sanitized report file, not the original retained request log.",
+    "retained_window_first_utc": "2026-10-07T10:52:15.716Z",
+    "retained_window_last_utc": "2026-10-08T04:23:07.468Z",
+    "retained_submit_post_count": 27,
+    "last_retained_submit_utc": "2026-10-07T13:59:16.473Z",
+    "last_retained_submit_http_status": 413,
+    "diagnostic_commit": "ea985b6",
+    "submit_posts_after_diagnostic_commit_in_retained_window": 0,
+    "real_native_submission_success_established": false,
+    "additional_format_fix_provable_from_current_metadata": false
+  },
+  "required_remaining_work": [
+    "Use new safe diagnostics from a human stable retry to identify the unknown multipart part, implement only a supported correction and verify a real persisted score/replay.",
+    "Complete the documented stable/lazer native release checklist with client versions, timestamps and outcomes.",
+    "Verify real launcher start/restart, game-exit DLL removal and interrupted-session recovery."
+  ],
+  "privacy_and_provenance": "No credentials, cookies, IP addresses, raw multipart names or uploaded contents are included. Detailed local reports are ignored artifacts; their hashes bind this compact record to the captured reports."
+}
