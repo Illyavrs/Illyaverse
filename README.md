@@ -4,15 +4,40 @@
 
 目前是可持續開發的初始版本：網站／API 與 stable／lazer 的協定接口各有自己的完成程度。**尚未宣稱官方 stable／lazer 客戶端已通過完整連線測試。** 詳見 [協定相容性](docs/protocol-compatibility.md) 與 [連線教學](docs/connection.md)。
 
-| 名稱 | 路徑 | 職責 |
-| --- | --- | --- |
-| Serendipity | `apps/serendipity` | 網站、landing、排行榜、譜面、聊天、個人頁與管理介面 |
-| Sanctuary | `services/sanctuary` | 帳號、權限、偏好、媒體、譜面、分數、replay、聊天與稽核 API |
-| Resonance | `services/resonance` | stable 封包與 legacy web、lazer OAuth／API v2 相容接口 |
-| Kaleidoscope | `apps/kaleidoscope`、`tools/kaleidoscope` | 固定連到 Illyaverse 的 Windows 啟動器與 Rust 程序／清理核心 |
-| Transfiguration | `tools/transfiguration` | 官方 lazer 的原創強制啟動外掛與相容性檢查 |
-| 共用領域 | `crates/illya-domain` | 型別、驗證與 pp 計算 |
-| 封包協定 | `crates/resonance-protocol` | 原創 stable wire parser／encoder |
+## 專案結構
+
+Illyaverse 是一個 Git repository，網站與啟動器前端由根目錄的 npm workspaces 管理，Rust 服務與共用核心由 Cargo workspace 管理。從 `osu-ps/Illyaverse` 開發或部署，子專案不需要各自 clone。
+
+```text
+Illyaverse/
+├── apps/
+│   ├── serendipity/         玩家網站：Next.js、Tailwind、shadcn/ui
+│   └── kaleidoscope/        Windows 啟動器介面與 Tauri 外殼
+├── services/
+│   ├── sanctuary/          Rust 社群 API：帳號、權限、圖譜、成績、聊天
+│   └── resonance/          Rust stable／lazer 協定服務
+├── crates/
+│   ├── illya-domain/       共用領域型別、驗證、分數與 mods 規則
+│   └── resonance-protocol/ stable 封包解析與編碼
+├── tools/
+│   ├── kaleidoscope/       啟動器 Rust 核心、CLI 與退出清理
+│   ├── transfiguration/    原創 C# lazer 連線橋接
+│   └── archive-compatibility/ 原生 ZIP 讀取器的隔離驗證工具
+├── infra/                  Docker、部署、備份與隔離測試腳本
+├── migrations/             共用 PostgreSQL schema
+└── docs/                   玩家、營運與開發文件
+```
+
+`apps/kaleidoscope` 與 `tools/kaleidoscope` 是同一個啟動器的介面和核心；Tauri 以本地 Rust dependency 使用核心。Transfiguration 是它在 lazer 啟動前載入的橋接，不是另一台伺服器。完整 workspace 邊界、各入口與生成檔說明見 [資料夾導覽](docs/repository-layout.md)。
+
+## 文件入口
+
+| 你要做的事 | 從這裡開始 |
+| --- | --- |
+| 玩家註冊與連線 | [連線教學](docs/connection.md)、[Kaleidoscope 操作](docs/kaleidoscope-launcher.md) |
+| 部署與營運伺服器 | [Docker／HTTPS／備份](docs/deployment.md)、[權限管理](docs/permissions.md)、[郵件與帳號復原](docs/account-recovery.md) |
+| 開發與找程式碼 | [資料夾導覽](docs/repository-layout.md)、[架構與路由](docs/architecture.md)、[API](docs/api.md) |
+| 確認完成度與測試範圍 | [完成度](docs/release-readiness.md)、[協定相容性](docs/protocol-compatibility.md)、[驗證紀錄](docs/verification.md) |
 
 ## Docker 啟動
 
@@ -68,6 +93,8 @@ npm run build
 ```
 
 啟動 Sanctuary／Resonance 前需設定 `DATABASE_URL` 與服務密鑰。可用 `compose.dev.yaml` 將 PostgreSQL `15432` 與 Sanctuary `8080` 僅暴露到 localhost。資料夾、環境變數與執行方式在 [架構文件](docs/architecture.md) 及部署文件。
+
+根目錄的 `npm run dev/build/lint/typecheck` 預設操作 Serendipity。開發啟動器介面時使用 `npm run dev --workspace @illyaverse/kaleidoscope`；Tauri 原生外殼與 C# 橋接的建置／驗證入口另見 [資料夾導覽](docs/repository-layout.md#建置與測試入口)。
 
 請保留其他貢獻者的變更、不要複製參考專案程式碼，也不要加入 AI 生成圖片。Commit 使用帶 scope 的 Conventional Commits，例如 `feat(serendipity): add profile editor`、`fix(resonance): validate packet lengths`、`chore(infra): configure HTTPS deployment`。把已實作、整合測試通過、實際客戶端測試通過與待完成分開記錄。
 

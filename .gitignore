@@ -7,8 +7,11 @@ target/
 data/
 data-*/
 data-kaleidoscope-package-*.zip
+/data-*.verification.json
 .test-deps/
 .protocol-venv/
+__pycache__/
+*.pyc
 *.log
 .impeccable/mocks/
 .impeccable/review/*.png
