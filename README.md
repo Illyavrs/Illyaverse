@@ -8,6 +8,8 @@
 
 Illyaverse 採用整合 parent 與五個主要子專案 repository 的結構；子專案透過 Git submodules 固定版本，網站與啟動器前端仍由根 npm workspaces 管理，Rust 服務與共用核心仍由 Cargo workspace 管理。從 `osu-ps/Illyaverse` 的完整 checkout 開發或部署。五個子模組已登記；目前 remote 是本機 bare repositories，尚未發布至 GitHub。實際版本以 `.gitmodules` 與 `git submodule status` 為準。
 
+目前 `.gitmodules` 使用這台電腦的絕對路徑。本機完整遞迴 checkout 已驗證，但這些 URL 無法供其他電腦或 GitHub CI 取得來源；跨機器使用前，需要使用者提供五個子倉庫的實際遠端，並先讓遠端保存 parent 固定的子專案 commit。初始化、提交與遠端設定步驟見 [Git 協作](docs/repository-layout.md#git-協作)。
+
 ```text
 Illyaverse/
 ├── apps/

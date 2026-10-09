@@ -16,7 +16,7 @@ STORY: Locale changes select the appropriate Han forms. Japanese kana also
 uses the Japanese family in mixed map titles. A script absent in the first
 family continues through the other family and the user's system fallback.
 
-FIRST VIEWPORT: Retain 15px dense body copy, incumbent 14–16px product labels,
+FIRST VIEWPORT: Retain 15px desktop and 14px phone body copy, incumbent 14–16px product labels,
 distinct metadata and heading weights, existing 65ch introduction measure,
 and unchanged 80px desktop / responsive Latin wordmark. No new type decoration,
 copy, artwork, animation or card geometry belongs to this change.

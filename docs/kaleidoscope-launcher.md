@@ -4,6 +4,8 @@ Kaleidoscope 是 Illyaverse 專用的 Windows 啟動器。先在網站註冊，�
 
 目前測試版固定連到 `https://illya.test`。lazer 使用已安裝的客戶端和現有圖譜庫，不需要另外匯入或複製圖譜。啟動器與原創 Transfiguration 外掛的測試範圍見[驗證記錄](verification.md)；真正的遊戲視窗、登入、遊玩與退出流程仍待玩家驗證。營運者尚未發布公開下載，請先取得營運者提供的完整測試包。
 
+2026-10-09 的沿用圖譜庫版本已通過核心、橋接與介面檢查，但尚未產出完整 Windows 測試包：三次 release 建置均在執行 Rust dependency build script 時遭 Windows 拒絕存取（error 5），原因尚未確認。較早產出的 ZIP 不包含本次變更，不能用來驗證沿用圖譜庫流程；完整套件建置成功後才提供玩家測試。
+
 ## 第一次使用
 
 1. 在 `https://illya.test/register` 建立 Illyaverse 帳號。遊戲內註冊會提供網站網址。
