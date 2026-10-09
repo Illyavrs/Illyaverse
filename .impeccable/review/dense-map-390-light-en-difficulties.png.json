@@ -1,0 +1,125 @@
+{
+  "captured_at": "2026-10-09T05:32:03.354Z",
+  "url": "http://localhost:19000/beatmaps?view=grid",
+  "locale": "en",
+  "theme": "light",
+  "synthetic": true,
+  "artwork_origin": "https://assets.ppy.sh/beatmaps/{validated_official_set_id}/covers/cover.jpg; browser rendered only; fallback on failure",
+  "width": 390,
+  "height": 844,
+  "scroll_x": 0,
+  "scroll_y": 0,
+  "document_width": 375,
+  "document_height": 1193,
+  "actual_theme": "light",
+  "actual_locale": "en",
+  "font_status": "loaded",
+  "reduced_motion": true,
+  "catalogue_cards": [
+    {
+      "width": 343,
+      "height": 112,
+      "identity_height": 110,
+      "trigger_width": 87.203125,
+      "trigger_height": 44,
+      "tick_count": 8,
+      "permanently_reserved_difficulty_rows": 0,
+      "faded_cover": "url(\"https://assets.ppy.sh/beatmaps/2588526/covers/cover.jpg\")"
+    },
+    {
+      "width": 343,
+      "height": 112,
+      "identity_height": 110,
+      "trigger_width": 44.609375,
+      "trigger_height": 44,
+      "tick_count": 2,
+      "permanently_reserved_difficulty_rows": 0,
+      "faded_cover": "none"
+    },
+    {
+      "width": 343,
+      "height": 112,
+      "identity_height": 110,
+      "trigger_width": 44,
+      "trigger_height": 44,
+      "tick_count": 1,
+      "permanently_reserved_difficulty_rows": 0,
+      "faded_cover": "none"
+    },
+    {
+      "width": 343,
+      "height": 112,
+      "identity_height": 110,
+      "trigger_width": 44.609375,
+      "trigger_height": 44,
+      "tick_count": 2,
+      "permanently_reserved_difficulty_rows": 0,
+      "faded_cover": "none"
+    }
+  ],
+  "difficulty_popover": {
+    "width": 340,
+    "height": 542.296875,
+    "left": 14,
+    "right": 354,
+    "top": 12,
+    "bottom": 554.296875,
+    "links": [
+      {
+        "href": "/beatmaps/980000?returnTo=%2Fbeatmaps%3Fview%3Dgrid",
+        "accessible_name": "Open Difficulty 1, osu!, 1.25 stars",
+        "width": 322,
+        "height": 54.390625
+      },
+      {
+        "href": "/beatmaps/980001?returnTo=%2Fbeatmaps%3Fview%3Dgrid",
+        "accessible_name": "Open Difficulty 2, taiko, 1.53 stars",
+        "width": 322,
+        "height": 54.390625
+      },
+      {
+        "href": "/beatmaps/980002?returnTo=%2Fbeatmaps%3Fview%3Dgrid",
+        "accessible_name": "Open Difficulty 3, catch, 1.81 stars",
+        "width": 322,
+        "height": 54.390625
+      },
+      {
+        "href": "/beatmaps/980003?returnTo=%2Fbeatmaps%3Fview%3Dgrid",
+        "accessible_name": "Open Difficulty 4, mania, 2.09 stars",
+        "width": 322,
+        "height": 54.390625
+      },
+      {
+        "href": "/beatmaps/980004?returnTo=%2Fbeatmaps%3Fview%3Dgrid",
+        "accessible_name": "Open Difficulty 5, osu!, 2.37 stars",
+        "width": 322,
+        "height": 54.390625
+      },
+      {
+        "href": "/beatmaps/980005?returnTo=%2Fbeatmaps%3Fview%3Dgrid",
+        "accessible_name": "Open Difficulty 6, taiko, 2.65 stars",
+        "width": 322,
+        "height": 54.390625
+      },
+      {
+        "href": "/beatmaps/980006?returnTo=%2Fbeatmaps%3Fview%3Dgrid",
+        "accessible_name": "Open Difficulty 7, catch, 2.93 stars",
+        "width": 322,
+        "height": 54.390625
+      },
+      {
+        "href": "/beatmaps/980007?returnTo=%2Fbeatmaps%3Fview%3Dgrid",
+        "accessible_name": "Open Difficulty 8, mania, 3.21 stars",
+        "width": 322,
+        "height": 54.390625
+      },
+      {
+        "href": "/beatmaps/980000?returnTo=%2Fbeatmaps%3Fview%3Dgrid#set-difficulties",
+        "accessible_name": "20 more matching difficulties",
+        "width": 322,
+        "height": 44
+      }
+    ]
+  },
+  "detail_overview": null
+}

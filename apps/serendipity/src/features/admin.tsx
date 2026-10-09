@@ -12,7 +12,7 @@ import { useFormatter, useTranslations } from 'next-intl';
 import { useSearchParams } from 'next/navigation';
 import useSWR, { unstable_serialize, useSWRConfig } from 'swr';
 import { Dialog } from 'radix-ui';
-import Link from 'next/link';
+import { NavigationLink as Link } from '@/components/navigation-motion';
 import { LoaderCircle, ShieldCheck, Plus, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

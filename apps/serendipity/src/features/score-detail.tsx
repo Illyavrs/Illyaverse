@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import Link from 'next/link';
+import { NavigationLink as Link } from '@/components/navigation-motion';
 import useSWR from 'swr';
 import { useFormatter, useTranslations } from 'next-intl';
 import { ArrowLeft, ArrowUpRight, Download, LoaderCircle, Upload } from 'lucide-react';

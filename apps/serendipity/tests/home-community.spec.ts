@@ -290,11 +290,102 @@ async function stableLayout(page: BrowserPage) {
     .toBe(true);
 }
 
+async function assertDenseHome(page: BrowserPage) {
+  await stableLayout(page);
+  const image = page.locator('.home-character-image');
+  await expect(image).toBeVisible();
+  await expect(image).toHaveAttribute('alt', '');
+  await expect(image.locator('..')).toHaveAttribute('aria-hidden', 'true');
+  await expect
+    .poll(() => image.evaluate((element) => (element as HTMLImageElement).complete))
+    .toBe(true);
+  const facts = await page.evaluate(() => {
+    const hero = document.querySelector('.home-introduction')!;
+    const art = document.querySelector('.home-hero-character')!;
+    const image = document.querySelector<HTMLImageElement>('.home-character-image')!;
+    const imageBox = image.getBoundingClientRect();
+    const artBox = art.getBoundingClientRect();
+    const head = {
+      left: imageBox.left + (219 / 700) * imageBox.width,
+      right: imageBox.left + (435 / 700) * imageBox.width,
+      top: imageBox.top + (101 / 1251) * imageBox.height,
+      bottom: imageBox.top + (321 / 1251) * imageBox.height,
+    };
+    const overlaps = (box: DOMRect) =>
+      box.left < artBox.right &&
+      box.right > artBox.left &&
+      box.top < artBox.bottom &&
+      box.bottom > artBox.top;
+    const canvas = document.createElement('canvas');
+    canvas.width = 700;
+    canvas.height = 1251;
+    const context = canvas.getContext('2d')!;
+    context.drawImage(image, 0, 0);
+    return {
+      heroHeight: hero.getBoundingClientRect().height,
+      naturalSize: [image.naturalWidth, image.naturalHeight],
+      transparentCorner: context.getImageData(0, 0, 1, 1).data[3],
+      headVisible:
+        head.left >= artBox.left &&
+        head.right <= artBox.right &&
+        head.top >= artBox.top &&
+        head.bottom <= artBox.bottom,
+      copyOverlap: [
+        ...document.querySelectorAll(
+          '.home-intro-copy h1, .home-subtitle, .home-description, .home-primary-actions a',
+        ),
+      ].some((element) => overlaps(element.getBoundingClientRect())),
+      artBackdrop: getComputedStyle(art).backdropFilter,
+      interactiveArt: art.querySelectorAll('a, button, input, [tabindex]').length,
+      cardHeights: [...document.querySelectorAll('.home-catalogue .map-record')].map(
+        (row) => row.getBoundingClientRect().height,
+      ),
+      cardArtwork: [...document.querySelectorAll('.home-catalogue .map-record')].map((row) => {
+        const art = row.querySelector('.map-art')!.getBoundingClientRect();
+        const copy = row.querySelector('.map-main')!.getBoundingClientRect();
+        return { width: art.width, height: art.height, copyGap: copy.left - art.right };
+      }),
+    };
+  });
+  expect(facts.naturalSize).toEqual([700, 1251]);
+  expect(facts.transparentCorner).toBe(0);
+  expect(facts.headVisible).toBe(true);
+  expect(facts.copyOverlap).toBe(false);
+  expect(facts.artBackdrop).toBe('none');
+  expect(facts.interactiveArt).toBe(0);
+  expect(facts.heroHeight).toBeLessThanOrEqual(page.viewportSize()!.width <= 600 ? 330 : 290);
+  for (const height of facts.cardHeights) {
+    expect(height).toBeGreaterThanOrEqual(96);
+    expect(height).toBeLessThanOrEqual(page.viewportSize()!.width <= 600 ? 132 : 110);
+  }
+  for (const art of facts.cardArtwork) {
+    expect(art.width).toBe(page.viewportSize()!.width <= 600 ? 56 : 72);
+    expect(art.height).toBe(72);
+    expect(art.copyGap).toBe(page.viewportSize()!.width <= 600 ? 10 : 12);
+  }
+}
+
+test('homepage character retains the exact user-supplied PNG bytes and dimensions', () => {
+  const asset = readFileSync('public/images/home-character.png');
+  expect(createHash('sha256').update(asset).digest('hex')).toBe(
+    'd32cc7271ff33364e247c8d8988c16f61e50d7715cd500b6cbdece29c53c70e4',
+  );
+  expect([asset.readUInt32BE(16), asset.readUInt32BE(20), asset[25]]).toEqual([700, 1251, 6]);
+});
+
 async function capture(page: BrowserPage, name: string, state: string, hoverLatestMap = false) {
   await stableLayout(page);
+  await assertDenseHome(page);
   const hierarchy = process.env.ILLYA_MAP_DISCOVERY_CAPTURE === '1';
   const hoverReview = hoverLatestMap && process.env.ILLYA_HOME_HOVER_CAPTURE === '1';
-  if (!hierarchy && !hoverReview && process.env.ILLYA_CAPTURE_WORKFLOW_REVIEW !== '1') return;
+  const denseReview = process.env.ILLYA_DENSE_HOME_CAPTURE === '1';
+  if (
+    !hierarchy &&
+    !hoverReview &&
+    !denseReview &&
+    process.env.ILLYA_CAPTURE_WORKFLOW_REVIEW !== '1'
+  )
+    return;
   await page.evaluate(() => {
     document.documentElement.style.setProperty('scroll-behavior', 'auto', 'important');
     (document.activeElement as HTMLElement | null)?.blur();
@@ -312,7 +403,7 @@ async function capture(page: BrowserPage, name: string, state: string, hoverLate
   }
   const output = path.resolve(
     '../../.impeccable/review',
-    `${hoverLatestMap ? 'home-hover' : hierarchy ? 'map-hierarchy-home' : 'community-home'}-${name}`,
+    `dense-home-${hoverLatestMap ? 'hover-' : ''}${name}`,
   );
   await page.screenshot({ path: `${output}.png`, fullPage: true, animations: 'disabled' });
   const sourceFiles = [
@@ -326,6 +417,7 @@ async function capture(page: BrowserPage, name: string, state: string, hoverLate
     'messages/zh-TW.json',
     'messages/en.json',
     'messages/ja.json',
+    'public/images/home-character.png',
   ];
   const sources = Object.fromEntries(
     sourceFiles.map((file) => [
@@ -355,6 +447,7 @@ async function capture(page: BrowserPage, name: string, state: string, hoverLate
           ? 'Latest beatmap row hovered at document top.'
           : 'Resting page.',
         latest_map: hoverLatestMap ? await latestMapFacts(page) : undefined,
+        hero_asset: 'User-supplied original RGBA PNG; display-only CSS crop; no generated artwork.',
         data: 'Synthetic QA fixtures intercepted at existing public API routes; no native-client or live activity claims.',
         sources,
       },
@@ -623,7 +716,7 @@ test('Japanese compact signed-in landing shows only authorized tools and preserv
     'Signed-in upload-only account; import/admin hidden; public verified activity.',
   );
   await page.setViewportSize({ width: 320, height: 844 });
-  await stableLayout(page);
+  await assertDenseHome(page);
 });
 
 test('signed-in staff shortcuts and independent score/ranking recovery remain accessible', async ({
@@ -781,6 +874,7 @@ for (const scenario of [
       expect(resting.panelBlur).toBe(`blur(${level >= 75 ? scenario.panelBlur : 0}px)`);
       expect(resting.panelAlpha).toBeCloseTo(level >= 75 ? scenario.opacity : 1, 2);
       expect(resting.nestedBlurCount).toBe(0);
+      await assertDenseHome(page);
       expect(resting.rowInsetLeft).toBe(1);
       expect(resting.rowInsetRight).toBe(1);
       expect(resting.contentInsetLeft).toBe(scenario.width <= 600 ? 16 : 20);
@@ -824,6 +918,7 @@ for (const scenario of [
     expect(focused.outlineOffset).toBe('-3px');
     expect(focused.nestedBlurCount).toBe(0);
     await page.emulateMedia({ reducedMotion: 'reduce' });
+    await expect(page.locator('.home-character-image')).toHaveCSS('animation-name', 'none');
     await expect(row).toHaveCSS('transition-duration', '0s');
     await expect(row.locator('.map-main > strong')).toHaveCSS('transition-duration', '0s');
     await stableLayout(page);

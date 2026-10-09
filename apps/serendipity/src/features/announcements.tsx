@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useEffectEvent, useRef, useState } from 'react';
-import Link from 'next/link';
+import { NavigationLink as Link } from '@/components/navigation-motion';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useFormatter, useTranslations } from 'next-intl';
 import useSWR, { SWRConfig, useSWRConfig } from 'swr';

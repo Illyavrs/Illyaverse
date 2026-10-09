@@ -1,0 +1,35 @@
+{
+  "captured_at": "2026-10-09T05:31:06.411Z",
+  "route": "/",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "visual_facts": {
+    "locale": "ja",
+    "theme": "dark",
+    "fonts": "loaded",
+    "scrollY": 0,
+    "documentOverflow": false,
+    "panelBlur": "8px",
+    "surface": "rgb(24 24 27 / 0.55)",
+    "raised": "rgb(46 46 52 / 0.55)"
+  },
+  "state": "Signed-in upload-only account; import/admin hidden; public verified activity.",
+  "interaction": "Resting page.",
+  "hero_asset": "User-supplied original RGBA PNG; display-only CSS crop; no generated artwork.",
+  "data": "Synthetic QA fixtures intercepted at existing public API routes; no native-client or live activity claims.",
+  "sources": {
+    "src/features/home.tsx": "5de64565393391f5f98373200f4f30e0ce5d00bb332c9a05af9db70c1c8f9131",
+    "src/features/home.css": "4dd09eea200d55e14300d9209a182ce02cb5175fea6c9f0378e04bfc76ec9f65",
+    "src/features/beatmaps.tsx": "8ca8477e66056000e65ce634a4b22f93ad3a56b74505ab28c744c0947c6d0c6e",
+    "src/styles/map-discovery.css": "039bb7df7987059e66f5bbd53e79afb6374d0b88c2febd537a3003998c592703",
+    "src/components/providers.tsx": "fa4f6fa3f8a49761ebaf5550f39fed0906106cf4d99d37c5d004d2dc0c155761",
+    "src/app/globals.css": "2f183c43f235ba97f3dae9c6c5a3a713f98008906c9a83f30e8da6975166fa24",
+    "src/app/layout.tsx": "747fa3b50704dadd372339843c0832330dd90126da6b88e0538bf99fa257dd70",
+    "messages/zh-TW.json": "f30510c805f50284d68b2e162e2c5aea14eba755bc6e1032a5bb2548067fca4c",
+    "messages/en.json": "be37a498c6d4e82dd1650c19b39f7e65f4c8acf75b3d8bfe50f0069772496330",
+    "messages/ja.json": "11ca88e13f550f273356da6f56f3d59696367b8144eefbbae0e89aca6ff055d3",
+    "public/images/home-character.png": "d32cc7271ff33364e247c8d8988c16f61e50d7715cd500b6cbdece29c53c70e4"
+  }
+}

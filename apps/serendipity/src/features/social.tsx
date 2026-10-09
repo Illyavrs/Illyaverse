@@ -1,5 +1,5 @@
 'use client';
-import Link from 'next/link';
+import { NavigationLink as Link } from '@/components/navigation-motion';
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import useSWR from 'swr';

@@ -1,7 +1,7 @@
 /* Entity surfaces join identity, controls and records without empty decoration. */
 .profile-page {
-  --profile-navigation-top: 100px;
-  --profile-anchor-offset: 165px;
+  --profile-navigation-top: var(--site-header-height, 106px);
+  --profile-anchor-offset: calc(var(--profile-navigation-top) + 65px);
 }
 .rankings-records {
   overflow: hidden;
@@ -711,8 +711,8 @@
 }
 @media (max-width: 800px) {
   .profile-page {
-    --profile-navigation-top: 60px;
-    --profile-anchor-offset: 125px;
+    --profile-navigation-top: var(--site-header-height, 61px);
+    --profile-anchor-offset: calc(var(--profile-navigation-top) + 65px);
   }
 }
 @media (max-width: 600px) {

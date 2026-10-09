@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import Link from 'next/link';
+import { NavigationLink as Link } from '@/components/navigation-motion';
 import { useTranslations } from 'next-intl';
 import { Copy, Check, ArrowRight, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';

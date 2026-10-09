@@ -337,7 +337,8 @@ test('country selection uses sampled countries, breaks a country change, and pro
   );
   await expect(panel(page).locator('.rank-history-segment')).toHaveCount(2);
   const chart = panel(page).getByRole('slider');
-  await chart.focus();
+  // This assertion measures the chart's focus layout, independently of viewport scrolling.
+  await chart.evaluate((element) => (element as HTMLElement).focus({ preventScroll: true }));
   await chart.press('Home');
   await expect(chart).toHaveAttribute('aria-valuenow', '1');
   await expect(chart).toHaveAttribute('aria-valuetext', /Oct 1, 2026, TW, #10/);

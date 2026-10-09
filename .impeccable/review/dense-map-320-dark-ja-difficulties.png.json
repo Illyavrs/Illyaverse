@@ -1,0 +1,125 @@
+{
+  "captured_at": "2026-10-09T05:32:04.224Z",
+  "url": "http://localhost:19000/beatmaps?view=grid",
+  "locale": "ja",
+  "theme": "dark",
+  "synthetic": true,
+  "artwork_origin": "https://assets.ppy.sh/beatmaps/{validated_official_set_id}/covers/cover.jpg; browser rendered only; fallback on failure",
+  "width": 320,
+  "height": 844,
+  "scroll_x": 0,
+  "scroll_y": 0,
+  "document_width": 305,
+  "document_height": 1209,
+  "actual_theme": "dark",
+  "actual_locale": "ja",
+  "font_status": "loaded",
+  "reduced_motion": true,
+  "catalogue_cards": [
+    {
+      "width": 273,
+      "height": 112,
+      "identity_height": 110,
+      "trigger_width": 87.203125,
+      "trigger_height": 44,
+      "tick_count": 8,
+      "permanently_reserved_difficulty_rows": 0,
+      "faded_cover": "url(\"https://assets.ppy.sh/beatmaps/2588526/covers/cover.jpg\")"
+    },
+    {
+      "width": 273,
+      "height": 112,
+      "identity_height": 110,
+      "trigger_width": 44.609375,
+      "trigger_height": 44,
+      "tick_count": 2,
+      "permanently_reserved_difficulty_rows": 0,
+      "faded_cover": "none"
+    },
+    {
+      "width": 273,
+      "height": 112,
+      "identity_height": 110,
+      "trigger_width": 44,
+      "trigger_height": 44,
+      "tick_count": 1,
+      "permanently_reserved_difficulty_rows": 0,
+      "faded_cover": "none"
+    },
+    {
+      "width": 273,
+      "height": 112,
+      "identity_height": 110,
+      "trigger_width": 44.609375,
+      "trigger_height": 44,
+      "tick_count": 2,
+      "permanently_reserved_difficulty_rows": 0,
+      "faded_cover": "none"
+    }
+  ],
+  "difficulty_popover": {
+    "width": 281,
+    "height": 559.09375,
+    "left": 12,
+    "right": 293,
+    "top": 12,
+    "bottom": 571.09375,
+    "links": [
+      {
+        "href": "/beatmaps/980000?returnTo=%2Fbeatmaps%3Fview%3Dgrid",
+        "accessible_name": "Difficulty 1、osu!、1.25 星を開く",
+        "width": 263,
+        "height": 54.390625
+      },
+      {
+        "href": "/beatmaps/980001?returnTo=%2Fbeatmaps%3Fview%3Dgrid",
+        "accessible_name": "Difficulty 2、taiko、1.53 星を開く",
+        "width": 263,
+        "height": 54.390625
+      },
+      {
+        "href": "/beatmaps/980002?returnTo=%2Fbeatmaps%3Fview%3Dgrid",
+        "accessible_name": "Difficulty 3、catch、1.81 星を開く",
+        "width": 263,
+        "height": 54.390625
+      },
+      {
+        "href": "/beatmaps/980003?returnTo=%2Fbeatmaps%3Fview%3Dgrid",
+        "accessible_name": "Difficulty 4、mania、2.09 星を開く",
+        "width": 263,
+        "height": 54.390625
+      },
+      {
+        "href": "/beatmaps/980004?returnTo=%2Fbeatmaps%3Fview%3Dgrid",
+        "accessible_name": "Difficulty 5、osu!、2.37 星を開く",
+        "width": 263,
+        "height": 54.390625
+      },
+      {
+        "href": "/beatmaps/980005?returnTo=%2Fbeatmaps%3Fview%3Dgrid",
+        "accessible_name": "Difficulty 6、taiko、2.65 星を開く",
+        "width": 263,
+        "height": 54.390625
+      },
+      {
+        "href": "/beatmaps/980006?returnTo=%2Fbeatmaps%3Fview%3Dgrid",
+        "accessible_name": "Difficulty 7、catch、2.93 星を開く",
+        "width": 263,
+        "height": 54.390625
+      },
+      {
+        "href": "/beatmaps/980007?returnTo=%2Fbeatmaps%3Fview%3Dgrid",
+        "accessible_name": "Difficulty 8、mania、3.21 星を開く",
+        "width": 263,
+        "height": 54.390625
+      },
+      {
+        "href": "/beatmaps/980000?returnTo=%2Fbeatmaps%3Fview%3Dgrid#set-difficulties",
+        "accessible_name": "ほかに 20 件の一致する難易度",
+        "width": 263,
+        "height": 44
+      }
+    ]
+  },
+  "detail_overview": null
+}

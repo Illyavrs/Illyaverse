@@ -89,7 +89,7 @@ test('delayed appearance publication locks shared controls and keeps language wr
   await expect(controls.locator('.swatches button').first()).toBeDisabled();
   await expect(page.locator('#panel_blur')).toHaveAttribute('data-disabled', '');
   await expect(controls.getByRole('button', { name: '重設外觀', exact: true })).toBeDisabled();
-  await expect(page.locator('.theme-toggle')).toBeDisabled();
+  await expect(page.locator('.theme-toggle')).toHaveCount(0);
   await capture(page, 'desktop-dark-zhTW-pending');
   await page.locator('.header-tools button').filter({ has: page.locator('svg.lucide-palette') }).click();
   const quick = page.locator('.appearance-controls.compact');

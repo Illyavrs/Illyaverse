@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, type CSSProperties } from 'react';
-import Link from 'next/link';
+import { NavigationLink as Link } from '@/components/navigation-motion';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useFormatter, useTranslations } from 'next-intl';
 import useSWR, { unstable_serialize, useSWRConfig } from 'swr';

@@ -1,0 +1,122 @@
+{
+  "captured_at": "2026-10-09T05:31:20.020Z",
+  "route": "/",
+  "viewport": {
+    "width": 390,
+    "height": 1000
+  },
+  "visual_facts": {
+    "locale": "en",
+    "theme": "light",
+    "fonts": "loaded",
+    "scrollY": 0,
+    "documentOverflow": false,
+    "panelBlur": "8px",
+    "surface": "rgb(255 255 255 / 0.55)",
+    "raised": "rgb(246 246 246 / 0.55)"
+  },
+  "state": "Synthetic populated homepage; custom accent; panel blur 8px, opacity 0.55; geometric background fixture; latest beatmap hovered.",
+  "interaction": "Latest beatmap row hovered at document top.",
+  "latest_map": {
+    "rowAlpha": 0.0392156862745098,
+    "panelAlpha": 0.5490196078431373,
+    "rowBlur": "none",
+    "panelBlur": "blur(8px)",
+    "nestedBlurCount": 0,
+    "titleColor": [
+      60,
+      56,
+      90,
+      255
+    ],
+    "actionColor": [
+      60,
+      56,
+      90,
+      255
+    ],
+    "rowInsetLeft": 1,
+    "rowInsetRight": 1,
+    "contentInsetLeft": 16,
+    "contentInsetRight": 16,
+    "dividerInset": "16px",
+    "outlineStyle": "none",
+    "outlineWidth": "3px",
+    "outlineOffset": "0px",
+    "geometry": [
+      {
+        "x": 17,
+        "y": 726.125,
+        "width": 341,
+        "height": 104
+      },
+      {
+        "x": 33,
+        "y": 741.625,
+        "width": 56,
+        "height": 72
+      },
+      {
+        "x": 99,
+        "y": 740.65625,
+        "width": 189.375,
+        "height": 73.921875
+      },
+      {
+        "x": 298.375,
+        "y": 755.234375,
+        "width": 43.625,
+        "height": 44.78125
+      }
+    ],
+    "contrast": [
+      {
+        "label": "QA Fixture · Glass Reflection",
+        "minimum": 7.960119604905789
+      },
+      {
+        "label": "QA Artist",
+        "minimum": 10.930383017124422
+      },
+      {
+        "label": "Mapped by QA Mapper",
+        "minimum": 4.5419700961400205
+      },
+      {
+        "label": "Insane",
+        "minimum": 10.930383017124422
+      },
+      {
+        "label": "osu!",
+        "minimum": 4.5419700961400205
+      },
+      {
+        "label": "Ranked",
+        "minimum": 5.1446890772837754
+      },
+      {
+        "label": "5.42",
+        "minimum": 4.993775649305741
+      },
+      {
+        "label": "2:03",
+        "minimum": 4.5419700961400205
+      }
+    ]
+  },
+  "hero_asset": "User-supplied original RGBA PNG; display-only CSS crop; no generated artwork.",
+  "data": "Synthetic QA fixtures intercepted at existing public API routes; no native-client or live activity claims.",
+  "sources": {
+    "src/features/home.tsx": "5de64565393391f5f98373200f4f30e0ce5d00bb332c9a05af9db70c1c8f9131",
+    "src/features/home.css": "4dd09eea200d55e14300d9209a182ce02cb5175fea6c9f0378e04bfc76ec9f65",
+    "src/features/beatmaps.tsx": "8ca8477e66056000e65ce634a4b22f93ad3a56b74505ab28c744c0947c6d0c6e",
+    "src/styles/map-discovery.css": "039bb7df7987059e66f5bbd53e79afb6374d0b88c2febd537a3003998c592703",
+    "src/components/providers.tsx": "fa4f6fa3f8a49761ebaf5550f39fed0906106cf4d99d37c5d004d2dc0c155761",
+    "src/app/globals.css": "2f183c43f235ba97f3dae9c6c5a3a713f98008906c9a83f30e8da6975166fa24",
+    "src/app/layout.tsx": "747fa3b50704dadd372339843c0832330dd90126da6b88e0538bf99fa257dd70",
+    "messages/zh-TW.json": "f30510c805f50284d68b2e162e2c5aea14eba755bc6e1032a5bb2548067fca4c",
+    "messages/en.json": "be37a498c6d4e82dd1650c19b39f7e65f4c8acf75b3d8bfe50f0069772496330",
+    "messages/ja.json": "11ca88e13f550f273356da6f56f3d59696367b8144eefbbae0e89aca6ff055d3",
+    "public/images/home-character.png": "d32cc7271ff33364e247c8d8988c16f61e50d7715cd500b6cbdece29c53c70e4"
+  }
+}

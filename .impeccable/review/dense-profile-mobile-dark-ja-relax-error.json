@@ -1,0 +1,17 @@
+{
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "route": "/players/989610?mode=1&variant=relax",
+  "data": "Synthetic intercepted profile; no real player activity or account changes.",
+  "visual_facts": {
+    "locale": "ja",
+    "theme": "dark",
+    "fonts": "loaded",
+    "scrollY": 0,
+    "documentOverflow": false,
+    "profileAccent": "#8270b8",
+    "selectedFill": "color-mix(in srgb, #8270b8 16%, #080808)"
+  }
+}

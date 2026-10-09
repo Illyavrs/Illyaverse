@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-09T02:28:46Z",
+  "generatedAt": "2026-10-09T05:35:42Z",
   "title": "Design System: Illyaverse — Serendipity",
   "extensions": {
     "colorMeta": {
@@ -1055,8 +1055,23 @@
       },
       {
         "name": "route-underline",
-        "value": "240ms cubic-bezier(0.16, 1, 0.3, 1)",
-        "purpose": "Active route underline reveal."
+        "value": "spring(stiffness: 450, damping: 38)",
+        "purpose": "Motion shared layout projection moves the active route underline between links."
+      },
+      {
+        "name": "route-content",
+        "value": "180ms cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Native View Transition for route content; the persistent shell stays anchored. A slow snapshot releases after 700ms while loading feedback continues."
+      },
+      {
+        "name": "home-character-enter",
+        "value": "300ms cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "One entrance from 75% opacity and a 10px downward offset to the supplied character at rest."
+      },
+      {
+        "name": "navigation-pending",
+        "value": "1s ease-in-out infinite; opacity 100ms ease-out",
+        "purpose": "A 3px top bar reflects outstanding route work, initial SWR loads and public-map requests. Reduced motion uses a static full-width line."
       }
     ],
     "breakpoints": [
@@ -1091,6 +1106,14 @@
       {
         "name": "narrow-catalogue",
         "value": "420px"
+      },
+      {
+        "name": "catalogue-toolbar-stack",
+        "value": "1050px"
+      },
+      {
+        "name": "narrow-home-character",
+        "value": "360px"
       }
     ],
     "materials": {
@@ -1164,6 +1187,40 @@
       "excludedGroups": "Use the matching solid-surface levels and zero material blur.",
       "floatingControls": "Always use glass-surface levels and panel blur, including portals at minimum coverage.",
       "nestedFields": "Disable a second backdrop filter inside an already filtered container."
+    },
+    "layout": {
+      "siteHeader": {
+        "variable": "--site-header-height",
+        "desktop": "106px",
+        "mobile": "61px",
+        "mobileBreakpoint": "800px",
+        "purpose": "Includes the utility row, route row and actual one-pixel seams."
+      },
+      "profileNavigation": {
+        "top": "var(--site-header-height)",
+        "anchorOffset": "calc(var(--profile-navigation-top) + 65px)",
+        "purpose": "Sticky section navigation clears the shared shell; anchors also clear the section rail."
+      },
+      "compactHeader": {
+        "breakpoint": "600px",
+        "gap": "8px",
+        "purpose": "Keeps the brand mark and utility controls; profile access remains in mobile navigation."
+      },
+      "difficultyPopover": {
+        "inlineSize": "min(340px, var(--radix-popover-content-available-width))",
+        "maxBlockSize": "var(--radix-popover-content-available-height)",
+        "collisionPadding": "12px",
+        "purpose": "Contains preview links within the actual available floating region."
+      },
+      "homeMapRecord": {
+        "minimumHeight": "104px",
+        "desktopPadding": "12px 20px",
+        "mobilePadding": "8px 16px",
+        "desktopCover": "72px 72px",
+        "mobileCover": "56px 72px",
+        "mobileBreakpoint": "600px",
+        "purpose": "Compact home selectors preserve geometry and a thin hover/focus veil over later shared record rules."
+      }
     }
   },
   "components": [
@@ -1202,9 +1259,9 @@
     {
       "name": "Route Navigation",
       "kind": "nav",
-      "description": "Separate route row with accent orientation.",
+      "description": "Separate 44px route row with accent orientation; production uses Motion for the shared active underline.",
       "html": "<nav class=\"ds-nav\" aria-label=\"Community\"><a href=\"#home\" aria-current=\"page\">Home</a><a href=\"#maps\">Beatmaps</a><a href=\"#rankings\">Rankings</a></nav>",
-      "css": ".ds-nav{display:flex;gap:28px;padding:0 24px;background:var(--glass-surface-subtle,rgb(16 16 19 / .55));backdrop-filter:blur(var(--panel-blur,8px));border-top:1px solid var(--border,#ffffff16);font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);}.ds-nav a{position:relative;padding:9px 0;color:var(--muted-foreground,#b5b5b5);font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap;transition:color 180ms;}.ds-nav a:hover{color:var(--foreground,#f5f5f5);}.ds-nav a[aria-current=page]{color:var(--readable-accent,#f9c1d9);}.ds-nav a[aria-current=page]::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;border-radius:3px;background:var(--user-accent,#f28eb6);}.ds-primary:focus-visible,.ds-outline:focus-visible,.ds-ghost:focus-visible,.ds-input:focus-visible,.ds-nav a:focus-visible,.ds-mode:focus-visible,.ds-badge:focus-visible,.ds-difficulty:focus-visible{outline:2px solid var(--ring,#f9c1d9);outline-offset:4px;}"
+      "css": ".ds-nav{display:flex;height:44px;gap:28px;padding:0 24px;background:var(--glass-surface-subtle,rgb(16 16 19 / .55));backdrop-filter:blur(var(--panel-blur,8px));border-top:1px solid var(--border,#ffffff16);font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);}.ds-nav a{display:flex;align-items:center;min-height:44px;position:relative;padding:9px 0;color:var(--muted-foreground,#b5b5b5);font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap;transition:color 180ms;}.ds-nav a:hover{color:var(--foreground,#f5f5f5);}.ds-nav a[aria-current=page]{color:var(--readable-accent,#f9c1d9);}.ds-nav a[aria-current=page]::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;border-radius:3px;background:var(--user-accent,#f28eb6);}.ds-primary:focus-visible,.ds-outline:focus-visible,.ds-ghost:focus-visible,.ds-input:focus-visible,.ds-nav a:focus-visible,.ds-mode:focus-visible,.ds-badge:focus-visible,.ds-difficulty:focus-visible{outline:2px solid var(--ring,#f9c1d9);outline-offset:4px;}"
     },
     {
       "name": "Secondary Badge",
@@ -1220,7 +1277,7 @@
       "refersTo": "glass-panel",
       "description": "One outer silhouette with coverage-selected material, raised heading and aligned content.",
       "html": "<section class=\"ds-record\"><header class=\"ds-record-heading\"><h2>Player statistics</h2></header><dl><div><dt>Global rank</dt><dd>#24</dd></div><div><dt>Performance</dt><dd>4,128 pp</dd></div></dl></section>",
-      "css": ".ds-record{overflow:hidden;border:1px solid var(--border,#ffffff16);border-radius:var(--radius,14px);background:var(--surface,rgb(24 24 27 / .55));backdrop-filter:blur(var(--material-blur,8px));color:var(--foreground,#f5f5f5);font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);}.ds-record-heading{padding:15px 20px;background:var(--section-surface-raised,rgb(46 46 52 / .55));backdrop-filter:blur(var(--section-blur,8px));border-bottom:1px solid var(--border,#ffffff16);}.ds-record-heading h2{margin:0;font-size:17px;font-weight:800;line-height:1.4;}.ds-record dl{margin:0;padding:24px;display:grid;gap:13px;}.ds-record dl>div{display:flex;align-items:baseline;justify-content:space-between;gap:14px;}.ds-record dt{font-size:12px;color:var(--muted-foreground,#b5b5b5);}.ds-record dd{margin:0;font-size:15px;font-weight:800;font-variant-numeric:tabular-nums;text-align:right;}"
+      "css": ".ds-record{overflow:hidden;border:1px solid var(--border,#ffffff16);border-radius:var(--radius,14px);background:var(--surface,rgb(24 24 27 / .55));backdrop-filter:blur(var(--material-blur,8px));color:var(--foreground,#f5f5f5);font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);}.ds-record-heading{padding:12px 20px;background:var(--section-surface-raised,rgb(46 46 52 / .55));backdrop-filter:blur(var(--section-blur,8px));border-bottom:1px solid var(--border,#ffffff16);}.ds-record-heading h2{margin:0;font-size:17px;font-weight:800;line-height:1.4;}.ds-record dl{margin:0;padding:24px;display:grid;gap:13px;}.ds-record dl>div{display:flex;align-items:baseline;justify-content:space-between;gap:14px;}.ds-record dt{font-size:12px;color:var(--muted-foreground,#b5b5b5);}.ds-record dd{margin:0;font-size:15px;font-weight:800;font-variant-numeric:tabular-nums;text-align:right;}"
     },
     {
       "name": "Difficulty Chip",
@@ -1234,9 +1291,9 @@
       "name": "Select and Action Menu",
       "kind": "custom",
       "refersTo": "select-trigger",
-      "description": "Shared Radix trigger, checked/highlighted option and floating action-menu visual states. Production primitives supply keyboard and portal behavior.",
+      "description": "Shared Select and nonmodal action-menu visual states. Production Radix primitives supply keyboard, portal and dismissal behavior; action options retain 44px targets.",
       "html": "<div class=\"ds-floating-preview\"><div class=\"ds-select-preview\"><label class=\"ds-select-label\" id=\"ds-period-label\">Period</label><button class=\"ds-select-trigger\" aria-labelledby=\"ds-period-label\" aria-expanded=\"true\" role=\"combobox\" aria-controls=\"ds-period-options\"><span>90 days</span><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"m6 9 6 6 6-6\"/></svg></button><div class=\"ds-floating-menu\" id=\"ds-period-options\" role=\"listbox\" aria-label=\"Period\"><button class=\"ds-floating-option\" role=\"option\" aria-selected=\"false\">30 days</button><button class=\"ds-floating-option\" role=\"option\" aria-selected=\"true\" data-highlighted><span>90 days</span><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"m20 6-11 11-5-5\"/></svg></button><button class=\"ds-floating-option\" role=\"option\" aria-selected=\"false\">180 days</button></div></div><div class=\"ds-floating-menu ds-action-menu\" role=\"menu\" aria-label=\"Score actions\"><button class=\"ds-floating-option\" role=\"menuitem\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"M7 17 17 7M7 7h10v10\"/></svg>View score</button><button class=\"ds-floating-option\" role=\"menuitem\" disabled><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3\"/></svg>Replay unavailable</button></div></div>",
-      "css": ".ds-floating-preview{display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap;font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);color:var(--foreground,#f5f5f5);}.ds-select-preview{display:grid;gap:6px;min-width:180px;}.ds-select-label{font-size:12px;color:var(--secondary-text,#b5b5b5);}.ds-select-trigger{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:38px;max-width:100%;padding:8px 12px;border:1px solid var(--input,#ffffff25);border-radius:calc(var(--radius,14px)*.65);background:var(--surface-subtle,rgb(16 16 19 / .55));color:var(--foreground,#f5f5f5);backdrop-filter:blur(var(--material-blur,8px));font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);font-size:13px;font-weight:650;cursor:pointer;transition:color 150ms,border-color 150ms;}.ds-select-trigger>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.ds-select-trigger:hover{background:var(--surface-raised,rgb(46 46 52 / .55));border-color:var(--divider-strong,#ffffff30);}.ds-select-trigger:focus-visible{border-color:var(--ring,#f9c1d9);outline:2px solid var(--ring,#f9c1d9);outline-offset:3px;}.ds-floating-menu{display:grid;gap:0;min-width:128px;max-width:calc(100vw - 24px);padding:4px;border:1px solid var(--divider-strong,#ffffff30);border-radius:calc(var(--radius,14px)*.65);background:var(--glass-surface-strong,rgb(32 32 36 / .7));color:var(--foreground,#f5f5f5);backdrop-filter:blur(var(--panel-blur,8px));box-shadow:none;}.ds-action-menu{min-width:192px;padding:6px;}.ds-floating-option{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:36px;padding:6px 8px;border:0;border-radius:calc(var(--radius,14px)*.45);background:transparent;color:var(--foreground,#f5f5f5);font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);font-size:13px;line-height:1.5;text-align:left;cursor:pointer;}.ds-action-menu .ds-floating-option{justify-content:flex-start;padding:8px 10px;}.ds-floating-option[aria-selected=true]{color:var(--readable-accent,#f9c1d9);font-weight:800;}.ds-floating-option:hover:not(:disabled),.ds-floating-option:focus-visible,.ds-floating-option[data-highlighted]{background:var(--selection-fill,#2d2027);color:var(--readable-accent,#f9c1d9);outline:1px solid var(--ring,#f9c1d9);outline-offset:-1px;}.ds-floating-option:disabled{color:var(--secondary-text,#b5b5b5);opacity:.55;cursor:not-allowed;}"
+      "css": ".ds-floating-preview{display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap;font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);color:var(--foreground,#f5f5f5);}.ds-select-preview{display:grid;gap:6px;min-width:180px;}.ds-select-label{font-size:12px;color:var(--secondary-text,#b5b5b5);}.ds-select-trigger{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:38px;max-width:100%;padding:8px 12px;border:1px solid var(--input,#ffffff25);border-radius:calc(var(--radius,14px)*.65);background:var(--surface-subtle,rgb(16 16 19 / .55));color:var(--foreground,#f5f5f5);backdrop-filter:blur(var(--material-blur,8px));font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);font-size:13px;font-weight:650;cursor:pointer;transition:color 150ms,border-color 150ms;}.ds-select-trigger>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.ds-select-trigger:hover{background:var(--surface-raised,rgb(46 46 52 / .55));border-color:var(--divider-strong,#ffffff30);}.ds-select-trigger:focus-visible{border-color:var(--ring,#f9c1d9);outline:2px solid var(--ring,#f9c1d9);outline-offset:3px;}.ds-floating-menu{display:grid;gap:0;min-width:128px;max-width:calc(100vw - 24px);padding:4px;border:1px solid var(--divider-strong,#ffffff30);border-radius:calc(var(--radius,14px)*.65);background:var(--glass-surface-strong,rgb(32 32 36 / .7));color:var(--foreground,#f5f5f5);backdrop-filter:blur(var(--panel-blur,8px));box-shadow:none;}.ds-action-menu{min-width:192px;padding:6px;}.ds-floating-option{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:36px;padding:6px 8px;border:0;border-radius:calc(var(--radius,14px)*.45);background:transparent;color:var(--foreground,#f5f5f5);font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);font-size:13px;line-height:1.5;text-align:left;cursor:pointer;}.ds-action-menu .ds-floating-option{min-height:44px;justify-content:flex-start;padding:8px 10px;}.ds-floating-option[aria-selected=true]{color:var(--readable-accent,#f9c1d9);font-weight:800;}.ds-floating-option:hover:not(:disabled),.ds-floating-option:focus-visible,.ds-floating-option[data-highlighted]{background:var(--selection-fill,#2d2027);color:var(--readable-accent,#f9c1d9);outline:1px solid var(--ring,#f9c1d9);outline-offset:-1px;}.ds-floating-option:disabled{color:var(--secondary-text,#b5b5b5);opacity:.55;cursor:not-allowed;}"
     },
     {
       "name": "Profile Score Record",
@@ -1245,11 +1302,19 @@
       "description": "Compact aligned score row; the preview shows the missing-cover fallback, while production uses genuine runtime cover imagery behind identity.",
       "html": "<div class=\"ds-score-row\"><span class=\"ds-score-artwork\" aria-hidden=\"true\"></span><span class=\"ds-score-grade\" aria-label=\"Grade A\">A</span><div class=\"ds-score-identity\"><a class=\"ds-score-title\" href=\"#score\">Beatmap title</a><div class=\"ds-score-meta\"><span class=\"ds-score-stars\"><svg viewBox=\"0 0 24 24\" width=\"10\" height=\"10\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.5\" aria-hidden=\"true\"><path d=\"m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z\"/></svg>4.82</span><span class=\"ds-score-version\">Insane</span><time datetime=\"2026-10-09\">Oct 9, 2026</time></div></div><div class=\"ds-score-result\"><span class=\"ds-score-mods\">HD</span><dl class=\"ds-score-facts\"><div><dt>Accuracy</dt><dd>98.42<small>%</small></dd></div><div><dt>Combo</dt><dd>624<small>x</small></dd></div></dl><a class=\"ds-score-pp\" href=\"#score\">248.36<small>pp</small></a></div><button class=\"ds-score-action\" aria-label=\"Score actions\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"5\" r=\"1\"/><circle cx=\"12\" cy=\"12\" r=\"1\"/><circle cx=\"12\" cy=\"19\" r=\"1\"/></svg></button></div>",
       "css": ".ds-score-row{position:relative;isolation:isolate;display:grid;grid-template-columns:38px minmax(160px,1fr) 96px 218px 132px 44px;align-items:center;gap:10px;min-height:46px;padding:1px 12px;border-radius:calc(var(--radius,14px)*.65);background:var(--surface,rgb(24 24 27 / .55));backdrop-filter:blur(var(--material-blur,8px));color:var(--foreground,#f5f5f5);font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);}.ds-score-result{display:contents;}.ds-score-row>:not(.ds-score-artwork),.ds-score-result>*{position:relative;z-index:1;}.ds-score-artwork{position:absolute;inset:0;z-index:0;border-radius:inherit;background-image:var(--score-cover,none);background-size:cover;background-position:50% 48%;opacity:.22;mask-image:linear-gradient(to right,#000 0%,#000 20%,transparent 74%);pointer-events:none;}:host-context(.light) .ds-score-artwork{opacity:.13;}.ds-score-row:hover,.ds-score-row:focus-within{background:var(--surface-raised,rgb(46 46 52 / .55));}.ds-score-grade{display:grid;place-items:center;width:34px;height:30px;border-radius:calc(var(--radius,14px)*.42);background:color-mix(in srgb,var(--status-success,#91d8b1) 14%,var(--solid-surface,#18181b));color:var(--status-success,#91d8b1);font-size:17px;font-weight:900;}.ds-score-identity{min-width:0;}.ds-score-title{display:block;overflow:hidden;color:var(--foreground,#f5f5f5);font-size:13px;font-weight:800;line-height:1.4;text-decoration:none;text-overflow:ellipsis;white-space:nowrap;}.ds-score-title:hover{color:var(--readable-accent,#f9c1d9);}.ds-score-meta{display:flex;gap:7px;min-width:0;margin-top:1px;color:var(--secondary-text,#b5b5b5);font-size:11px;line-height:1.4;}.ds-score-stars{display:inline-flex;align-items:center;gap:3px;color:var(--difficulty-insane,#e59dc7);font-weight:900;font-variant-numeric:tabular-nums;white-space:nowrap;}.ds-score-version{min-width:0;overflow:hidden;color:var(--foreground,#f5f5f5);text-overflow:ellipsis;white-space:nowrap;}.ds-score-meta time{flex-shrink:0;white-space:nowrap;}.ds-score-mods{justify-self:end;padding:2px 5px;border-radius:calc(var(--radius,14px)*.3);background:color-mix(in srgb,var(--foreground,#f5f5f5) 7%,var(--solid-surface,#18181b));font-size:11px;font-weight:800;}.ds-score-facts{display:flex;justify-content:flex-end;gap:18px;margin:0;font-size:13px;line-height:1.4;font-weight:800;font-variant-numeric:tabular-nums;}.ds-score-facts dt{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);}.ds-score-facts dd{margin:0;white-space:nowrap;}.ds-score-facts small{font-size:10px;font-weight:600;}.ds-score-pp{padding-inline-start:8px;border-inline-start:1px solid var(--border,#ffffff16);color:var(--readable-accent,#f9c1d9);font-size:20px;line-height:1.15;font-weight:900;font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right;text-decoration:none;}.ds-score-pp small{margin-inline-start:3px;font-size:10px;}.ds-score-action{display:grid;place-items:center;width:44px;height:44px;border:0;border-radius:calc(var(--radius,14px)*.65);background:transparent;color:var(--secondary-text,#b5b5b5);cursor:pointer;}.ds-score-action:hover{background:var(--surface-subtle,rgb(16 16 19 / .55));color:var(--foreground,#f5f5f5);}.ds-score-title:focus-visible,.ds-score-pp:focus-visible,.ds-score-action:focus-visible{outline:2px solid var(--ring,#f9c1d9);outline-offset:2px;}@media(max-width:1050px){.ds-score-row{grid-template-columns:34px minmax(0,1fr) 70px 164px 116px 44px;gap:8px;}.ds-score-facts{gap:10px;}}@media(max-width:800px){.ds-score-row{grid-template-columns:32px minmax(0,1fr) 44px;grid-template-rows:auto auto;gap:4px 8px;min-height:88px;padding:6px 8px;}.ds-score-grade{grid-column:1;grid-row:1;width:32px;height:27px;font-size:16px;}.ds-score-identity{grid-column:2;grid-row:1;align-self:center;}.ds-score-title{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;font-size:13px;line-height:1.35;white-space:normal;overflow-wrap:anywhere;}.ds-score-meta{flex-wrap:wrap;gap:3px 6px;font-size:11px;}.ds-score-meta time{display:none;}.ds-score-result{display:grid;grid-column:1/3;grid-row:2;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:2px 8px;min-width:0;}.ds-score-mods{grid-column:1;grid-row:1;justify-self:start;align-self:end;padding:1px 4px;font-size:11px;}.ds-score-facts{grid-column:1;grid-row:2;justify-content:flex-start;align-self:start;gap:8px;font-size:12px;}.ds-score-facts small{font-size:11px;}.ds-score-pp{grid-column:2;grid-row:1/3;align-self:center;padding:0;border:0;font-size:20px;}.ds-score-pp small{font-size:11px;}.ds-score-action{grid-column:3;grid-row:1/3;}}@media(max-width:420px){.ds-score-row{grid-template-columns:28px minmax(0,1fr) 44px;gap:4px 6px;padding-inline:7px;}.ds-score-grade{width:28px;height:25px;font-size:15px;}}"
+    },
+    {
+      "name": "Dense Catalogue Record",
+      "kind": "card",
+      "refersTo": "catalogue-card",
+      "description": "Equal-height song identity with a 44px difficulty summary. The preview uses the missing-cover fallback; production opens accessible difficulty links in a floating popover.",
+      "html": "<article class=\"ds-catalogue-card\"><a class=\"ds-catalogue-main\" href=\"#map\" aria-label=\"Open map: Map title by Artist\"><span class=\"ds-catalogue-cover\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M4 6v14M8 6v14M12 4v16M16 6l4 14\"/></svg><span>Cover unavailable</span></span><span class=\"ds-catalogue-copy\"><strong>Map title</strong><span class=\"ds-catalogue-artist\">Artist</span><span class=\"ds-catalogue-mapper\">Mapped by Creator</span><span class=\"ds-catalogue-facts\">4.82 stars · 3:24 · osu!</span></span></a><div class=\"ds-catalogue-footer\"><span class=\"ds-catalogue-status\">Ranked</span><button class=\"ds-catalogue-summary\" type=\"button\" aria-label=\"Show difficulties for Map title. 3 matching, 3 stored\" aria-expanded=\"false\"><span class=\"ds-catalogue-ticks\" aria-hidden=\"true\"><i></i><i></i><i></i></span><span>3</span><svg viewBox=\"0 0 24 24\" width=\"12\" height=\"12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"m6 9 6 6 6-6\"/></svg></button></div></article>",
+      "css": ".ds-catalogue-card{--ds-cover-width:96px;position:relative;isolation:isolate;height:124px;min-width:0;overflow:hidden;border:1px solid var(--border,#ffffff16);border-radius:var(--radius,14px);background:var(--surface,rgb(24 24 27 / .55));backdrop-filter:blur(var(--material-blur,8px));color:var(--foreground,#f5f5f5);font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);}.ds-catalogue-main{display:grid;grid-template-columns:var(--ds-cover-width) minmax(0,1fr);grid-template-rows:minmax(0,1fr);height:100%;min-width:0;color:inherit;text-decoration:none;}.ds-catalogue-cover{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;padding:12px;background:var(--surface-strong,rgb(32 32 36 / .7));color:var(--secondary-text,#b5b5b5);font-size:11px;text-align:center;}.ds-catalogue-copy{display:grid;grid-template-rows:22px 16px 14px 14px;row-gap:2px;align-content:start;min-width:0;min-height:0;padding:8px 28px 44px 12px;}.ds-catalogue-copy>*{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.ds-catalogue-copy>strong{font-size:18px;font-weight:850;line-height:22px;}.ds-catalogue-artist{font-size:12px;line-height:16px;}.ds-catalogue-mapper{color:var(--secondary-text,#b5b5b5);font-size:11px;line-height:14px;}.ds-catalogue-facts{color:var(--secondary-text,#b5b5b5);font-size:10px;line-height:14px;font-variant-numeric:tabular-nums;}.ds-catalogue-main:hover{background:color-mix(in srgb,var(--foreground,#f5f5f5) 3%,transparent);}.ds-catalogue-main:hover strong{color:var(--readable-accent,#f9c1d9);}.ds-catalogue-footer{position:absolute;left:calc(var(--ds-cover-width) + 12px);right:8px;bottom:0;display:flex;align-items:center;justify-content:space-between;gap:8px;height:44px;}.ds-catalogue-status{color:var(--status-success,#91d8b1);font-size:10px;font-weight:850;}.ds-catalogue-summary{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:44px;min-height:44px;padding:0 6px;border:0;border-radius:calc(var(--radius,14px) * .45);background:transparent;color:inherit;cursor:pointer;font-family:inherit;font-size:11px;font-weight:800;font-variant-numeric:tabular-nums;}.ds-catalogue-ticks{display:inline-flex;gap:3px;}.ds-catalogue-ticks i{width:5px;height:13px;border-radius:3px;background:var(--difficulty-insane,#e59dc7);}.ds-catalogue-summary:hover,.ds-catalogue-summary[aria-expanded=true]{background:color-mix(in srgb,var(--foreground,#f5f5f5) 8%,transparent);}.ds-catalogue-main:focus-visible,.ds-catalogue-summary:focus-visible{outline:2px solid var(--ring,#f9c1d9);outline-offset:-3px;}@media(max-width:600px){.ds-catalogue-card{--ds-cover-width:82px;height:112px;}.ds-catalogue-copy{grid-template-rows:20px 14px 12px 12px;row-gap:0;padding:6px 24px 44px 10px;}.ds-catalogue-copy>strong{font-size:16px;line-height:20px;}.ds-catalogue-artist{font-size:11px;line-height:14px;}.ds-catalogue-mapper,.ds-catalogue-facts{font-size:10px;line-height:12px;}.ds-catalogue-footer{left:calc(var(--ds-cover-width) + 10px);right:4px;gap:4px;}}@media(max-width:420px){.ds-catalogue-card{--ds-cover-width:70px;}.ds-catalogue-cover>span{display:none;}}"
     }
   ],
   "narrative": {
     "northStar": "The Community Record",
-    "overview": "Illyaverse presents players, beatmaps and scores as connected community records. A pure-black default canvas supports thin neutral glass, joined identity and fact bands, aligned numeric values and rounded bilingual lettering. Strong headings, quieter metadata and accent underlines make location and selection clear without decorative copy.\n\nPersonalization is part of the material. The visitor can adjust theme, accent, background blur and dim, glass coverage, panel blur and opacity, and radius independently. Coverage selects which surface groups use glass; the remaining groups use deliberate solid counterparts. The viewed player’s public accent remains distinct from the visitor’s private appearance. Light mode uses neutral white and gray replacements, while zh-TW, en and ja share the same hierarchy and wrapping behavior.\n\nThe source composition studies of osu-web and Sunset inform recognizable community structure; Illyaverse’s source, palette and geometry are original. Runtime official beatmap covers and player-uploaded avatars, banners and backgrounds provide identity. The default background is plain black, and a profile without a banner reserves no empty artwork region. Provenance is recorded in [the website redesign record](docs/website-redesign.md).",
+    "overview": "Illyaverse presents players, beatmaps and scores as connected community records. A pure-black default canvas supports thin neutral glass, joined identity and fact bands, aligned numeric values and rounded bilingual lettering. Strong headings, quieter metadata and accent underlines make location and selection clear without decorative copy.\n\nPersonalization is part of the material. The visitor can adjust theme, accent, background blur and dim, glass coverage, panel blur and opacity, and radius independently. Coverage selects which surface groups use glass; the remaining groups use deliberate solid counterparts. The viewed player’s public accent remains distinct from the visitor’s private appearance. Light mode uses neutral white and gray replacements, while zh-TW, en and ja share the same hierarchy and wrapping behavior.\n\nThe source composition studies of osu-web and Sunset inform recognizable community structure; Illyaverse’s source, palette and geometry are original. Runtime official beatmap covers and player-uploaded avatars, banners and backgrounds provide identity. The user-authorized transparent homepage character is a separate, original-byte asset above the plain black default background. Its provenance is recorded beside the image; it does not establish a decorative page background. A profile without a banner reserves no empty artwork region. Provenance is recorded in [the website redesign record](docs/website-redesign.md) and [the dense interface source record](docs/dense-interface-verification.md).",
     "keyCharacteristics": [
       "Pure-black default canvas with adjustable thin neutral glass and solid counterparts.",
       "Joined heading, toolbar, identity and record surfaces.",
@@ -1257,7 +1322,9 @@
       "Personal accent underlines, readable highlights and aligned performance facts.",
       "Real covers and player uploads with useful missing-image fallbacks.",
       "Paired light/dark semantic colors, meaningful labels and bounded overflow.",
-      "Shared shadcn/Radix fields and floating menus with consistent material and keyboard states."
+      "Shared shadcn/Radix fields and floating menus with consistent material and keyboard states.",
+      "Compact catalogue rows with difficulty detail available on demand.",
+      "Purposeful route orientation and request feedback with reduced-motion alternatives."
     ],
     "rules": [
       {
@@ -1303,13 +1370,14 @@
       "Do connect entity identity, facts, controls and records with clear surface levels and seams.",
       "Do align comparable numeric values and use tabular figures for ranks, scores and control outputs.",
       "Do retain labels alongside status, grade and difficulty color, and show only facts provided by the running API.",
-      "Do preserve 44px catalogue and score action targets and every mobile catalogue difficulty link in its compact scrolling rail.",
+      "Do preserve 44px catalogue and score action targets and every available difficulty link through the popover or complete set selector.",
       "Do keep keyboard focus visible, honor reduced motion and contain dense horizontal content locally.",
-      "Do use ordinary zh-TW/en/ja labels and real runtime covers or player-uploaded media."
+      "Do use ordinary zh-TW/en/ja labels, real runtime covers, player-uploaded media and the explicitly authorized original homepage character.",
+      "Do keep route motion purposeful and request feedback tied to outstanding work, including a reduced-motion presentation."
     ],
     "donts": [
       "Don't copy upstream source, design assets, palettes or exact geometry.",
-      "Don't add AI-generated art, decorative default imagery or poetic marketing slogans.",
+      "Don't add AI-generated art, decorative default backgrounds or poetic marketing slogans; the authorized homepage character does not change that background rule.",
       "Don't merge coverage, background or panel controls, or replace user appearance with fixed visual values.",
       "Don't extend the explicitly requested profile rank gradient text to other typography or describe absolute rank bands as percentiles.",
       "Don't add an empty profile banner or decorative height when a player has no banner.",

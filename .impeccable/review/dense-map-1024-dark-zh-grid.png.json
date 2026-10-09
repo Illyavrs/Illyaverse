@@ -1,0 +1,62 @@
+{
+  "captured_at": "2026-10-09T05:31:53.760Z",
+  "url": "http://localhost:19000/beatmaps?view=grid",
+  "locale": "zh-TW",
+  "theme": "dark",
+  "synthetic": true,
+  "artwork_origin": "https://assets.ppy.sh/beatmaps/{validated_official_set_id}/covers/cover.jpg; browser rendered only; fallback on failure",
+  "width": 1024,
+  "height": 900,
+  "scroll_x": 0,
+  "scroll_y": 0,
+  "document_width": 1009,
+  "document_height": 979,
+  "actual_theme": "dark",
+  "actual_locale": "zh-TW",
+  "font_status": "loaded",
+  "reduced_motion": true,
+  "catalogue_cards": [
+    {
+      "width": 467.5,
+      "height": 124,
+      "identity_height": 122,
+      "trigger_width": 110.203125,
+      "trigger_height": 44,
+      "tick_count": 8,
+      "permanently_reserved_difficulty_rows": 0,
+      "faded_cover": "url(\"https://assets.ppy.sh/beatmaps/2588526/covers/cover.jpg\")"
+    },
+    {
+      "width": 467.5,
+      "height": 124,
+      "identity_height": 122,
+      "trigger_width": 55.609375,
+      "trigger_height": 44,
+      "tick_count": 2,
+      "permanently_reserved_difficulty_rows": 0,
+      "faded_cover": "none"
+    },
+    {
+      "width": 467.5,
+      "height": 124,
+      "identity_height": 122,
+      "trigger_width": 47.609375,
+      "trigger_height": 44,
+      "tick_count": 1,
+      "permanently_reserved_difficulty_rows": 0,
+      "faded_cover": "none"
+    },
+    {
+      "width": 467.5,
+      "height": 124,
+      "identity_height": 122,
+      "trigger_width": 55.609375,
+      "trigger_height": 44,
+      "tick_count": 2,
+      "permanently_reserved_difficulty_rows": 0,
+      "faded_cover": "none"
+    }
+  ],
+  "difficulty_popover": null,
+  "detail_overview": null
+}

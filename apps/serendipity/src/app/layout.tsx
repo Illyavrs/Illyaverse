@@ -12,6 +12,7 @@ import '@/features/score-presentation.css';
 import '@/features/announcements.css';
 import '@/styles/map-discovery.css';
 import '@/styles/controls.css';
+import '@/styles/navigation-motion.css';
 import { Providers } from '@/components/providers';
 import { Shell } from '@/components/shell';
 export const metadata: Metadata = {

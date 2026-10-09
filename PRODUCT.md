@@ -38,7 +38,7 @@ Map browsing follows the user's osu-web/Sunrise references through original impl
 
 ## Evidence on Hand
 
-Reference URLs: SunriseCommunity/Solar-System, osuAkatsuki/bancho.py, GooGuTeam/g0v0-server and ppy/osu. No supplied art or live server activity; do not fabricate player counts or finished client compatibility.
+Reference URLs: SunriseCommunity/Solar-System, osuAkatsuki/bancho.py, GooGuTeam/g0v0-server, ppy/osu, ppy/osu-web and SunriseCommunity/Sunset. The user supplied a transparent 700×1251 character PNG for the homepage hero; retain its original bytes and provenance. This authorized hero artwork sits above the plain default background. Live local test activity exists; do not fabricate player counts or finished client compatibility.
 
 ## Product Principles
 

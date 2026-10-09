@@ -1,9 +1,10 @@
 'use client';
-import Link from 'next/link';
+import { NavigationLink as Link } from './navigation-motion';
 import { usePathname } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { Disc3, Menu, Palette, ArrowUpRight, LogOut, Sun, Moon } from 'lucide-react';
-import { useTheme } from 'next-themes';
+import { Disc3, Menu, Palette, ArrowUpRight, LogOut } from 'lucide-react';
+import { LayoutGroup } from 'motion/react';
+import * as m from 'motion/react-m';
 import { useState } from 'react';
 import { Button } from './ui/button';
 import { FieldSelect } from './ui/field-select';
@@ -27,9 +28,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const settings = useTranslations('settings');
   const pathname = usePathname();
   const locale = useLocale();
-  const { locale: setLocale, update, operation } = useAppearance();
+  const { locale: setLocale } = useAppearance();
   const { user, logout } = useSession();
-  const { resolvedTheme } = useTheme();
   const [navOpen, setNavOpen] = useState(false);
   const [error, setError] = useState('');
   const links = [
@@ -42,19 +42,28 @@ export function Shell({ children }: { children: React.ReactNode }) {
     ['/settings', 'settings'],
   ];
   if (user && hasPermission(user.permissions, 'admin.view')) links.push(['/admin', 'admin']);
-  const navigation = links.map(([href, key]) => (
-    <Link
-      key={href}
-      href={href}
-      className={pathname === href || (href !== '/' && pathname.startsWith(href)) ? 'active' : ''}
-      aria-current={
-        pathname === href || (href !== '/' && pathname.startsWith(href)) ? 'page' : undefined
-      }
-      onClick={() => setNavOpen(false)}
-    >
-      {t(key)}
-    </Link>
-  ));
+  const navigation = () =>
+    links.map(([href, key]) => (
+      <Link
+        key={href}
+        href={href}
+        className={pathname === href || (href !== '/' && pathname.startsWith(href)) ? 'active' : ''}
+        aria-current={
+          pathname === href || (href !== '/' && pathname.startsWith(href)) ? 'page' : undefined
+        }
+        onNavigate={() => setNavOpen(false)}
+      >
+        {t(key)}
+        {(pathname === href || (href !== '/' && pathname.startsWith(href))) && (
+          <m.span
+            className="navigation-active-indicator"
+            layoutId="active-route"
+            transition={{ type: 'spring', stiffness: 450, damping: 38 }}
+            aria-hidden="true"
+          />
+        )}
+      </Link>
+    ));
   return (
     <>
       <a className="skip-link" href="#main">
@@ -75,8 +84,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               aria-label={t('language')}
               value={locale}
               onValueChange={(value) => {
-                if (isLocale(value))
-                  setLocale(value).catch(() => setError(common('serviceError')));
+                if (isLocale(value)) setLocale(value).catch(() => setError(common('serviceError')));
               }}
               className="language-select"
               options={[
@@ -85,17 +93,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 { value: 'ja', label: '日本語' },
               ]}
             />
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label={t('appearance')}
-              disabled={operation !== null}
-              onClick={() => update({ mode: resolvedTheme === 'dark' ? 'light' : 'dark' })}
-              className="theme-toggle"
-            >
-              <Sun className="light-icon" />
-              <Moon className="dark-icon" />
-            </Button>
             <Sheet>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon" aria-label={t('appearance')}>
@@ -141,31 +138,35 @@ export function Shell({ children }: { children: React.ReactNode }) {
                   <SheetTitle>Illyaverse</SheetTitle>
                   <SheetDescription>{t('menu')}</SheetDescription>
                 </SheetHeader>
-                <nav className="mobile-nav">
-                  {navigation}
-                  {user ? (
-                    <Link href={`/players/${user.id}`} onClick={() => setNavOpen(false)}>
-                      {t('profile')}
-                    </Link>
-                  ) : (
-                    <>
-                      <Link href="/login" onClick={() => setNavOpen(false)}>
-                        {t('signIn')}
+                <LayoutGroup id="mobile-navigation">
+                  <nav className="mobile-nav">
+                    {navigation()}
+                    {user ? (
+                      <Link href={`/players/${user.id}`} onNavigate={() => setNavOpen(false)}>
+                        {t('profile')}
                       </Link>
-                      <Link href="/register" onClick={() => setNavOpen(false)}>
-                        {t('join')}
-                      </Link>
-                    </>
-                  )}
-                </nav>
+                    ) : (
+                      <>
+                        <Link href="/login" onNavigate={() => setNavOpen(false)}>
+                          {t('signIn')}
+                        </Link>
+                        <Link href="/register" onNavigate={() => setNavOpen(false)}>
+                          {t('join')}
+                        </Link>
+                      </>
+                    )}
+                  </nav>
+                </LayoutGroup>
               </SheetContent>
             </Sheet>
           </div>
         </div>
         <div className="site-navigation">
-          <nav className="desktop-nav" aria-label={t('menu')}>
-            {navigation}
-          </nav>
+          <LayoutGroup id="desktop-navigation">
+            <nav className="desktop-nav" aria-label={t('menu')}>
+              {navigation()}
+            </nav>
+          </LayoutGroup>
         </div>
         {error && (
           <div className="shell-error" role="alert">

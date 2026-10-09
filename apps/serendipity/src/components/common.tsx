@@ -1,5 +1,5 @@
 'use client';
-import Link from 'next/link';
+import { NavigationLink as Link } from './navigation-motion';
 import Image from 'next/image';
 import { useTranslations } from 'next-intl';
 import { ArrowLeft, ArrowRight, Disc3, RefreshCw, AlertCircle } from 'lucide-react';

@@ -1,5 +1,5 @@
 'use client';
-import Link from 'next/link';
+import Image from 'next/image';
 import { useFormatter, useTranslations } from 'next-intl';
 import useSWR from 'swr';
 import {
@@ -13,6 +13,7 @@ import {
   Play,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { NavigationLink as Link } from '@/components/navigation-motion';
 import { useSession } from '@/components/providers';
 import { Avatar, Loading, LoadError } from '@/components/common';
 import { fetcher, hasPermission } from '@/lib/api';
@@ -50,24 +51,39 @@ export function HomePage() {
   return (
     <div className="home-page home-community">
       <section className="home-introduction glass" aria-labelledby="home-title">
-        <div className="home-intro-copy">
-          <h1 id="home-title">{t('title')}</h1>
-          <p className="home-subtitle">{t('titleEnd')}</p>
+        <div className="home-intro-content">
+          <div className="home-intro-copy">
+            <h1 id="home-title">{t('title')}</h1>
+            <p className="home-subtitle">{t('titleEnd')}</p>
+          </div>
           <p className="home-description">{t('description')}</p>
+          <div className="home-primary-actions">
+            <Button asChild>
+              <Link href={profileHref}>
+                {user ? n('profile') : t('join')}
+                <ArrowRight aria-hidden="true" />
+              </Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/connect">
+                <Play aria-hidden="true" />
+                {t('connect')}
+              </Link>
+            </Button>
+          </div>
         </div>
-        <div className="home-primary-actions">
-          <Button asChild size="lg">
-            <Link href={profileHref}>
-              {user ? n('profile') : t('join')}
-              <ArrowRight aria-hidden="true" />
-            </Link>
-          </Button>
-          <Button asChild variant="outline" size="lg">
-            <Link href="/connect">
-              <Play aria-hidden="true" />
-              {t('connect')}
-            </Link>
-          </Button>
+        <div className="home-hero-character" aria-hidden="true">
+          <Image
+            src="/images/home-character.png"
+            width={700}
+            height={1251}
+            alt=""
+            className="home-character-image"
+            sizes="(max-width: 360px) 180px, (max-width: 600px) 200px, (max-width: 1000px) 280px, 320px"
+            loading="eager"
+            fetchPriority="high"
+            unoptimized
+          />
         </div>
       </section>
       <nav className="home-capabilities" aria-label={t('features')}>

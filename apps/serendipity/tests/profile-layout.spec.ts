@@ -181,12 +181,23 @@ async function capture(page: Page, name: string) {
   await expect(page.locator('.rank-history-empty-title')).toBeVisible();
   await page.evaluate(() => {
     document.documentElement.style.setProperty('scroll-behavior', 'auto', 'important');
+    document.body.style.setProperty('scroll-behavior', 'auto', 'important');
     (document.activeElement as HTMLElement | null)?.blur();
     window.scrollTo({ top: 0, behavior: 'instant' });
   });
   await page.mouse.move(0, 0);
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
-  const output = `../../.impeccable/review/${hierarchy ? 'map-hierarchy-profile' : 'community-profile'}-${name}`;
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        );
+        return window.scrollY;
+      }),
+    )
+    .toBe(0);
+  const output = `../../.impeccable/review/dense-profile-${name}`;
   await page.screenshot({
     path: `${output}.png`,
     fullPage: true,

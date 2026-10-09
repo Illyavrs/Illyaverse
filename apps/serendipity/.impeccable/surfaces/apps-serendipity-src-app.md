@@ -38,3 +38,13 @@ Normal map download is a complete `.osz` package. Prioritize a retained original
 Homepage map hover belongs to the joined record: full-width restrained neutral feedback, unchanged geometry, visible keyboard focus and one blur on the containing material. Review the supplied desktop viewport, mobile390/320, dark/light, real empty/loading/errors, custom-background glass0/50/100, open Select, equal-card geometry and actual `.osz` actions. Synthetic artwork is QA only; no AI or new shipping raster.
 
 Phone catalogue previews use one compact scrolling row with all eight difficulty links retained, instead of reserving several empty rows in low-difficulty sets. Homepage rows retain a full-width hover area while cover and numeric content stay inset 20px on desktop and 16px on phones.
+
+## October 9 dense interface and navigation correction
+
+The latest user screenshot rejects the tall toolbar and the previously reviewed 323px catalogue tracks. It supersedes that density verdict. Use consistently compact search/filter geometry and equal 124px desktop /112px phone cover records, with a single accessible difficulty popover instead of reserved blank tracks. Preserve complete difficulty access, real full-set download behavior and filter/return history.
+
+The user supplied a transparent character PNG for the homepage hero, explicitly authorizing this artwork above the unchanged plain black default canvas. Copy its original bytes, document provenance, keep the head visible and separate the figure from text/actions at narrow widths. No AI image editing or generation.
+
+Add purposeful Motion navigation selection and native document View Transitions with reduced-motion and unsupported-browser fallbacks. A slim top loading indicator follows real internal navigation and catalogue requests; success, failure and cancellation release it. Theme selection belongs to the existing Appearance menu, so remove the duplicate standalone theme icon. Dropdowns retain focus/dismiss behavior while keeping the page scrollbar/gutter and layout anchored; modal Select and Sheet compensation must not introduce a second gutter.
+
+Primary user evidence: codex-clipboard-124584f3-341a-4eac-a5ea-c93691dabd7e.png (rejected toolbar), codex-clipboard-d2f8a098-281c-4ab3-b865-b8b8b4220dc7.png and codex-clipboard-7239a95c-c576-4db4-843e-d4a06cf784ae.png (compact reference records), codex-clipboard-1597b07e-6066-403e-b815-648b59f57d4d.png (supplied hero). They live in C:/Users/owenl/AppData/Local/Temp. Build fully, perform one batched desktop/mobile inspection and at most one consolidated confirmation, then obtain a fresh independent full finish review for this correction.

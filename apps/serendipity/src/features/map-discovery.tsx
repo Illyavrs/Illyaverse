@@ -1,13 +1,15 @@
 'use client';
 
 import { useEffect, useId, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
-import Link from 'next/link';
+import { NavigationLink as Link, useNavigationProgress } from '@/components/navigation-motion';
 import Image from 'next/image';
+import { Popover as PopoverPrimitive } from 'radix-ui';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import {
   ArrowLeft,
   ArrowRight,
+  ChevronDown,
   Clock,
   Grid2X2,
   Library,
@@ -242,6 +244,7 @@ export function DifficultyChip({
 
 // Fresh requests make the public access boundary explicit. Responses from old keys never render.
 function usePublicData<T>(path: string) {
+  const { beginRequest } = useNavigationProgress();
   const [attempt, setAttempt] = useState(0);
   const request = useMemo(() => ({ path, attempt }), [path, attempt]);
   const [response, setResponse] = useState<{
@@ -251,16 +254,22 @@ function usePublicData<T>(path: string) {
   } | null>(null);
   useEffect(() => {
     const controller = new AbortController();
+    const finish = beginRequest();
     api<T>(request.path, { signal: controller.signal }).then(
       (data) => {
         if (!controller.signal.aborted) setResponse({ request, data });
+        finish();
       },
       (error: unknown) => {
         if (!controller.signal.aborted) setResponse({ request, error });
+        finish();
       },
     );
-    return () => controller.abort();
-  }, [request]);
+    return () => {
+      controller.abort();
+      finish();
+    };
+  }, [request, beginRequest]);
   const current = response?.request === request ? response : null;
   return {
     data: current?.data,
@@ -364,8 +373,13 @@ function DiscoverySkeleton({ compact = false }: { compact?: boolean }) {
 
 function MapSetCard({ set, returnTo }: { set: DiscoverySet; returnTo: string }) {
   const t = useTranslations('mapDiscovery');
+  const c = useTranslations('common');
+  const headingId = useId();
+  const countId = useId();
   const map = set.representative;
   const preview = set.preview.slice(0, 8);
+  const cover = mapCoverUrl(map.source, set.native_set_id);
+  const count = t('matchedStored', { matched: set.matching_count, stored: set.stored_count });
   const mappedBy = t('mappedBy', { creator: map.creator });
   const matchingModes = set.matching_modes
     .map((mode) => modes[mode] ?? t('unknownMode'))
@@ -375,18 +389,13 @@ function MapSetCard({ set, returnTo }: { set: DiscoverySet; returnTo: string }) 
       ? mapDuration(set.length_min)
       : `${mapDuration(set.length_min)}–${mapDuration(set.length_max)}`;
   return (
-    <article className="discovery-set glass">
+    <article
+      className="discovery-set glass"
+      style={cover ? ({ '--catalogue-cover': `url("${cover}")` } as CSSProperties) : undefined}
+    >
       <Link href={beatmapDifficultyHref(map, { returnTo })} className="discovery-set-main">
         <MapArtwork source={map.source} nativeSetId={set.native_set_id} />
         <div className="discovery-set-copy">
-          <div className="discovery-set-statuses">
-            {set.matching_statuses.map((status) => (
-              <StatusLabel value={status} key={status} />
-            ))}
-            {map.source === 'local' && (
-              <span className="discovery-source">{t('source.local')}</span>
-            )}
-          </div>
           <h2 title={map.title}>{map.title}</h2>
           <span className="discovery-artist" title={map.artist}>
             {map.artist}
@@ -409,50 +418,85 @@ function MapSetCard({ set, returnTo }: { set: DiscoverySet; returnTo: string }) 
         <ArrowRight className="discovery-open" aria-hidden="true" />
       </Link>
       <div className="discovery-difficulties">
-        <div
-          className="difficulty-strip"
-          onFocusCapture={(event) => {
-            const rail = event.currentTarget;
-            if (
-              !(event.target instanceof HTMLAnchorElement) ||
-              rail.scrollWidth <= rail.clientWidth
-            )
-              return;
-            const target = event.target.getBoundingClientRect();
-            const bounds = rail.getBoundingClientRect();
-            const inset = 6;
-            const delta =
-              target.left < bounds.left + inset
-                ? target.left - bounds.left - inset
-                : target.right > bounds.right - inset
-                  ? target.right - bounds.right + inset
-                  : 0;
-            if (delta !== 0) rail.scrollBy({ left: delta, behavior: 'instant' });
-          }}
-        >
-          {preview.map((difficulty) => (
-            <DifficultyChip
-              map={difficulty}
-              key={difficulty.id}
-              compact
-              navigation={{ returnTo }}
-            />
+        <div className="discovery-set-statuses">
+          {set.matching_statuses.map((status) => (
+            <StatusLabel value={status} key={status} />
           ))}
+          {map.source === 'local' && <span className="discovery-source">{t('source.local')}</span>}
         </div>
-        <div className="discovery-difficulty-heading">
-          <span>
-            {t('matchedStored', { matched: set.matching_count, stored: set.stored_count })}
-          </span>
-          {set.matching_count > preview.length && (
-            <Link
-              href={`${beatmapDifficultyHref(map, { returnTo })}#set-difficulties`}
-              className="discovery-more"
+        <PopoverPrimitive.Root>
+          <PopoverPrimitive.Trigger asChild>
+            <button
+              type="button"
+              className="discovery-difficulty-trigger"
+              aria-label={`${t('setTitle')}: ${map.title}. ${count}`}
+              title={count}
             >
-              {t('moreDifficulties', { count: set.matching_count - preview.length })}
-              <ArrowRight aria-hidden="true" />
-            </Link>
-          )}
-        </div>
+              <span className="discovery-difficulty-ticks" aria-hidden="true">
+                {preview.map((difficulty) => (
+                  <span
+                    className="difficulty-marker"
+                    key={difficulty.id}
+                    style={
+                      {
+                        '--difficulty-color': `var(--difficulty-${difficultyLevel(difficulty.stars)})`,
+                      } as CSSProperties
+                    }
+                  />
+                ))}
+              </span>
+              <span className="discovery-difficulty-count" aria-hidden="true">
+                {set.matching_count}
+              </span>
+              <ChevronDown aria-hidden="true" />
+            </button>
+          </PopoverPrimitive.Trigger>
+          <PopoverPrimitive.Portal>
+            <PopoverPrimitive.Content
+              className="discovery-difficulty-popover"
+              data-slot="popover-content"
+              data-material="floating"
+              align="end"
+              sideOffset={6}
+              collisionPadding={12}
+              aria-labelledby={headingId}
+              aria-describedby={countId}
+              onOpenAutoFocus={(event) => {
+                if (!(event.target instanceof HTMLElement)) return;
+                const firstDifficulty =
+                  event.target.querySelector<HTMLAnchorElement>('.difficulty-chip');
+                if (firstDifficulty) {
+                  event.preventDefault();
+                  firstDifficulty.focus();
+                }
+              }}
+            >
+              <div className="discovery-difficulty-popover-heading">
+                <div>
+                  <h3 id={headingId}>{t('setTitle')}</h3>
+                  <p id={countId}>{count}</p>
+                </div>
+                <PopoverPrimitive.Close aria-label={c('close')}>
+                  <X aria-hidden="true" />
+                </PopoverPrimitive.Close>
+              </div>
+              <div className="discovery-difficulty-options">
+                {preview.map((difficulty) => (
+                  <DifficultyChip map={difficulty} key={difficulty.id} navigation={{ returnTo }} />
+                ))}
+              </div>
+              {set.matching_count > preview.length && (
+                <Link
+                  href={`${beatmapDifficultyHref(map, { returnTo })}#set-difficulties`}
+                  className="discovery-more"
+                >
+                  {t('moreDifficulties', { count: set.matching_count - preview.length })}
+                  <ArrowRight aria-hidden="true" />
+                </Link>
+              )}
+            </PopoverPrimitive.Content>
+          </PopoverPrimitive.Portal>
+        </PopoverPrimitive.Root>
       </div>
     </article>
   );

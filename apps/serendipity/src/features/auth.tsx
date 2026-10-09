@@ -1,6 +1,6 @@
 'use client';
 import { useState, type FormEvent } from 'react';
-import Link from 'next/link';
+import { NavigationLink as Link } from '@/components/navigation-motion';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { ArrowRight, Disc3, LoaderCircle } from 'lucide-react';

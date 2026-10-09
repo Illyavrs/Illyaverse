@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useEffectEvent, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import Link from 'next/link';
+import { NavigationLink as Link } from '@/components/navigation-motion';
 import { useLocale, useTranslations } from 'next-intl';
 import useSWR from 'swr';
 import { ArrowRight, Check, Disc3, LoaderCircle, Mail } from 'lucide-react';

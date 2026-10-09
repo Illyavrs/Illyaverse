@@ -299,10 +299,14 @@ async function capture(
   if (process.env.ILLYA_MAP_DISCOVERY_CAPTURE !== '1') return;
   const output = path.resolve(process.cwd(), '../../.impeccable/review');
   await mkdir(output, { recursive: true });
-  const imagePath = path.join(output, `map-discovery-${name}.png`);
-  if (viewportOnly) await expect(page.getByRole('listbox')).toBeVisible();
+  const imagePath = path.join(
+    output,
+    `${name.startsWith('dense-map-') ? name : `dense-map-${name}`}.png`,
+  );
+  const popup = page.locator('.discovery-difficulty-popover, [role="listbox"]').first();
+  if (viewportOnly) await expect(popup).toBeVisible();
   await page.screenshot({ path: imagePath, fullPage: !viewportOnly, animations: 'disabled' });
-  if (viewportOnly) await expect(page.getByRole('listbox')).toBeVisible();
+  if (viewportOnly) await expect(popup).toBeVisible();
   const metadata = await page.evaluate(() => ({
     width: innerWidth,
     height: innerHeight,
@@ -317,15 +321,37 @@ async function capture(
     catalogue_cards: [...document.querySelectorAll('.discovery-set')].map((card) => {
       const bounds = card.getBoundingClientRect();
       const identity = card.querySelector('.discovery-set-main')!.getBoundingClientRect();
-      const preview = card.querySelector('.difficulty-strip')!.getBoundingClientRect();
+      const trigger = card.querySelector('.discovery-difficulty-trigger')!.getBoundingClientRect();
       return {
         width: bounds.width,
         height: bounds.height,
         identity_height: identity.height,
-        preview_height: preview.height,
-        preview_count: card.querySelectorAll('.difficulty-chip').length,
+        trigger_width: trigger.width,
+        trigger_height: trigger.height,
+        tick_count: card.querySelectorAll('.discovery-difficulty-ticks .difficulty-marker').length,
+        permanently_reserved_difficulty_rows: card.querySelectorAll('.difficulty-chip').length,
+        faded_cover: getComputedStyle(card, '::before').backgroundImage,
       };
     }),
+    difficulty_popover: (() => {
+      const popup = document.querySelector('.discovery-difficulty-popover');
+      if (!popup) return null;
+      const bounds = popup.getBoundingClientRect();
+      return {
+        width: bounds.width,
+        height: bounds.height,
+        left: bounds.left,
+        right: bounds.right,
+        top: bounds.top,
+        bottom: bounds.bottom,
+        links: [...popup.querySelectorAll('a')].map((link) => ({
+          href: link.getAttribute('href'),
+          accessible_name: link.getAttribute('aria-label') ?? link.textContent,
+          width: link.getBoundingClientRect().width,
+          height: link.getBoundingClientRect().height,
+        })),
+      };
+    })(),
     detail_overview: (() => {
       const overview = document.querySelector('.beatmap-overview');
       if (!overview) return null;
@@ -359,7 +385,7 @@ async function capture(
   );
 }
 
-test('set results show matched and stored counts, eight previews and server pages', async ({
+test('set results show matched and stored counts, eight popover previews and server pages', async ({
   page,
 }) => {
   const state = await fixture(page);
@@ -370,14 +396,21 @@ test('set results show matched and stored counts, eight previews and server page
   );
   await expect(page.locator('.discovery-result-count > span')).toHaveText('Showing 1–24');
   const first = page.locator('.discovery-set').first();
-  await expect(first.getByText('28 matching · 28 stored difficulties')).toBeVisible();
-  await expect(first.locator('.difficulty-chip')).toHaveCount(8);
-  await expect(first.getByRole('link', { name: '20 more matching difficulties' })).toHaveAttribute(
+  const trigger = first.locator('.discovery-difficulty-trigger');
+  await expect(trigger).toHaveAccessibleName(/28 matching · 28 stored difficulties/);
+  await expect(first.locator('.difficulty-chip')).toHaveCount(0);
+  await expect(first.locator('.discovery-difficulty-ticks .difficulty-marker')).toHaveCount(8);
+  await trigger.click();
+  const popup = page.locator('.discovery-difficulty-popover');
+  await expect(popup.getByText('28 matching · 28 stored difficulties')).toBeVisible();
+  await expect(popup.locator('.difficulty-chip')).toHaveCount(8);
+  await expect(popup.getByRole('link', { name: '20 more matching difficulties' })).toHaveAttribute(
     'href',
     '/beatmaps/980000?returnTo=%2Fbeatmaps#set-difficulties',
   );
   await expect(first.locator('.discovery-set-main .difficulty-chip')).toHaveCount(0);
   await expect(first.locator('.discovery-status')).toHaveCount(4);
+  await popup.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(page).toHaveURL(/page=2/);
   await expect(page.locator('.discovery-set')).toHaveCount(6);
@@ -385,18 +418,18 @@ test('set results show matched and stored counts, eight previews and server page
   await selectField(page.getByLabel('Game mode', { exact: true }), '3');
   await expect(page).not.toHaveURL(/page=2/);
   await expect(
-    page.locator('.discovery-set').first().getByText('7 matching · 28 stored difficulties'),
-  ).toBeVisible();
+    page.locator('.discovery-set').first().locator('.discovery-difficulty-trigger'),
+  ).toHaveAccessibleName(/7 matching · 28 stored difficulties/);
   await expect(page.locator('.discovery-set').first().locator('.discovery-status')).toHaveText([
     'Unranked',
   ]);
 });
 
-test('catalogue cards keep equal compact tracks and usable links across content, widths and views', async ({
+test('dense catalogue cards keep one compact height and every difficulty reachable across widths and views', async ({
   page,
 }) => {
   const state = await fixture(page, 'en', 'light');
-  state.previewLimit = 24; // An oversized response must still respect the eight-link preview cap.
+  state.previewLimit = 24;
   state.maps = state.maps.filter(
     (map) =>
       [2588526, 2_010_000_001, 2_010_000_005].includes(map.native_set_id) || map.id === 980300,
@@ -415,50 +448,39 @@ test('catalogue cards keep equal compact tracks and usable links across content,
       await expect(cards).toHaveCount(4);
       await page.evaluate(() => document.fonts.ready);
       const first = cards.first();
-      await expect(first.locator('.difficulty-chip')).toHaveCount(8);
       await expect(first.getByRole('heading')).toHaveAttribute('title', longTitle);
-      await expect(
-        first.getByRole('link', { name: '20 more matching difficulties' }),
-      ).toHaveAttribute(
-        'href',
-        `/beatmaps/980000?returnTo=${encodeURIComponent(`/beatmaps?view=${view}`)}#set-difficulties`,
-      );
+      await expect(first.locator('.discovery-difficulty-ticks .difficulty-marker')).toHaveCount(8);
+      await expect(cards.locator('.difficulty-chip')).toHaveCount(0);
       const geometry = await cards.evaluateAll((records) =>
         records.map((card) => {
           const bounds = card.getBoundingClientRect();
           const identity = card.querySelector('.discovery-set-main')!.getBoundingClientRect();
           const artwork = card.querySelector('.map-artwork')!.getBoundingClientRect();
-          const preview = card.querySelector('.difficulty-strip')!.getBoundingClientRect();
-          const slots = ['h2', '.discovery-artist', '.discovery-set-copy p', '.discovery-set-meta'];
+          const trigger = card
+            .querySelector('.discovery-difficulty-trigger')!
+            .getBoundingClientRect();
           return {
             height: bounds.height,
             identityHeight: identity.height,
             artworkHeight: artwork.height,
-            previewHeight: preview.height,
-            slotOffsets: slots.map(
+            slotOffsets: [
+              'h2',
+              '.discovery-artist',
+              '.discovery-set-copy p',
+              '.discovery-set-meta',
+            ].map(
               (selector) =>
                 card.querySelector(selector)!.getBoundingClientRect().top - identity.top,
             ),
-            links: [...card.querySelectorAll('a')].map((link) => {
-              const target = link.getBoundingClientRect();
-              const rail = link.closest('.difficulty-strip');
-              const railBounds = rail?.getBoundingClientRect();
-              const localScroll =
-                rail &&
-                railBounds &&
-                getComputedStyle(rail).overflowX === 'auto' &&
-                railBounds.left >= bounds.left &&
-                railBounds.right <= bounds.right + 1;
-              return {
-                width: target.width,
-                height: target.height,
-                inside:
-                  ((target.left >= bounds.left && target.right <= bounds.right + 1) ||
-                    Boolean(localScroll)) &&
-                  target.top >= bounds.top &&
-                  target.bottom <= bounds.bottom + 1,
-              };
-            }),
+            trigger: {
+              width: trigger.width,
+              height: trigger.height,
+              inside:
+                trigger.left >= bounds.left &&
+                trigger.right <= bounds.right + 1 &&
+                trigger.top >= bounds.top &&
+                trigger.bottom <= bounds.bottom + 1,
+            },
           };
         }),
       );
@@ -467,64 +489,115 @@ test('catalogue cards keep equal compact tracks and usable links across content,
         range(geometry.map((card) => card.height)),
         `${width}px ${view} card height`,
       ).toBeLessThanOrEqual(1);
-      expect(
-        range(geometry.map((card) => card.identityHeight)),
-        `${width}px ${view} identity height`,
-      ).toBeLessThanOrEqual(1);
-      expect(
-        range(geometry.map((card) => card.previewHeight)),
-        `${width}px ${view} preview height`,
-      ).toBeLessThanOrEqual(1);
       for (let slot = 0; slot < 4; slot++)
         expect(
           range(geometry.map((card) => card.slotOffsets[slot])),
           `${width}px ${view} text slot ${slot}`,
         ).toBeLessThanOrEqual(1);
-      if (width > 1050) {
-        // The desktop record stays denser than the former eight-difficulty three-row card.
-        expect(geometry[0].height).toBeLessThan(view === 'grid' ? 330 : 180);
-        expect(geometry[0].previewHeight).toBeLessThan(100);
-      }
-      if (width <= 600) {
-        expect(geometry[0].previewHeight).toBeLessThanOrEqual(65);
-        const rail = first.locator('.difficulty-strip');
-        const last = rail.getByRole('link').last();
-        await last.focus();
-        await expect(last).toBeFocused();
-        await expect(last).toBeInViewport();
-        await expect.poll(() => rail.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
-        await expect
-          .poll(() =>
-            last.evaluate((element) => {
-              const bounds = element.getBoundingClientRect();
-              const rail = element.closest('.difficulty-strip')!.getBoundingClientRect();
-              return bounds.left >= rail.left && bounds.right <= rail.right + 1;
-            }),
-          )
-          .toBe(true);
-      }
       for (const card of geometry) {
+        expect(card.height).toBeLessThanOrEqual(130);
+        expect(card.height).toBeGreaterThanOrEqual(110);
         expect(Math.abs(card.artworkHeight - card.identityHeight)).toBeLessThanOrEqual(1);
-        for (const link of card.links) {
-          expect(link.width, `${width}px ${view} target width`).toBeGreaterThanOrEqual(44);
-          expect(link.height, `${width}px ${view} target height`).toBeGreaterThanOrEqual(44);
-          expect(link.inside, `${width}px ${view} target within record or its local rail`).toBe(
-            true,
-          );
-        }
+        expect(card.trigger.width).toBeGreaterThanOrEqual(44);
+        expect(card.trigger.height).toBeGreaterThanOrEqual(44);
+        expect(card.trigger.inside).toBe(true);
       }
+      await first.locator('.discovery-difficulty-trigger').click();
+      const popup = page.locator('.discovery-difficulty-popover');
+      await expect(popup.getByRole('link', { name: /Open .*stars/ })).toHaveCount(8);
+      await expect(popup.locator('.difficulty-chip').first()).toHaveAccessibleName(/1[.,]25 stars/);
+      await expect(popup.locator('.difficulty-chip').last()).toHaveAccessibleName(/3[.,]21 stars/);
+      await expect(
+        popup.getByRole('link', { name: '20 more matching difficulties' }),
+      ).toHaveAttribute(
+        'href',
+        `/beatmaps/980000?returnTo=${encodeURIComponent(`/beatmaps?view=${view}`)}#set-difficulties`,
+      );
+      const links = await popup.getByRole('link').evaluateAll((anchors) =>
+        anchors.map((anchor) => ({
+          width: anchor.getBoundingClientRect().width,
+          height: anchor.getBoundingClientRect().height,
+        })),
+      );
+      for (const link of links) {
+        expect(link.width).toBeGreaterThanOrEqual(44);
+        expect(link.height).toBeGreaterThanOrEqual(44);
+      }
+      await popup.getByRole('button', { name: 'Close', exact: true }).click();
+      await expect(first.locator('.discovery-difficulty-trigger')).toBeFocused();
       await noOverflow(page);
     }
   }
-  await page.setViewportSize({ width: 390, height: 900 });
-  await page.goto('/beatmaps?view=grid');
-  const lastPreview = page.locator('.discovery-set').first().locator('.difficulty-chip').last();
-  await lastPreview.focus();
-  await expect(lastPreview).toBeFocused();
-  await expect(lastPreview).toBeInViewport();
-  await lastPreview.press('Enter');
+});
+
+test('dense difficulty popovers open by keyboard, dismiss with focus restore and retain catalogue navigation', async ({
+  page,
+}) => {
+  await fixture(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/beatmaps?source=official&view=grid&sort=stars');
+  await expect(page.locator('.discovery-set')).toHaveCount(15);
+  const trigger = page.locator('.discovery-set').first().locator('.discovery-difficulty-trigger');
+  await trigger.focus();
+  await trigger.press('Enter');
+  const popup = page.locator('.discovery-difficulty-popover');
+  await expect(popup).toBeVisible();
+  await expect(popup.locator('.difficulty-chip').first()).toBeFocused();
+  await popup.locator('.difficulty-chip').first().press('Escape');
+  await expect(popup).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await trigger.press('Space');
+  await expect(popup).toBeVisible();
+  await expect(popup.locator('.difficulty-chip').first()).toBeFocused();
+  await page.locator('.discovery-set').nth(2).locator('.discovery-set-statuses').click();
+  await expect(popup).toHaveCount(0);
+  await trigger.click();
+  await popup.locator('.difficulty-chip').last().focus();
+  await expect(popup.locator('.difficulty-chip').last()).toBeFocused();
+  await expect(popup.locator('.difficulty-chip').last()).toBeInViewport();
+  await popup.locator('.difficulty-chip').last().press('Enter');
   await expect(page).toHaveURL(/\/beatmaps\/980007\?/);
-  await expect(page.locator('.back-link')).toHaveAttribute('href', '/beatmaps?view=grid');
+  await expect(page.locator('.back-link')).toHaveAttribute(
+    'href',
+    '/beatmaps?source=official&view=grid&sort=stars',
+  );
+  await page.locator('.back-link').click();
+  await expect(page.locator('.discovery-results')).toHaveClass(/view-grid/);
+  await expect(page.getByLabel('Source', { exact: true })).toHaveAttribute(
+    'data-value',
+    'official',
+  );
+  await page.locator('.discovery-set').first().locator('.discovery-difficulty-trigger').click();
+  await popup.getByRole('link', { name: '20 more matching difficulties' }).click();
+  await expect(page).toHaveURL(/#set-difficulties$/);
+  await expect(page.locator('.set-difficulty-selector')).toBeVisible();
+  await expect(page.locator('.set-difficulty-row')).toHaveCount(24);
+});
+test('dense difficulty popovers support touch selection on a phone', async ({ browser }) => {
+  const context = await browser.newContext({
+    baseURL: test.info().project.use.baseURL as string,
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  try {
+    const page = await context.newPage();
+    await fixture(page);
+    await page.goto('/beatmaps?source=official&view=list');
+    await expect(page.locator('.discovery-set')).toHaveCount(15);
+    await page.locator('.discovery-set').first().locator('.discovery-difficulty-trigger').tap();
+    const popup = page.locator('.discovery-difficulty-popover');
+    await expect(popup.locator('.difficulty-chip')).toHaveCount(8);
+    await popup.locator('.difficulty-chip').nth(1).tap();
+    await expect(page).toHaveURL(/\/beatmaps\/980001\?/);
+    await expect(page.locator('.back-link')).toHaveAttribute(
+      'href',
+      '/beatmaps?source=official&view=list',
+    );
+    await noOverflow(page);
+  } finally {
+    await context.close();
+  }
 });
 
 test('catalogue toolbar uses one transparent material layer with readable fields in both themes', async ({
@@ -850,7 +923,8 @@ test('difficulty navigation retains catalogue filters and RX; native mania force
   await expect(page.locator('.discovery-set')).toHaveCount(15);
   const catalogue = new URL(page.url());
   const returnTo = `${catalogue.pathname}${catalogue.search}`;
-  await page.locator('.discovery-set').first().locator('.difficulty-chip').first().click();
+  await page.locator('.discovery-set').first().locator('.discovery-difficulty-trigger').click();
+  await page.locator('.discovery-difficulty-popover .difficulty-chip').first().click();
   await expect(page.locator('.back-link')).toHaveAttribute('href', returnTo);
   await page.getByRole('button', { name: 'Relax (RX)', exact: true }).click();
   const selector = page.locator('.set-difficulty-selector');
@@ -946,99 +1020,171 @@ test('official cover failures and local namespace fallbacks stay readable with l
   await noOverflow(page);
 });
 
-test('review capture matrix uses document top and writes per-capture metadata', async ({
-  page,
-}) => {
-  const state = await fixture(page, 'zh-TW', 'dark');
-  state.maps = state.maps.filter((map) =>
-    [2588526, 2_010_000_001, 2_010_000_003, 2_010_000_005].includes(map.native_set_id),
-  );
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto('/beatmaps');
-  await expect(page.locator('.discovery-set')).toHaveCount(4);
-  await capture(page, 'desktop-dark-zh', 'zh-TW', 'dark');
-  await page.setViewportSize({ width: 1280, height: 720 });
-  await capture(page, '1280-dark-zh', 'zh-TW', 'dark');
-  await page.setViewportSize({ width: 1288, height: 720 });
-  await capture(page, 'user-1288-dark-zh', 'zh-TW', 'dark');
-  await page.setViewportSize({ width: 1254, height: 714 });
-  await capture(page, '1254-dark-zh', 'zh-TW', 'dark');
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.getByRole('button', { name: '列表', exact: true }).click();
-  await capture(page, 'desktop-dark-zh-list', 'zh-TW', 'dark');
-  await page.goto('/beatmaps/980000');
-  await expect(page.locator('.set-difficulty-row')).toHaveCount(24);
-  await capture(page, 'detail-dark-zh', 'zh-TW', 'dark');
-  expect(state.selectorQueries).not.toHaveLength(0);
-});
-
-for (const { locale, theme, width, name } of [
-  { locale: 'en', theme: 'light', width: 390, name: 'mobile-light-en' },
-  { locale: 'ja', theme: 'dark', width: 320, name: 'mobile-dark-ja-320' },
-])
-  test(`review capture ${name}`, async ({ page }) => {
-    // Settle native focus scrolling before the Tab chain, as the capture helper
-    // already does later for screenshots. The site's html uses smooth scrolling.
+const denseMapCaptures = [
+  {
+    locale: 'zh-TW',
+    theme: 'dark',
+    width: 1440,
+    height: 1000,
+    view: 'grid',
+    name: 'dense-map-1440-dark-zh-grid',
+  },
+  {
+    locale: 'zh-TW',
+    theme: 'dark',
+    width: 1288,
+    height: 720,
+    view: 'grid',
+    name: 'dense-map-1288-dark-zh-grid',
+  },
+  {
+    locale: 'zh-TW',
+    theme: 'dark',
+    width: 1280,
+    height: 720,
+    view: 'grid',
+    name: 'dense-map-1280-dark-zh-grid',
+  },
+  {
+    locale: 'zh-TW',
+    theme: 'dark',
+    width: 1254,
+    height: 714,
+    view: 'grid',
+    name: 'dense-map-1254-dark-zh-grid',
+  },
+  {
+    locale: 'zh-TW',
+    theme: 'dark',
+    width: 1024,
+    height: 900,
+    view: 'grid',
+    name: 'dense-map-1024-dark-zh-grid',
+  },
+  {
+    locale: 'zh-TW',
+    theme: 'dark',
+    width: 800,
+    height: 900,
+    view: 'grid',
+    name: 'dense-map-800-dark-zh-grid',
+  },
+  {
+    locale: 'zh-TW',
+    theme: 'dark',
+    width: 1440,
+    height: 1000,
+    view: 'list',
+    name: 'dense-map-1440-dark-zh-list',
+  },
+  {
+    locale: 'zh-TW',
+    theme: 'dark',
+    width: 1254,
+    height: 714,
+    view: 'list',
+    name: 'dense-map-1254-dark-zh-list',
+  },
+  {
+    locale: 'en',
+    theme: 'light',
+    width: 1440,
+    height: 1000,
+    view: 'grid',
+    name: 'dense-map-1440-light-en-grid',
+  },
+  {
+    locale: 'en',
+    theme: 'light',
+    width: 1254,
+    height: 714,
+    view: 'list',
+    name: 'dense-map-1254-light-en-list',
+  },
+  {
+    locale: 'en',
+    theme: 'light',
+    width: 390,
+    height: 844,
+    view: 'grid',
+    name: 'dense-map-390-light-en-grid',
+  },
+  {
+    locale: 'en',
+    theme: 'light',
+    width: 390,
+    height: 844,
+    view: 'list',
+    name: 'dense-map-390-light-en-list',
+  },
+  {
+    locale: 'ja',
+    theme: 'dark',
+    width: 320,
+    height: 844,
+    view: 'grid',
+    name: 'dense-map-320-dark-ja-grid',
+  },
+  {
+    locale: 'ja',
+    theme: 'dark',
+    width: 320,
+    height: 844,
+    view: 'list',
+    name: 'dense-map-320-dark-ja-list',
+  },
+  {
+    locale: 'en',
+    theme: 'light',
+    width: 390,
+    height: 844,
+    view: 'grid',
+    name: 'dense-map-390-light-en-difficulties',
+    popup: true,
+  },
+  {
+    locale: 'ja',
+    theme: 'dark',
+    width: 320,
+    height: 844,
+    view: 'grid',
+    name: 'dense-map-320-dark-ja-difficulties',
+    popup: true,
+  },
+];
+for (const { locale, theme, width, height, view, name, popup = false } of denseMapCaptures)
+  test(`dense review capture ${name}`, async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     const state = await fixture(page, locale, theme);
-    state.maps = state.maps.filter((map) =>
-      [2588526, 2_010_000_001, 2_010_000_003, 2_010_000_005].includes(map.native_set_id),
+    state.maps = state.maps.filter(
+      (map) =>
+        [2588526, 2_010_000_001, 2_010_000_005].includes(map.native_set_id) || map.id === 980300,
     );
-    await page.setViewportSize({ width, height: 844 });
-    await page.goto('/beatmaps');
+    state.maps[0].title = 'A long catalogue title 圖譜タイトル with a second song name';
+    state.maps[0].artist = 'Synthetic catalogue artist with a long recorded artist credit';
+    state.maps[0].creator = 'A long mapper identity for the compact catalogue fixture';
+    state.maps.find((map) => map.id === 980300)!.title = 'One';
+    await page.setViewportSize({ width, height });
+    await page.goto(`/beatmaps?view=${view}`);
     await expect(page.locator('.discovery-set')).toHaveCount(4);
-    await page.evaluate(() => document.fonts.ready);
-    const preview = page.locator('.discovery-set').first().locator('.difficulty-strip');
-    await expect(preview.getByRole('link')).toHaveCount(8);
-    // A single scrolling row keeps every set compact regardless of difficulty count.
-    expect(
-      await preview.evaluate((element) => element.getBoundingClientRect().height),
-    ).toBeLessThanOrEqual(65);
-    await expect(preview.getByRole('link').first()).toHaveAccessibleName(/Difficulty 1.*1[.,]25/);
-    await expect(preview.getByRole('link').last()).toContainText('3.21');
-    await preview.getByRole('link').first().focus();
-    for (let index = 0; index < 8; index++) {
-      const link = preview.getByRole('link').nth(index);
-      await expect(link).toBeFocused();
-      await expect(link).toBeInViewport();
-      await expect
-        .poll(
-          () =>
-            link.evaluate((element, linkIndex) => {
-              const target = element.getBoundingClientRect();
-              const container = element.closest('.difficulty-strip')!;
-              const rail = container.getBoundingClientRect();
-              // Native scrolling rounds its offsets to CSS pixels while DOMRects
-              // retain fractions. Bound both edges by the same one-pixel allowance.
-              return {
-                link_index: linkIndex + 1,
-                target: { left: target.left, right: target.right, width: target.width },
-                rail: { left: rail.left, right: rail.right, width: rail.width },
-                scroll_left: container.scrollLeft,
-                clipped_left: Math.max(0, rail.left - target.left),
-                clipped_right: Math.max(0, target.right - rail.right),
-                within: target.left >= rail.left - 1 && target.right <= rail.right + 1,
-              };
-            }, index),
-          {
-            message: `${name}: keyboard focus must reveal difficulty ${index + 1} within one CSS pixel`,
-          },
-        )
-        .toEqual(expect.objectContaining({ within: true }));
-      if (index < 7) await link.press('Tab');
+    if (popup) {
+      await page.locator('.discovery-set').first().locator('.discovery-difficulty-trigger').click();
+      await expect(page.locator('.discovery-difficulty-popover .difficulty-chip')).toHaveCount(8);
     }
-    await expect.poll(() => preview.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
-    await noOverflow(page);
-    await preview.evaluate((element) => {
-      if (document.activeElement instanceof HTMLElement && element.contains(document.activeElement))
-        document.activeElement.blur();
-      element.scrollTo({ left: 0, top: 0, behavior: 'instant' });
-    });
-    await capture(page, name, locale, theme);
+    await capture(page, name, locale, theme, popup);
+  });
+
+for (const { locale, theme, width } of [
+  { locale: 'en', theme: 'light', width: 390 },
+  { locale: 'ja', theme: 'dark', width: 320 },
+])
+  test(`mobile ${locale} keeps all known detail difficulty links reachable`, async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await fixture(page, locale, theme);
+    await page.setViewportSize({ width, height: 844 });
     await page.goto('/beatmaps/980000');
     await expect(page.locator('.set-difficulty-row')).toHaveCount(24);
     const quickLinks = page.locator('.set-difficulty-strip');
-    // All 24 difficulties stay reachable without pushing the board below a long stack of buttons.
     expect(
       await quickLinks.evaluate((element) => element.getBoundingClientRect().height),
     ).toBeLessThan(180);
@@ -1046,12 +1192,5 @@ for (const { locale, theme, width, name } of [
     await lastDifficulty.focus();
     await expect(lastDifficulty).toBeFocused();
     await expect(lastDifficulty).toBeInViewport();
-    await quickLinks.evaluate((element) => {
-      // Assert focus/visibility above, then release focus before resetting the
-      // rail so the browser does not scroll the focused last link back into view.
-      if (document.activeElement instanceof HTMLElement && element.contains(document.activeElement))
-        document.activeElement.blur();
-      element.scrollTo({ left: 0, top: 0, behavior: 'instant' });
-    });
-    await capture(page, `detail-${name}`, locale, theme);
+    await noOverflow(page);
   });

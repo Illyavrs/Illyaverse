@@ -1,0 +1,139 @@
+/* Reserve the native scrollbar gutter once, including while a modal locks scroll. */
+:root {
+  --site-header-height: 106px;
+}
+html {
+  scrollbar-gutter: stable;
+}
+@supports (scrollbar-gutter: stable) {
+  /* Outrank RemoveScroll's later rule: the root gutter already reserves this space. */
+  html body[data-scroll-locked] {
+    margin-right: 0 !important;
+    --removed-body-scroll-bar-size: 0px !important;
+  }
+}
+
+.desktop-nav a.active::after {
+  content: none;
+}
+.navigation-active-indicator {
+  position: absolute;
+  height: 2px;
+  inset: auto 0 0;
+  border-radius: 3px;
+  background: var(--user-accent);
+  pointer-events: none;
+}
+.mobile-nav a {
+  position: relative;
+}
+.mobile-nav .navigation-active-indicator {
+  inset-inline: 12px;
+}
+.desktop-nav {
+  height: 44px;
+}
+.desktop-nav a,
+.mobile-nav a,
+.header-tools [data-slot='button'],
+.header-tools .language-select,
+[data-slot='select-item'],
+[data-slot='dropdown-menu-item'] {
+  min-height: 44px;
+}
+.header-tools [data-size='icon'],
+[data-slot='sheet-close'] {
+  min-width: 44px;
+  min-height: 44px;
+}
+[data-slot='sheet-close'] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+@media (max-width: 800px) {
+  :root {
+    --site-header-height: 61px;
+  }
+}
+@media (max-width: 600px) {
+  .header-inner {
+    gap: 8px;
+  }
+  .brand > span:not(.brand-mark),
+  .header-tools .user-link {
+    display: none;
+  }
+}
+.navigation-progress {
+  position: fixed;
+  z-index: 100;
+  inset: 0 0 auto;
+  height: 3px;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 100ms ease-out;
+}
+.navigation-progress[data-pending='true'] {
+  opacity: 1;
+}
+.navigation-progress::after {
+  content: '';
+  display: block;
+  height: 100%;
+  width: 35%;
+  background: var(--user-accent);
+  transform: translateX(-100%);
+}
+.navigation-progress[data-pending='true']::after {
+  animation: navigation-pending 1s ease-in-out infinite;
+}
+@keyframes navigation-pending {
+  to {
+    transform: translateX(390%);
+  }
+}
+
+/* The persistent shell stays anchored while only route content changes. */
+.main-content {
+  view-transition-name: route-content;
+}
+::view-transition-group(root) {
+  animation: none;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-group(route-content) {
+  animation-duration: 180ms;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+::view-transition-old(route-content),
+::view-transition-new(route-content) {
+  animation-duration: 180ms;
+  mix-blend-mode: normal;
+}
+::view-transition {
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .navigation-progress {
+    transition: none;
+  }
+  .navigation-progress[data-pending='true']::after {
+    animation: none;
+    width: 100%;
+    transform: none;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}

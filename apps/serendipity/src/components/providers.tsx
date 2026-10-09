@@ -11,13 +11,17 @@ import {
   type ReactNode,
 } from 'react';
 import { ThemeProvider, useTheme } from 'next-themes';
-import { useRouter } from 'next/navigation';
 import { useLocale } from 'next-intl';
 import useSWR, { SWRConfig } from 'swr';
 import { api, ApiError, fetcher, hasPermission } from '@/lib/api';
 import { AnnouncementDraftProvider } from '@/features/announcement-draft';
 import { isLocale, type Locale } from '@/i18n/config';
 import type { Preferences, User } from '@/lib/types';
+import {
+  NavigationProgressProvider,
+  navigationLoadingMiddleware,
+  useNavigationProgress,
+} from './navigation-motion';
 
 const defaults: Preferences = {
   mode: 'dark',
@@ -103,7 +107,7 @@ function validate(value: Partial<Preferences>): Preferences {
 
 function AppearanceProvider({ children }: { children: ReactNode }) {
   const { user, loading } = useSession();
-  const router = useRouter();
+  const { refresh: refreshRoute } = useNavigationProgress();
   const { setTheme } = useTheme();
   const currentLocale = useLocale();
   const initialLocale = isLocale(currentLocale) ? currentLocale : defaults.locale;
@@ -127,7 +131,7 @@ function AppearanceProvider({ children }: { children: ReactNode }) {
     setTheme(valid.mode);
     if (syncLocale && !document.cookie.includes(`illya_locale=${valid.locale}`)) {
       document.cookie = `illya_locale=${valid.locale}; Path=/; Max-Age=31536000; SameSite=Lax`;
-      router.refresh();
+      refreshRoute();
     }
   });
   useEffect(() => {
@@ -284,7 +288,7 @@ function AppearanceProvider({ children }: { children: ReactNode }) {
     const next = { ...preferencesRef.current, locale: value };
     preferencesRef.current = next;
     setPreferences(next);
-    router.refresh();
+    refreshRoute();
   }
   return (
     <AppearanceContext.Provider
@@ -322,8 +326,8 @@ function AppearanceProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function Providers({ children }: { children: ReactNode }) {
-  const router = useRouter();
+function SessionProviders({ children }: { children: ReactNode }) {
+  const { navigate } = useNavigationProgress();
   const { data, error, isLoading, mutate } = useSWR<User | null>('/me', fetcher, {
     shouldRetryOnError: false,
     revalidateOnFocus: true,
@@ -332,27 +336,34 @@ export function Providers({ children }: { children: ReactNode }) {
   async function logout() {
     await api('/auth/logout', { method: 'POST' });
     await mutate(null, { revalidate: false });
-    router.push('/');
-    router.refresh();
+    navigate('/', { refresh: true });
   }
   return (
-    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
-      <SessionContext.Provider
-        value={{ user, loading: isLoading, refresh: () => mutate(), logout }}
-      >
-        <SWRConfig key={user?.id ?? 'guest'} value={{ provider: () => new Map() }}>
-          <AnnouncementDraftProvider
-            userId={user?.id ?? null}
-            authorized={Boolean(
-              user &&
-              hasPermission(user.permissions, 'admin.view') &&
-              hasPermission(user.permissions, 'announcements.manage'),
-            )}
-          >
-            <AppearanceProvider>{children}</AppearanceProvider>
-          </AnnouncementDraftProvider>
+    <SessionContext.Provider value={{ user, loading: isLoading, refresh: () => mutate(), logout }}>
+      <SWRConfig key={user?.id ?? 'guest'} value={{ provider: () => new Map() }}>
+        <AnnouncementDraftProvider
+          userId={user?.id ?? null}
+          authorized={Boolean(
+            user &&
+            hasPermission(user.permissions, 'admin.view') &&
+            hasPermission(user.permissions, 'announcements.manage'),
+          )}
+        >
+          <AppearanceProvider>{children}</AppearanceProvider>
+        </AnnouncementDraftProvider>
+      </SWRConfig>
+    </SessionContext.Provider>
+  );
+}
+
+export function Providers({ children }: { children: ReactNode }) {
+  return (
+    <NavigationProgressProvider>
+      <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
+        <SWRConfig value={{ use: [navigationLoadingMiddleware] }}>
+          <SessionProviders>{children}</SessionProviders>
         </SWRConfig>
-      </SessionContext.Provider>
-    </ThemeProvider>
+      </ThemeProvider>
+    </NavigationProgressProvider>
   );
 }

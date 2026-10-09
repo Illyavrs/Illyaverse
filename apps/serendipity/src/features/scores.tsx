@@ -1,6 +1,6 @@
 'use client';
 import { useFormatter, useTranslations } from 'next-intl';
-import Link from 'next/link';
+import { NavigationLink as Link } from '@/components/navigation-motion';
 import { ArrowUpRight, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';

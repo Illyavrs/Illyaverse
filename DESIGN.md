@@ -81,7 +81,7 @@ typography:
     letterSpacing: "-0.025em"
   display-mobile:
     fontFamily: "'Nunito Variable', 'Noto Sans TC', sans-serif"
-    fontSize: "28px"
+    fontSize: "26px"
     fontWeight: 800
     lineHeight: 1.2
     letterSpacing: "-0.025em"
@@ -219,7 +219,22 @@ components:
     backgroundColor: "var(--section-surface-raised)"
     textColor: "{colors.foreground}"
     typography: "{typography.section}"
-    padding: "15px 20px"
+    padding: "12px 20px"
+  catalogue-toolbar:
+    backgroundColor: "var(--section-surface-strong)"
+    textColor: "{colors.foreground}"
+    rounded: "{rounded.lg}"
+    padding: "12px 16px"
+  catalogue-card:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.foreground}"
+    rounded: "{rounded.lg}"
+    height: "124px"
+  catalogue-card-mobile:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.foreground}"
+    rounded: "{rounded.lg}"
+    height: "112px"
   mode-control:
     backgroundColor: "transparent"
     textColor: "{colors.muted-foreground}"
@@ -251,7 +266,7 @@ Illyaverse presents players, beatmaps and scores as connected community records.
 
 Personalization is part of the material. The visitor can adjust theme, accent, background blur and dim, glass coverage, panel blur and opacity, and radius independently. Coverage selects which surface groups use glass; the remaining groups use deliberate solid counterparts. The viewed player’s public accent remains distinct from the visitor’s private appearance. Light mode uses neutral white and gray replacements, while zh-TW, en and ja share the same hierarchy and wrapping behavior.
 
-The source composition studies of osu-web and Sunset inform recognizable community structure; Illyaverse’s source, palette and geometry are original. Runtime official beatmap covers and player-uploaded avatars, banners and backgrounds provide identity. The default background is plain black, and a profile without a banner reserves no empty artwork region. Provenance is recorded in [the website redesign record](docs/website-redesign.md).
+The source composition studies of osu-web and Sunset inform recognizable community structure; Illyaverse’s source, palette and geometry are original. Runtime official beatmap covers and player-uploaded avatars, banners and backgrounds provide identity. The user-authorized transparent homepage character is a separate, original-byte asset above the plain black default background. Its provenance is recorded beside the image; it does not establish a decorative page background. A profile without a banner reserves no empty artwork region. Provenance is recorded in [the website redesign record](docs/website-redesign.md) and [the dense interface source record](docs/dense-interface-verification.md).
 
 **Key Characteristics:**
 
@@ -262,6 +277,8 @@ The source composition studies of osu-web and Sunset inform recognizable communi
 - Real covers and player uploads with useful missing-image fallbacks.
 - Paired light/dark semantic colors, meaningful labels and bounded overflow.
 - Shared shadcn/Radix fields and floating menus with consistent material and keyboard states.
+- Compact catalogue rows with difficulty detail available on demand.
+- Purposeful route orientation and request feedback with reduced-motion alternatives.
 
 The normative frontmatter captures current reused defaults from the global, home, profile, score and map stylesheets and the shared component primitives. Live CSS custom properties remain authoritative for personal appearance. The sidecar carries extensions and self-contained previews; its tonal ramps are preview aids, not additional shipping colors.
 
@@ -307,10 +324,10 @@ Rounded Latin lettering and the Traditional Chinese fallback carry a compact, re
 
 ### Hierarchy
 
-- **Display:** the factual home introduction uses `display` and becomes `display-mobile` at 600px.
-- **Headline:** general page headings use `headline` and `headline-mobile`. The catalogue uses 32px; profile identity uses a contextual clamp from 26px to 34px and a 21px–26px clamp on mobile. Score detail has its own 26px–40px clamp.
+- **Display:** the factual home introduction uses `display` and becomes `display-mobile` at 600px, then 24px at 360px. The supplied character has its own bounded region beside the introduction.
+- **Headline:** general page headings use `headline` and `headline-mobile`. The compact catalogue toolbar uses a contextual 24px heading with line-height 1.25; profile identity uses a contextual clamp from 26px to 34px and a 21px–26px clamp on mobile. Score detail has its own 26px–40px clamp.
 - **Title:** profile sections use `title`; home record headings use the smaller `section` role, reducing to 16px on mobile.
-- **Body:** the document base uses `body`, reducing to `body-mobile` at 600px. Supporting paragraphs use 13–14px with line-height 1.8; home copy has a 65ch measure, profile biography 75ch.
+- **Body:** the document base uses `body`, reducing to `body-mobile` at 600px. Supporting paragraphs use contextual 13–14px treatments; home copy uses line-height 1.6 and a 65ch measure, profile biography 75ch.
 - **Label and Metadata:** mode labels use `label`; metadata commonly uses `metadata`. Shared selects use 13px semibold labels; link-rendered primitive buttons retain their 14px utility typography. Dense score metadata has contextual compact treatments rather than adding steps to the shared ramp.
 - **Performance:** `performance` remains the prominent numeric role. The compact profile score list uses a contextual 20px value through desktop and mobile. Major score detail performance is 48px, reducing to 40px at 640px; keep its unit smaller.
 - **Read Body:** Markdown prose uses `read-body`; article headings have the observed 36px/24px/19px hierarchy and code uses 12px.
@@ -321,17 +338,19 @@ Rounded Latin lettering and the Traditional Chinese fallback carry a compact, re
 
 Community pages and the persistent header share a centered maximum width (1200px), with desktop gutters (32px) and mobile gutters (16px). Main page padding is 32px above and 48px below; at 600px it becomes 24px above and 36px below. Narrow utility pages retain an 850px maximum, Markdown articles 920px and authentication 1060px. These are contextual reading widths, not extra community grids.
 
-The utility header is 60px tall. Above 800px a separate route row adds 40px, with underlined active links. At 800px and below route navigation moves into the menu sheet. Profile section navigation joins the masthead and performance record, then sticks below the header at 100px desktop and 60px mobile; section anchor clearance is 165px and 125px respectively so headings remain visible.
+The utility header is 60px tall. Above 800px a separate route row adds 44px, with underlined active links. Its top seam and the header's bottom border make the complete shell 106px tall; mobile retains the 60px utility row and its one-pixel border. The shared header-height variable is therefore 106px desktop and 61px at 800px. Header actions, locale selection, route links, action-menu options and sheet close controls retain a minimum 44px target. At 800px and below route navigation moves into the menu sheet. Profile section navigation joins the masthead and performance record, then sticks below the shared header height. Section anchors add 65px to that value, giving clearance of 171px desktop and 126px mobile.
 
 Use tight 4–8px control spacing, 12–16px nearby-action gaps, 20–28px group gaps and 24–32px section padding. Joined headings usually have less vertical padding than their content. Home pairs flexible records with a 308px support column, narrowing to 276px at 1000px and stacking at 800px. Profile performance joins a flexible chart and a 294px statistics column, stacking at 900px. These compositions describe those surfaces rather than requiring every page to have a sidebar.
+
+The dense home uses page padding (24px 32px 40px), joined record headings (12px 20px), and map rows with a minimum height (104px), a 72px cover and 12px gaps. At 600px map-row padding becomes 8px 16px while retaining that minimum height. Catalogue search and four filters share one toolbar: above 1050px the search and filters sit beside one another; below that width the search stacks above the four filters. The toolbar uses 12px vertical padding and one material layer. Catalogue results use two columns with a 10px gap and equal-height cards (`catalogue-card`); single-column results use an 8px gap at 780px. Grid and list presentation share the same compact card height.
 
 ### Responsive behavior
 
 - **At 800px:** home content stacks; route navigation becomes a menu sheet; profile sticky navigation uses the mobile header offset. Profile scores give grade and a wider, two-line title the top row, with a footer spanning their area: mods and accuracy/combo remain at the left, performance/contribution at the right, and a 44px action target beside the record. Full dates, hit counts and extended facts remain available in the menu.
 - **At 780px:** catalogue results become one column and map detail areas stack.
 - **At 640px:** score detail identity, performance and fact bands rearrange into compact rows and a two-column fact grid.
-- **At 600px:** gutters, padding and contextual type reduce; home actions wrap; profile identity uses an 80px avatar rather than 108px, preserving half-overlap when a banner exists. Catalogue filters use two columns; up to eight difficulty previews remain in one locally scrolling row with 44px links, a reserved 64px track and a thin scrollbar. Focus stays visible inside the rail.
-- **At 420px:** map cover tracks narrow and supporting difficulty names truncate within their bounded controls. Complete accessible link labels retain identity.
+- **At 600px:** gutters, padding and contextual type reduce; the utility header uses an 8px gap and displays the compact brand mark, with the account's direct profile link available through mobile navigation. Dense home page padding becomes 16px 16px 32px and home actions wrap. The hero character occupies a bounded 144px square above the description and actions. Profile identity uses an 80px avatar rather than 108px, preserving half-overlap when a banner exists. Catalogue filters use two columns; cards use `catalogue-card-mobile` with an 82px cover, single-line identity tracks and a 44px difficulty-summary control. Difficulty links open in a viewport-bounded popover rather than expanding each card.
+- **At 420px:** catalogue covers narrow to 70px. Supporting difficulty names truncate within their bounded controls; complete accessible link labels retain identity. At 360px the home character region becomes 124px square.
 - **Dense records:** rankings preserve a minimum width (650px); score tables preserve 860px, or 1040px for weighted best-score collections, inside local horizontal wrappers. Markdown tables preserve 640px. Do not shrink these factual columns into unreadable cells.
 
 **The Local Overflow Rule.** Keep dense tables, technical strings and long navigation inside their own scrollable regions; the document must remain within the viewport.
@@ -350,7 +369,7 @@ A player background uses a fixed cover layer scaled to 1.05, with separate scene
 - **Selection underline:** the profile mode rail uses an inset bottom line (`inset 0 -2px var(--readable-accent)`); this marks selection rather than elevation.
 - **Overlay panels:** shared floating-control styling explicitly uses `box-shadow: none`; material, border and overlay establish separation.
 
-State transitions stay short: links change color in 180ms, score-row emphasis in 160ms ease-out, and the route underline reveals in 240ms with the implemented easing. The global reduced-motion preference removes animation/transitions and smooth scrolling.
+State transitions stay short: links change color in 180ms and score-row emphasis in 160ms ease-out. Motion moves the active route underline with a shared layout spring (stiffness 450, damping 38). Supported browsers transition only the route content for 180ms with the implemented easing, keeping the persistent shell anchored. The supplied character enters once with a 300ms fade and 10px vertical settle. The global reduced-motion preference disables the hero and view-transition animation; Motion honors the same preference, and loading feedback remains static.
 
 **The Independent Material Rule.** Background blur and dim control the scene; coverage selects glass surface groups; panel blur and opacity control their material. Keep all five controls and effects independent.
 
@@ -368,31 +387,39 @@ Joined sections keep rounding on the outer silhouette. Internal heading/content 
 
 ### Buttons
 
-Compact, direct actions use accent-filled primary, bordered outline and transparent ghost variants. Shared defaults are captured in frontmatter; home actions become 40px tall and catalogue/detail actions keep a minimum height (44px). Outline buttons use an opaque light background and an input-tinted dark surface. Hover shifts the assigned fill; focus retains an explicit ring; disabled controls reduce opacity and interaction. Button-rendered primitives inherit the body font, while anchor-rendered primitives carry the smaller utility label.
+Compact, direct actions use accent-filled primary, bordered outline and transparent ghost variants. Shared defaults are captured in frontmatter; home actions have a minimum height (36px) and wrap as needed, while catalogue/detail and persistent header actions keep a minimum height (44px). Outline buttons use an opaque light background and an input-tinted dark surface. Hover shifts the assigned fill; focus retains an explicit ring; disabled controls reduce opacity and interaction. Button-rendered primitives inherit the body font, while anchor-rendered primitives carry the smaller utility label.
 
 ### Chips
 
-Secondary metadata badges use paired secondary colors and pill corners. Difficulty controls join a tier marker, version and actual star value. Default controls use the inset material; hover and current state tint the surface with the difficulty color and strengthen its border. Compact catalogue previews use transparent defaults and 44px targets. Selected controls retain `aria-current` or `aria-pressed` semantics.
+Secondary metadata badges use paired secondary colors and pill corners. Difficulty controls join a tier marker, version and actual star value. Default controls use the inset material; hover and current state tint the surface with the difficulty color and strengthen its border. Catalogue summaries combine colored preview ticks, a count and a chevron in one 44px target. Their popover preserves individual difficulty links with mode, version, actual star value and complete accessible labels. Selected controls retain `aria-current` or `aria-pressed` semantics.
 
 ### Cards / Containers
 
 A record uses the base material for its assigned coverage group, a quiet border and the live radius. Joined section headings use the raised level; prominent identity and score headers use the strong level; support rails and key numeric columns use the inset level. Common content padding is 24px, with surface-specific 18–28px padding and tighter mobile values. Hover emphasizes a record with the appropriate existing surface level. The group determines glass or solid; the level determines its neutral tone.
 
-Catalogue cards reserve a bounded identity track (168px), equally sized difficulty-preview tracks and aligned footers. Titles use at most two lines; artist, mapper and mode text truncate within their own tracks while retaining complete link identity. Home map records place restrained neutral hover/focus feedback across the full row (4% foreground), with content and divider insets (20px desktop, 16px mobile). The containing panel supplies the material and blur; the row adds no second glass layer.
+Catalogue cards use a fixed compact height with a full-height cover beside four bounded single-line tracks: title, artist, mapper and facts. Their main grid has a bounded flexible row and zero minimum content height, keeping identity within the card. A bottom status/difficulty band reserves 44px. Long identity text truncates visually while titles and links retain complete identity. Actual official cover art also appears as a faint card backdrop (14% opacity); missing covers keep the icon fallback and geometry. Home map records place restrained neutral hover/focus feedback across the full row (4% foreground), with content and divider insets (20px desktop, 16px mobile). The home compact-record rules explicitly retain 72px desktop covers and 56px × 72px mobile covers despite later shared record styling. The containing panel supplies the material and blur; the row adds no second glass layer.
 
 ### Inputs / Fields
 
-Fields use semantic foregrounds, inset material, input borders and medium corners. Shared shadcn/Radix Select triggers are at least 38px tall by default; compact locale and chart contexts use 34px, while catalogue search and actions use 52px desktop and 48px mobile. Labels sit above the fields, values truncate within bounded triggers, and keyboard focus, invalid and disabled states remain visible. Numeric outputs use tabular figures.
+Fields use semantic foregrounds, inset material, input borders and medium corners. Shared shadcn/Radix Select triggers are at least 38px tall by default; chart contexts retain their contextual compact size, while the header locale control has a 44px minimum. Catalogue search and actions use 44px desktop and 48px mobile. Labels sit above the fields, values truncate within bounded triggers, and keyboard focus, invalid and disabled states remain visible. Numeric outputs use tabular figures.
 
 The catalogue toolbar uses its section group's strong material. Search and Select fields inside it use a thin neutral veil (4% foreground, 8% on Select hover), without another backdrop filter; supporting copy and placeholders retain the theme foreground. The section's coverage tier determines glass or solid material.
 
 ### Floating Controls
 
-Use the shared shadcn/Radix Select and DropdownMenu primitives for option selection and action menus. Portaled content uses strong glass and medium corners, with no shadow and a maximum width of the viewport minus 24px. Select lists retain scroll controls and collision padding (12px); action menus retain their own nearby placement. Options are at least 36px high, with accent selection fill and an inset ring for the highlighted item; checked options use readable accent, weight 800 and an SVG check. Disabled items retain their label and reduced emphasis. Preserve Radix keyboard navigation, selection, Escape dismissal and focus return.
+Use the shared shadcn/Radix Select and DropdownMenu primitives for option selection and action menus. Portaled content uses strong glass and medium corners, with no shadow and a maximum width of the viewport minus 24px. Select lists retain scroll controls and collision padding (12px); action menus retain their own nearby placement and are nonmodal by default. Select options retain a 36px minimum; action-menu options have a 44px minimum. Highlighted items use accent selection fill and an inset ring; checked options use readable accent, weight 800 and an SVG check. Disabled items retain their label and reduced emphasis. Preserve Radix keyboard navigation, selection, Escape dismissal and focus return.
+
+The catalogue difficulty popover uses the smaller of 340px and Radix's available inline size, with 12px collision padding and the floating material. It opens with focus on the first difficulty link, has a labelled 44px close button, and shows up to eight preview links. A further-difficulties link leads to the complete set selector. Vertical overflow is contained within the available popover height. The page reserves a stable native scrollbar gutter; modal sheet scroll locking does not add a second gutter, and nonmodal action menus leave page scrolling available.
 
 ### Navigation
 
-The utility header groups site identity, locale, appearance and account actions; the route row carries ordinary route names. Active routes use readable accent text and a two-pixel accent underline. Mode selectors use underlines and meaningful, unbroken names. Profile section navigation is sticky, locally scrollable and tracks location with `aria-current`; mobile navigation remains available through the sheet.
+The utility header groups site identity, locale, one Appearance button and account actions; the route row carries ordinary route names. Appearance opens the shared controls sheet, where dark, light and system remain available alongside the independent material controls. Active routes use readable accent text and a two-pixel accent underline that moves between links. Mode selectors use underlines and meaningful, unbroken names. Profile section navigation is sticky, locally scrollable and tracks location with `aria-current`; mobile navigation remains available through the sheet.
+
+Navigation retains Next.js anchor semantics and prefetching. Selecting the exact current URL is a no-op; hash-only changes retain ordinary anchor behavior. Same-origin route changes can use a native View Transition when supported, visible and motion is allowed; a slow route releases the snapshot after 700ms while loading feedback continues. A 3px top bar reflects outstanding route work, initial SWR loads and explicit public-map requests. Cached SWR background revalidation does not activate it. The bar has a translated progress label, clears with request settlement/unmount, and uses a static full-width line under reduced motion.
+
+### Homepage Character
+
+Use the user-supplied transparent character only in the authorized home introduction. The asset preserves its original 700 × 1251 PNG bytes and alpha; CSS scales and crops it inside the bounded character region without changing the plain default background. It has empty decorative alternative text, does not intercept pointer input, and stays separate from factual copy and actions. Preserve the adjacent provenance file when changing its presentation.
 
 ### Community Records
 
@@ -422,14 +449,15 @@ Compact rows join a visible grade, numeric star difficulty, title/version/date, 
 - **Do** connect entity identity, facts, controls and records with clear surface levels and seams.
 - **Do** align comparable numeric values and use tabular figures for ranks, scores and control outputs.
 - **Do** retain labels alongside status, grade and difficulty color, and show only facts provided by the running API.
-- **Do** preserve 44px catalogue and score action targets and every mobile catalogue difficulty link in its compact scrolling rail.
+- **Do** preserve 44px catalogue and score action targets and every available difficulty link through the popover or complete set selector.
 - **Do** keep keyboard focus visible, honor reduced motion and contain dense horizontal content locally.
-- **Do** use ordinary zh-TW/en/ja labels and real runtime covers or player-uploaded media.
+- **Do** use ordinary zh-TW/en/ja labels, real runtime covers, player-uploaded media and the explicitly authorized original homepage character.
+- **Do** keep route motion purposeful and request feedback tied to outstanding work, including a reduced-motion presentation.
 
 ### Don't:
 
 - **Don't** copy upstream source, design assets, palettes or exact geometry.
-- **Don't** add AI-generated art, decorative default imagery or poetic marketing slogans.
+- **Don't** add AI-generated art, decorative default backgrounds or poetic marketing slogans; the authorized homepage character does not change that background rule.
 - **Don't** merge coverage, background or panel controls, or replace user appearance with fixed visual values.
 - **Don't** extend the explicitly requested profile rank gradient text to other typography or describe absolute rank bands as percentiles.
 - **Don't** add an empty profile banner or decorative height when a player has no banner.
