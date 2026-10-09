@@ -1,5 +1,10 @@
 # Homepage wordmark and character amplification
 
+Historical variant: the subsequent user screenshot rejects its ring and hollow
+resting lettering. The current contract is [Solid homepage wordmark](home-wordmark-filled.md).
+Its earlier tests and review remain evidence only for the image recorded at
+commit `89e1f1d`.
+
 The user's follow-up after viewing the shipped hero asks for a visibly larger
 character extending further above the introduction, and distinctive Illyaverse
 lettering with authored motion. This is a new, narrow **Persuade** refinement of

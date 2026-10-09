@@ -55,26 +55,9 @@ export function HomePage() {
           <div className="home-intro-content">
             <div className="home-intro-copy">
               <h1 id="home-title" className="home-wordmark" aria-label={t('title')}>
-                <svg
-                  className="home-wordmark-orbit"
-                  viewBox="0 0 100 100"
-                  fill="none"
-                  aria-hidden="true"
-                >
-                  <path
-                    className="home-wordmark-arc"
-                    d="M28 13 A43 43 0 1 0 93 50"
-                    pathLength="1"
-                  />
-                  <path
-                    className="home-wordmark-arc home-wordmark-arc-short"
-                    d="M65 10 A43 43 0 0 1 89 31"
-                    pathLength="1"
-                  />
-                </svg>
                 <span className="home-wordmark-solid">Illya</span>
                 <span className="home-wordmark-verse">
-                  <span className="home-wordmark-outline">verse</span>
+                  <span className="home-wordmark-verse-base">verse</span>
                   <span className="home-wordmark-ink" data-letters="verse" aria-hidden="true" />
                 </span>
               </h1>

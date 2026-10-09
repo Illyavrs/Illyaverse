@@ -287,14 +287,20 @@ for (const theme of ['dark', 'light'] as const) {
       await expect(image).toHaveAttribute('src', '/images/home-character.png');
       await expect(image).toHaveCSS('animation-name', 'none');
       await expect(page.getByRole('heading', { name: 'Illyaverse', exact: true })).toBeVisible();
-      await expect(page.locator('.home-wordmark-outline')).toHaveCSS(
-        '-webkit-text-stroke-width',
-        '1.5px',
-      );
-      await expect(page.locator('.home-wordmark-arc').first()).toHaveCSS('animation-name', 'none');
-      await expect(page.locator('.home-wordmark-arc').first()).toHaveCSS(
-        'stroke-dashoffset',
-        '0px',
+      await expect(page.locator('.home-wordmark svg')).toHaveCount(0);
+      for (const layer of ['.home-wordmark-verse-base', '.home-wordmark-ink']) {
+        await expect(page.locator(layer)).toHaveCSS('-webkit-text-stroke-width', '0px');
+        expect(
+          await page.locator(layer).evaluate((element) => {
+            const style = getComputedStyle(element);
+            return style.webkitTextFillColor === style.color;
+          }),
+        ).toBe(true);
+      }
+      await expect(page.locator('.home-wordmark-ink')).toHaveCSS('animation-name', 'none');
+      await expect(page.locator('.home-wordmark-ink')).toHaveCSS(
+        'clip-path',
+        'inset(0px 0% 0px 0px)',
       );
       await expect(page.locator('.home-primary-actions a').first()).toHaveAttribute(
         'href',
@@ -302,14 +308,14 @@ for (const theme of ['dark', 'light'] as const) {
       );
       await capture(
         page,
-        `home-wordmark-${width}-${theme}`,
-        `Homepage hero at ${width}px ${theme}; empty synthetic community data; default guest accent, panel blur 8px, opacity 0.55; original character at amplified scale, solid/outlined Illyaverse lettering and precise disc arcs; final reduced-motion composition.`,
+        `home-wordmark-filled-${width}-${theme}`,
+        `Homepage hero at ${width}px ${theme}; empty synthetic community data; default guest accent, panel blur 8px, opacity 0.55; original character at retained amplified scale; solid Illyaverse lettering with readable accent verse and no circle; final reduced-motion composition.`,
       );
     });
   }
 
   for (const width of [1280, 390]) {
-    test(`wordmark entrance draws once and rests at ${width}px ${theme}`, async ({ page }) => {
+    test(`wordmark entrance fills once and rests at ${width}px ${theme}`, async ({ page }) => {
       await page.setViewportSize({ width, height: 1000 });
       await page.emulateMedia({ reducedMotion: 'no-preference' });
       await fixture(page, theme);
@@ -333,12 +339,24 @@ for (const theme of ['dark', 'light'] as const) {
           };
         });
       });
-      expect(timeline).toHaveLength(3);
+      expect(timeline).toHaveLength(1);
       expect(
-        timeline.every((animation) => animation.duration === 680 && animation.iterations === 1),
+        timeline.every(
+          (animation) =>
+            animation.name === 'home-wordmark-ink' &&
+            animation.duration === 680 &&
+            animation.iterations === 1,
+        ),
       ).toBe(true);
-      const arc = page.locator('.home-wordmark-arc').first();
-      await expect(arc).toHaveCSS('stroke-dashoffset', '1px');
+      const ink = page.locator('.home-wordmark-ink');
+      await expect(ink).toHaveCSS('clip-path', 'inset(0px 100% 0px 0px)');
+      await expect(ink).toHaveCSS('opacity', '1');
+      await expect(page.locator('.home-wordmark-verse-base')).toHaveCSS('opacity', '1');
+      await expect(page.locator('.home-wordmark-verse-base')).toHaveCSS(
+        '-webkit-text-stroke-width',
+        '0px',
+      );
+      await expect(title.locator('svg')).toHaveCount(0);
       await expect(page.locator('.home-character-image')).toHaveCSS('animation-name', 'none');
       await title.evaluate((element) => {
         for (const animation of element.getAnimations({ subtree: true }))
@@ -346,38 +364,38 @@ for (const theme of ['dark', 'light'] as const) {
       });
       const moving = await page.locator('.home-wordmark-ink').evaluate((element) => ({
         ink: Number(getComputedStyle(element).opacity),
-        arc: parseFloat(
-          getComputedStyle(document.querySelector('.home-wordmark-arc')!).strokeDashoffset,
+        clippedRightPercent: Number(
+          getComputedStyle(element).clipPath.match(/inset\(\S+\s+([\d.]+)%/)?.[1],
         ),
       }));
-      expect(moving.arc).toBeGreaterThan(0);
-      expect(moving.arc).toBeLessThan(1);
-      expect(moving.ink).toBeGreaterThan(0.5);
+      expect(moving.clippedRightPercent).toBeGreaterThan(0);
+      expect(moving.clippedRightPercent).toBeLessThan(100);
+      expect(moving.ink).toBe(1);
       const layers = await page.locator('.home-wordmark-verse').evaluate((element) => {
-        const outline = element.querySelector('.home-wordmark-outline')!;
+        const base = element.querySelector('.home-wordmark-verse-base')!;
         const ink = element.querySelector('.home-wordmark-ink')!;
         const bounds = (node: Element) => {
           const box = node.getBoundingClientRect();
           return { x: box.x, y: box.y, width: box.width, height: box.height };
         };
         return {
-          outline: bounds(outline),
+          base: bounds(base),
           ink: bounds(ink),
-          outlineLineHeight: getComputedStyle(outline).lineHeight,
+          baseLineHeight: getComputedStyle(base).lineHeight,
           inkLineHeight: getComputedStyle(ink).lineHeight,
-          outlineFont: getComputedStyle(outline).font,
+          baseFont: getComputedStyle(base).font,
           inkFont: getComputedStyle(ink, '::before').font,
         };
       });
       // Measure the actually painted ink layer's grid box and font: both glyph
       // tracks must share a baseline at desktop and phone sizes, including mid-reveal.
-      expect(layers.ink).toEqual(layers.outline);
-      expect(layers.inkLineHeight).toBe(layers.outlineLineHeight);
-      expect(layers.inkFont).toBe(layers.outlineFont);
+      expect(layers.ink).toEqual(layers.base);
+      expect(layers.inkLineHeight).toBe(layers.baseLineHeight);
+      expect(layers.inkFont).toBe(layers.baseFont);
       await capture(
         page,
-        `home-wordmark-${width}-${theme}-motion-280ms`,
-        `Synthetic guest hero; actual single CSS wordmark entrance replay paused at 280ms after fonts settle, so line drawing and solid ink reveal are visible; the original character stays still.`,
+        `home-wordmark-filled-${width}-${theme}-motion-280ms`,
+        `Synthetic guest hero; actual single CSS accent-fill entrance replay paused at 280ms after fonts settle. The fully solid foreground base stays visible beneath the left-to-right accent reveal, with no circular linework; the original character stays still.`,
         280,
       );
       await title.evaluate((element) => {
@@ -386,12 +404,8 @@ for (const theme of ['dark', 'light'] as const) {
           animation.finish();
         }
       });
-      await expect(arc).toHaveCSS('stroke-dashoffset', '0px');
-      expect(
-        await page
-          .locator('.home-wordmark-ink')
-          .evaluate((element) => Number(getComputedStyle(element).opacity)),
-      ).toBe(0);
+      await expect(ink).toHaveCSS('clip-path', 'inset(0px 0% 0px 0px)');
+      await expect(ink).toHaveCSS('opacity', '1');
       expect(
         await title.evaluate((element) =>
           element
@@ -400,15 +414,15 @@ for (const theme of ['dark', 'light'] as const) {
         ),
       ).toBe(true);
       await page.emulateMedia({ reducedMotion: 'reduce' });
-      await expect(arc).toHaveCSS('animation-name', 'none');
-      await expect(arc).toHaveCSS('stroke-dashoffset', '0px');
+      await expect(ink).toHaveCSS('animation-name', 'none');
+      await expect(ink).toHaveCSS('clip-path', 'inset(0px 0% 0px 0px)');
       await expect(title).toHaveAccessibleName('Illyaverse');
       expect(
         await page.locator('.home-wordmark-ink').evaluate((element) => ({
           animation: getComputedStyle(element).animationName,
           ink: Number(getComputedStyle(element).opacity),
         })),
-      ).toEqual({ animation: 'none', ink: 0 });
+      ).toEqual({ animation: 'none', ink: 1 });
     });
   }
 
@@ -434,7 +448,7 @@ for (const theme of ['dark', 'light'] as const) {
     await expect(page.getByRole('tabpanel')).toContainText('Kaleidoscope');
     await capture(
       page,
-      `home-wordmark-regression-connect-${theme}`,
+      `home-wordmark-filled-regression-connect-${theme}`,
       `Connect guide in ${theme}; lazer selected through ArrowRight, retaining visible keyboard focus; both client tabs have no decorative border or shadow.`,
     );
   });
@@ -461,7 +475,7 @@ for (const theme of ['dark', 'light'] as const) {
     await expect(active).toHaveCSS('border-bottom-color', 'rgba(0, 0, 0, 0)');
     await capture(
       page,
-      `home-wordmark-regression-profile-${theme}`,
+      `home-wordmark-filled-regression-profile-${theme}`,
       `Synthetic profile in ${theme}; taiko selected, vanilla score variant; one 3px accent underline per selected group with no inset shadow.`,
     );
   });

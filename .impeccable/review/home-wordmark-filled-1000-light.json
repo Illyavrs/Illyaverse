@@ -1,0 +1,28 @@
+{
+  "capturedAt": "2026-10-09T08:39:07.641Z",
+  "url": "http://localhost:19000/",
+  "viewport": {
+    "width": 1000,
+    "height": 1000
+  },
+  "fullPage": true,
+  "theme": "light",
+  "locale": "en",
+  "reducedMotion": true,
+  "state": "Homepage hero at 1000px light; empty synthetic community data; default guest accent, panel blur 8px, opacity 0.55; original character at retained amplified scale; solid Illyaverse lettering with readable accent verse and no circle; final reduced-motion composition.",
+  "provenance": "Synthetic API fixtures intercepted in this Playwright browser; guest appearance only. The character is the original user-supplied PNG, not generated artwork. Capture is from the top after fonts and navigation settle; no real account or community data is modified.",
+  "screenshotSha256": "6b382cc816f3600f9f1973df9920561ad070644b693f618f35e19577fb5d19b2",
+  "sources": {
+    "src/components/ui/tabs.tsx": "e8bd1e8139c338a0dc6cde9ff76825ac8466c1c11f32c9df3d17862f7007d3d3",
+    "src/features/home.tsx": "ef4edd80aacefd26565f02ccaf7969b0489f45a04f9ba09e1f3bd12ef4c9b7ad",
+    "src/features/home.css": "fa4692525a55fd4c11530a6d2e4122ac045470671f3b122fb3e2d7823fe9e709",
+    "src/features/profile.css": "42be3e88732d8a3b71a4bb389a3571b21c303acda79606ea6b373e900dbef5cd",
+    "src/features/players.tsx": "841086ca8dcbd6ccf9738ab803c81de989e7c47924a451d6070f65d0433c719e",
+    "src/app/globals.css": "416a2191c358670080ac0321fc76423afee8820eb1d9187a45225114d97c17a7",
+    "src/app/layout.tsx": "747fa3b50704dadd372339843c0832330dd90126da6b88e0538bf99fa257dd70",
+    "src/components/providers.tsx": "fa4f6fa3f8a49761ebaf5550f39fed0906106cf4d99d37c5d004d2dc0c155761",
+    "src/styles/country-language.css": "90a5d37872a506d1a77e8a0390ef0c626d5cdaeb53f0459cb2c54aee156bf26c",
+    "messages/en.json": "c69173e0d813426d4f60c12b135373378cc6bfd57d967e355f553f1e8648feb2",
+    "public/images/home-character.png": "d32cc7271ff33364e247c8d8988c16f61e50d7715cd500b6cbdece29c53c70e4"
+  }
+}

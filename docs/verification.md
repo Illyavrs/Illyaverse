@@ -6,6 +6,52 @@ The current public profile presentation and website chat visibility checkpoint i
 
 Last recorded evidence: 2026-10-09. Local Docker deployments and isolated-schema tests use synthetic fixtures; they are not a production player community. The INITIAL checkpoint below predates the follow-up chat, replay, mod and connection work. Later source gates and image checks are recorded in the follow-up sections; keep the INITIAL results separate from those checkpoints.
 
+## Solid wordmark correction checkpoint
+
+2026-10-09: the user's subsequent screenshot rejects the left circle and hollow
+resting letters while accepting the right-hand filling animation. The correction
+removes the hero SVG, arc styles and text strokes. Verse keeps a solid visible
+base, fills left to right into the readable accent once over 680ms, and remains
+fully filled. Reduced motion presents that completed form immediately. Existing
+character geometry, fonts, factual copy, materials and destinations stay intact.
+
+The frozen website image
+`sha256:ca6c995e808e720d29d5042391ddf901e4595e52a5c5cdf42d84454f669b91f6`
+passes **28 Chromium cases** in one batched run against a fresh disposable
+PostgreSQL 17 project. Checks cover six widths in both themes, real animation
+states at 0/280/680ms, solid/reduced-motion completion, equal layer positions,
+no hero SVG or text stroke, heading semantics and retained community/tab paths.
+The project's containers, network, volumes and temporary environment were
+verified removed. Targeted ESLint, TypeScript and production compilation pass.
+
+All **26 new `home-wordmark-filled-*` captures** were opened and match their
+PNG/current-source SHA-256 values, with no missing or malformed captures. Four
+pause the real filling animation at 280ms. The preceding 26 and 96 captures
+remain historical evidence for their respective images. One changed-target
+detector pass reports zero primary findings and 24 advisories; no second pass
+ran. The source/capture packet is
+`.impeccable/review/home-wordmark-filled-evidence.json`, including the original
+user screenshot as the primary reference. This checkpoint concerns synthetic
+website fixtures, not native-client gameplay or score submission.
+
+The fresh full independent review returned **ship** for this filled-wordmark
+revision, with the user's screenshot checked before builder summaries and no
+material fixes. Review and documentation use independent generic substitutes
+for the unavailable named roles; their reports are
+`.impeccable/review/home-wordmark-filled-verdict.md` and
+`.impeccable/review/home-wordmark-filled-documentation.md`.
+
+At 08:50 UTC the guarded deployment passed, recreating only Serendipity in the
+two retained projects. All ten services are healthy; the eight nonwebsite
+containers, original records and stored bytes, schema 22, environment values
+and mounts remain intact. Browser delivery at 1280×720, from the document top,
+confirms no hero SVG and a completed fully filled ink layer on `https://illya.test/`.
+Deployment manifest SHA-256:
+`36395c57db902b815f4770f396c3b22140d45b3ad10f786cd4c4b4bfae828ce8`.
+This final verification record postdates compilation; the tested image retains
+its preceding served-documentation snapshot. No rebuild was performed merely
+to incorporate evidence about that image itself.
+
 ## Homepage character and wordmark amplification checkpoint
 
 2026-10-09: the user's subsequent request increases the original character's

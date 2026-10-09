@@ -412,7 +412,7 @@ async function capture(page: BrowserPage, name: string, state: string, hoverLate
   }
   const output = path.resolve(
     '../../.impeccable/review',
-    `home-wordmark-community-${hoverLatestMap ? 'hover-' : ''}${name}`,
+    `home-wordmark-filled-community-${hoverLatestMap ? 'hover-' : ''}${name}`,
   );
   await page.screenshot({ path: `${output}.png`, fullPage: true, animations: 'disabled' });
   const sourceFiles = [

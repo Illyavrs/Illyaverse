@@ -45,82 +45,30 @@
   display: inline-grid;
   vertical-align: baseline;
 }
-.home-community .home-wordmark-outline,
+.home-community .home-wordmark-verse-base,
 .home-community .home-wordmark-ink {
   grid-area: 1 / 1;
 }
-.home-community .home-wordmark-solid {
+.home-community .home-wordmark-solid,
+.home-community .home-wordmark-verse-base {
   color: var(--foreground);
-}
-.home-community .home-wordmark-outline {
-  color: var(--readable-accent);
 }
 .home-community .home-wordmark-ink {
   color: var(--readable-accent);
-  opacity: 0;
-  clip-path: inset(0 100% 0 0);
+  opacity: 1;
+  clip-path: inset(0 0% 0 0);
   pointer-events: none;
+  animation: home-wordmark-ink 680ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .home-community .home-wordmark-ink::before {
   content: attr(data-letters);
 }
-@supports (-webkit-text-stroke: 1px currentColor) {
-  .home-community .home-wordmark-outline {
-    -webkit-text-fill-color: transparent;
-    -webkit-text-stroke: 1.5px var(--readable-accent);
-  }
-  .home-community .home-wordmark-ink {
-    -webkit-text-fill-color: var(--readable-accent);
-    -webkit-text-stroke: 0;
-    animation: home-wordmark-ink 680ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  }
-}
-.home-community .home-wordmark-orbit {
-  position: absolute;
-  z-index: 0;
-  top: -0.22em;
-  left: -0.38em;
-  width: 1.36em;
-  height: 1.36em;
-  overflow: visible;
-  color: var(--readable-accent);
-  pointer-events: none;
-}
-.home-community .home-wordmark-arc {
-  stroke: currentColor;
-  stroke-width: 1.25;
-  stroke-linecap: round;
-  stroke-dasharray: 1;
-  stroke-dashoffset: 0;
-  opacity: 0.58;
-  animation: home-wordmark-orbit 680ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-.home-community .home-wordmark-arc-short {
-  opacity: 0.88;
-}
-@keyframes home-wordmark-orbit {
+@keyframes home-wordmark-ink {
   from {
-    stroke-dashoffset: 1;
+    clip-path: inset(0 100% 0 0);
   }
   to {
-    stroke-dashoffset: 0;
-  }
-}
-@keyframes home-wordmark-ink {
-  0% {
-    clip-path: inset(0 100% 0 0);
-    opacity: 0;
-  }
-  18% {
-    opacity: 1;
-  }
-  60% {
-    clip-path: inset(0 0 0 0);
-    opacity: 1;
-  }
-  100% {
-    clip-path: inset(0 0 0 0);
-    opacity: 0;
+    clip-path: inset(0 0% 0 0);
   }
 }
 .home-community .home-subtitle {
@@ -812,7 +760,6 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .home-community .home-wordmark-arc,
   .home-community .home-wordmark-ink {
     animation: none;
   }
