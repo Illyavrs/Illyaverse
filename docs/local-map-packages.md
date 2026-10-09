@@ -150,7 +150,10 @@ status. Strong checksum/native-ID selectors retain their original behavior.
 The migration does not infer names from metadata or hashed storage paths, rewrite
 bytes or backfill legacy archives during lookup. New archives validate raw ZIP
 records and decode declared UTF-8, CP932 and valid Unicode Path overrides before
-normalizing separators. Legacy filename recovery remains pending. See the
+normalizing separators. Staff can explicitly preview and apply verified legacy
+archive filename recovery through the [maintenance endpoint](filename-alias-recovery.md).
+Recovery verifies the exact retained archive and complete members, leaves existing
+identity/fingerprints unchanged, and never runs automatically during lookup. See the
 [archive filename policy](#archive-filename-validation) and
 [native discovery contract](native-beatmap-discovery.md).
 

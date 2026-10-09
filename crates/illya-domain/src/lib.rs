@@ -249,10 +249,17 @@ mod tests {
             ..Preferences::default()
         };
         assert!(invalid.validate().is_err());
-        for value in [serde_json::json!(-1), serde_json::json!(50.5), serde_json::json!(256)] {
-            assert!(serde_json::from_value::<Preferences>(serde_json::json!({
-                "glass_level": value
-            })).is_err());
+        for value in [
+            serde_json::json!(-1),
+            serde_json::json!(50.5),
+            serde_json::json!(256),
+        ] {
+            assert!(
+                serde_json::from_value::<Preferences>(serde_json::json!({
+                    "glass_level": value
+                }))
+                .is_err()
+            );
         }
     }
     #[test]

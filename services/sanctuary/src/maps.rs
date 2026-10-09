@@ -27,6 +27,9 @@ pub use official_archive::import_archive;
 #[path = "official_set_metadata.rs"]
 mod official_set_metadata;
 pub use official_set_metadata::metadata;
+#[path = "filename_backfill.rs"]
+mod filename_backfill;
+pub(crate) use filename_backfill::backfill as backfill_filename_aliases;
 
 #[cfg(test)]
 pub(crate) async fn archive_metadata_member_count(

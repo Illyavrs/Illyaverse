@@ -1475,6 +1475,33 @@ def run():
                      "archive_bytes": len(cp932_archive),
                      "http_requests": Client.request_count - archive_name_initial_requests,
                      "scope": "disposable_release_image_http"}
+    # Release-image maintenance boundary: existing verified CP932 package has
+    # aliases already, so preview/apply must be no-ops, including its audit.
+    # Legacy missing-alias publication uses the isolated PG17 Rust fixtures.
+    backfill_initial_requests = Client.request_count
+    backfill_path = f"/api/v1/admin/beatmap-packages/{cp932_created['package']['id']}/filename-aliases/backfill"
+    audit_before = admin.json("GET", "/api/v1/admin/audit")
+    member_before = {item["id"]: anonymous.json("GET", f"/api/v1/beatmaps/{item['id']}")
+                     for item in cp932_uploaded}
+    for apply in (False, True, True):
+        report = admin.json("POST", backfill_path, {"apply": apply})
+        assert set(report) == {"package_id", "apply", "difficulty_count", "verified_aliases",
+                               "existing_aliases", "missing_aliases", "inserted_aliases", "ambiguous_aliases"}
+        assert report["package_id"] == cp932_created["package"]["id"] and report["apply"] is apply
+        assert report["difficulty_count"] == report["verified_aliases"] == report["existing_aliases"] == 2
+        assert report["missing_aliases"] == report["inserted_aliases"] == report["ambiguous_aliases"] == 0
+    anonymous.request("POST", backfill_path, {"apply": True}, expected=401)
+    player_site.request("POST", backfill_path, {"apply": True}, expected=403)
+    admin.request("POST", backfill_path, {"apply": True, "unexpected": True}, expected=422)
+    admin.request("POST", backfill_path, b" " * 1025, {"Content-Type": "application/json"}, expected=413)
+    assert admin.json("GET", "/api/v1/admin/audit") == audit_before
+    for item in cp932_uploaded:
+        assert anonymous.json("GET", f"/api/v1/beatmaps/{item['id']}") == member_before[item["id"]]
+        assert anonymous.request("GET", f"/api/v1/beatmaps/{item['id']}/download")[0] == cp932_archive
+    filename_backfill = {"existing_aliases": 2, "inserted_aliases": 0, "audit_unchanged": True,
+                         "map_and_archive_unchanged": True,
+                         "http_requests": Client.request_count - backfill_initial_requests,
+                         "scope": "disposable_release_image_http_noop_and_authority"}
     checks = ["shared auth", "stable binary login/ping/chat/logout", "lazer OAuth/refresh", "lazer checksum/set lookup/archive/score collections", "immutable multi-difficulty package/retry/native set grouping/full asset archive", "stable direct canonical difficulty/set selectors", "native signed-int bounds and reserved local misses", "Classic profile totals and standardized mixed-client ranking", "stable ScoreV1/ScoreV2 board partition", "RBAC", "friend/block/DM settings", "stable password room/host authority/slot identity", "stable ready/start/load/score/complete/transfer/leave", "stable spectator frame relay", "lazer score token/idempotency", "stable Rijndael256 submission/checksum", "server PP", "replay round trip", "explicit pending moderation excludes rankings", "moderation", "encrypted stable RX and native solo RX", "RX metadata and unavailable common scale", "RX retry deduplication and native mod binding", "RX explicit pending isolation and fixture moderation", "RX replay original ruleset/mod binding", "RX PP-sorted boards and best-per-map totals", "NM/RX API and gateway rank/stat isolation", "osu/taiko/catch RX partition isolation", "mania RX rejection and untrusted variant derivation"]
     checks.extend(["validated stable immediately public/ranked with replay and current statistics",
                    "stable exact retries preserve receipts/totals and never repeat score banners/statistics packets",
@@ -1507,10 +1534,12 @@ def run():
     checks.extend(["raw CP932 ZIP names decode before separators and preserve stable/lazer filename selectors",
                    "CP932 package same-owner retry IDs and original .osz/.osu download bytes",
                    "all duplicate raw ZIP records and invalid flagged UTF-8 reject without publication"])
+    checks.extend(["verified filename-alias preview and idempotent apply preserve existing CP932 package and audit",
+                   "filename-alias maintenance requires staff session and rejects unknown fields/oversized bodies"])
     native_publication = {"stable_passed_id": stable_id, "stable_failed_id": failed_id,
                           "lazer_complete_id": lazer["id"], "website_pending_id": api_score["id"],
                           "score_notifications": 0, "scope": "disposable_release_image_http"}
-    print(json.dumps({"status": "passed", "beatmap_id": primary_map_id, "rx_beatmap_id": map_id, "stable_score_id": stable_id, "lazer_score_id": lazer["id"], "rx_stable_score_id": rx_stable_id, "rx_lazer_score_id": rx_lazer["id"], "rx_converted_score_ids": rx_converted_ids, "native_publication": native_publication, "room_scores": room_scores, "withdrawal": withdrawal, "upload_boundary": upload_boundary, "archive_names": archive_names, "http_requests": Client.request_count, "check_count": len(checks), "checks": checks}))
+    print(json.dumps({"status": "passed", "beatmap_id": primary_map_id, "rx_beatmap_id": map_id, "stable_score_id": stable_id, "lazer_score_id": lazer["id"], "rx_stable_score_id": rx_stable_id, "rx_lazer_score_id": rx_lazer["id"], "rx_converted_score_ids": rx_converted_ids, "native_publication": native_publication, "room_scores": room_scores, "withdrawal": withdrawal, "upload_boundary": upload_boundary, "archive_names": archive_names, "filename_backfill": filename_backfill, "http_requests": Client.request_count, "check_count": len(checks), "checks": checks}))
 
 
 if __name__ == "__main__":

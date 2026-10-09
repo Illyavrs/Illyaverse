@@ -1,0 +1,190 @@
+{
+  "recorded_at_utc": "2026-10-09T06:25:36.0514605+00:00",
+  "scope": "Verified retained local archive filename recovery; Sanctuary-only deployment; no native-client certification",
+  "api_image": "sha256:6f1095b7c6f237e78ec38198e43954cc1dd853a92533b69e9f0195cd4bd7b1f5",
+  "sources": [
+    {
+      "path": "Cargo.toml",
+      "sha256": "2748fccd2bd70121a167ca6136af317af51d45a8a9423add39fcd7d4840072ee"
+    },
+    {
+      "path": "Cargo.lock",
+      "sha256": "2f842df93cd60ff96f5a080fe95cfc45daaa6f50b9be6698cf5e3960ebfade15"
+    },
+    {
+      "path": "crates/illya-domain/src/lib.rs",
+      "sha256": "e6f5faab6b6f001ed7529e8efc7292865b52daf80b29cddc43b6d1bfbb695e4e"
+    },
+    {
+      "path": "services/sanctuary/src/main.rs",
+      "sha256": "9c63c840e10e33220bf4f20d1d30576d89fdc6903c1559c946ee59313fd36df7"
+    },
+    {
+      "path": "services/sanctuary/src/maps.rs",
+      "sha256": "93ccc61cb73054a1cce02a071195f3063346e97f42b04487069afeba2e508686"
+    },
+    {
+      "path": "services/sanctuary/src/filename_backfill.rs",
+      "sha256": "4ba742f640d4c9c19758d3ce51efb7816263a38b3134dfb2543c396d80d924df"
+    },
+    {
+      "path": "services/sanctuary/src/filename_backfill_tests.rs",
+      "sha256": "20c5218f6cd212199667bf80b41f4dc6a1de6498e0766cd8a9f8c97aabf51699"
+    },
+    {
+      "path": "services/resonance/tests/protocol_smoke.py",
+      "sha256": "ad4b149fc2f49724ad4a49b9d3d3c37bd14d43c3eee83d6ac029753d62692d31"
+    },
+    {
+      "path": "services/sanctuary/Dockerfile",
+      "sha256": "caacfbd0ea03c885be783160a762a100ff01b398b90e9fd414e8d170aecdc0a2"
+    }
+  ],
+  "source_checks": {
+    "rustfmt": true,
+    "clippy_all_targets_warnings_denied": true,
+    "tests": {
+      "unit": {
+        "passed": 80,
+        "ignored": 109
+      },
+      "filename_backfill_tests": {
+        "passed": 9,
+        "ignored": 0
+      },
+      "beatmap_filename_tests": {
+        "passed": 10,
+        "ignored": 0
+      },
+      "map_package_tests": {
+        "passed": 13,
+        "ignored": 0
+      },
+      "map_mutation_tests": {
+        "passed": 3,
+        "ignored": 0
+      }
+    },
+    "migration_source_checks": 6
+  },
+  "linux_release_units": {
+    "passed": 2,
+    "postgres_cases_ignored": 9,
+    "symlink_file_and_ancestor_rejection_exercised": true
+  },
+  "final_http": {
+    "requests": 552,
+    "categories": 66,
+    "backfill": {
+      "existing_aliases": 2,
+      "inserted_aliases": 0,
+      "audit_unchanged": true,
+      "map_and_archive_unchanged": true,
+      "http_requests": 15,
+      "scope": "disposable_release_image_http_noop_and_authority"
+    },
+    "scope": "Synthetic isolated PostgreSQL17; actual release images"
+  },
+  "review": {
+    "blockers": 0,
+    "handler_sha256": "4ba742f640d4c9c19758d3ce51efb7816263a38b3134dfb2543c396d80d924df",
+    "tests_sha256": "20c5218f6cd212199667bf80b41f4dc6a1de6498e0766cd8a9f8c97aabf51699",
+    "optional_remaining": [
+      "Cross-package shared-name concurrency fixture",
+      "Full-endpoint symlink fixture; reader-level Linux cases passed"
+    ]
+  },
+  "deployment": {
+    "status": "passed",
+    "finished_at_utc": "2026-10-09T06:23:49.3438710+00:00",
+    "schema": 22,
+    "recreated_services": [
+      "sanctuary"
+    ],
+    "protected_eight_preserved": true,
+    "original_data_and_files_preserved": true,
+    "automatic_filename_backfill": false,
+    "local_packages_in_retained_databases": 0,
+    "actual_https_unauthenticated_status": 401,
+    "certificate_verification_enabled": true
+  },
+  "native_client_validation": false,
+  "retained_fixture_failure": {
+    "path": "data-filename-backfill-20261009/source-attempt-1/filename_backfill_tests.log",
+    "cause": "Withdrawal fixture inverted authority/set locking using the same actor FK; corrected with distinct staff actor and production lock order; handler unchanged"
+  },
+  "artifacts": [
+    {
+      "path": "data-filename-backfill-20261009/current-source.json",
+      "sha256": "28edfad2c5fc62b8b685aae2165e9cac481e4c956ce85ed0f35922bb61e32849"
+    },
+    {
+      "path": "data-filename-backfill-20261009/Dockerfile.tested",
+      "sha256": "31ec1eb2140fa27009fc2462a57d94bd07aa313c5d82edb1fd5a2830504bfa0a"
+    },
+    {
+      "path": "data-filename-backfill-20261009/docker-build.log",
+      "sha256": "9972769e9865b405ef2793c381763b766c331887644c5bf4f4a6a66cbc1fa352"
+    },
+    {
+      "path": "data-filename-backfill-20261009/final-http-smoke.log",
+      "sha256": "64a216199928dd27ba6e24b60db239b59f607c8f024a549132451c4f28cb5045"
+    },
+    {
+      "path": "data-filename-backfill-20261009/frozen-baseline.json",
+      "sha256": "dce6187ad677f1e583ff649f012b1074bd0489e6be12c84ce31564a88d2c5fc5"
+    },
+    {
+      "path": "data-filename-backfill-20261009/deploy-api.ps1",
+      "sha256": "bd97bc60a314468b33e99fbaaab5fb9cc432bd7aeb2ac23fa71e254ae57dd902"
+    },
+    {
+      "path": "data-filename-backfill-20261009/api-guards.ps1",
+      "sha256": "a243157ab5e9aef745a40564cc0ddc644f99f731b6d056b8ccfa784ad6020852"
+    },
+    {
+      "path": "data-filename-backfill-20261009/source-gates.ps1",
+      "sha256": "63a3d09814db7de183a56af1942efc8eba069a82ab9228fd4ff9f884258aaa3e"
+    },
+    {
+      "path": "data-filename-backfill-20261009/migration-source.log",
+      "sha256": "25cde319cef58cf44f0d09f416e57682fecab78c2d98eab231add95938e337ff"
+    },
+    {
+      "path": "data-filename-backfill-20261009/rustfmt.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "data-filename-backfill-20261009/clippy.log",
+      "sha256": "7fd5e79fda31c4a194f2e2aa856c379ef89d4b08d91c0eb3578adbc027bcea2b"
+    },
+    {
+      "path": "data-filename-backfill-20261009/anonymous-maintenance-response.json",
+      "sha256": "8361ec141a77d3a33240466c38c9471eeaabb9fde2786f97bec760094bb1956c"
+    },
+    {
+      "path": "data-filename-backfill-20261009/api-deploy-20261009T062203Z-ade9e18d0908420aa6343a194a7ca420/deployment-manifest.json",
+      "sha256": "cf64fdead1611e9ffed9a798e54e0056c7ddda4a49f63e8da6251ac77ef1060f"
+    },
+    {
+      "path": "data-filename-backfill-20261009/unit.log",
+      "sha256": "c963dbfe51881d96e93db1fc25b51b24b9ad9cf016ef937a6bf69191074dba6b"
+    },
+    {
+      "path": "data-filename-backfill-20261009/filename_backfill_tests.log",
+      "sha256": "e8afdd30fe77b247310ed79b21a27c86f5c25f87579d3c4bf5573ef6e0fedee1"
+    },
+    {
+      "path": "data-filename-backfill-20261009/beatmap_filename_tests.log",
+      "sha256": "469e6f10d2e22456b01e0f5e191995dc1a28db7831a5da7bc26d9d53ed2e03d1"
+    },
+    {
+      "path": "data-filename-backfill-20261009/map_package_tests.log",
+      "sha256": "1fb1dcc6ffd7e80aabb6e8dcb3ff2530ef668fe7454384afa73066b169fea8de"
+    },
+    {
+      "path": "data-filename-backfill-20261009/map_mutation_tests.log",
+      "sha256": "6f8a65c0225f1364e0d62f2bcecb6e50b5e35907aef1d12224feb2782ec70570"
+    }
+  ]
+}

@@ -513,6 +513,10 @@ fn router(state: AppState) -> Router {
         )
         .route("/api/v1/admin/beatmaps", get(maps::admin_list))
         .route(
+            "/api/v1/admin/beatmap-packages/{id}/filename-aliases/backfill",
+            post(maps::backfill_filename_aliases).layer(DefaultBodyLimit::max(1024)),
+        )
+        .route(
             "/api/v1/admin/beatmaps/{id}",
             get(maps::admin_detail).patch(admin::update_map),
         )
