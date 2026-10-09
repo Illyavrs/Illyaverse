@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-10-08T17:25:19.044Z",
+  "captured_at": "2026-10-09T02:38:17.661Z",
   "url": "http://localhost:19000/beatmaps/980000",
   "locale": "zh-TW",
   "theme": "dark",
@@ -10,9 +10,17 @@
   "scroll_x": 0,
   "scroll_y": 0,
   "document_width": 1440,
-  "document_height": 1993,
+  "document_height": 2012,
   "actual_theme": "dark",
   "actual_locale": "zh-TW",
   "font_status": "loaded",
-  "reduced_motion": true
+  "reduced_motion": true,
+  "catalogue_cards": [],
+  "detail_overview": {
+    "width": 1136,
+    "height": 482.625,
+    "identity_height": 482.625,
+    "selected_height": 482.625,
+    "joined_gap": 0
+  }
 }

@@ -16,6 +16,7 @@ function difficulty(index: number, setIndex = 0) {
         : 1030378 + setIndex
       : 2_010_000_000 + setIndex,
     official_id: official ? id : null,
+    official_set_id: official ? (setIndex === 0 ? 2588526 : 1030378 + setIndex) : null,
     title:
       setIndex === 0
         ? 'Discovery fixture song'
@@ -65,6 +66,7 @@ async function fixture(page: Page, locale = 'en', theme = 'dark') {
   );
   const state = {
     appearance,
+    previewLimit: 8,
     maps: Array.from({ length: 30 }, (_, set) =>
       Array.from({ length: set === 0 ? 28 : 2 }, (_, index) => difficulty(index, set)),
     ).flat(),
@@ -152,7 +154,7 @@ async function fixture(page: Page, locale = 'en', theme = 'dark') {
           length_min: Math.min(...matching.map((map) => map.length_seconds)),
           length_max: Math.max(...matching.map((map) => map.length_seconds)),
           added_at: stamp,
-          preview: matching.slice(0, 8),
+          preview: matching.slice(0, state.previewLimit),
         };
       });
       if (query.get('sort') === 'title')
@@ -312,6 +314,31 @@ async function capture(
     actual_locale: document.documentElement.lang,
     font_status: document.fonts.status,
     reduced_motion: matchMedia('(prefers-reduced-motion: reduce)').matches,
+    catalogue_cards: [...document.querySelectorAll('.discovery-set')].map((card) => {
+      const bounds = card.getBoundingClientRect();
+      const identity = card.querySelector('.discovery-set-main')!.getBoundingClientRect();
+      const preview = card.querySelector('.difficulty-strip')!.getBoundingClientRect();
+      return {
+        width: bounds.width,
+        height: bounds.height,
+        identity_height: identity.height,
+        preview_height: preview.height,
+        preview_count: card.querySelectorAll('.difficulty-chip').length,
+      };
+    }),
+    detail_overview: (() => {
+      const overview = document.querySelector('.beatmap-overview');
+      if (!overview) return null;
+      const cover = overview.querySelector('.map-detail-cover')!.getBoundingClientRect();
+      const selected = overview.querySelector('.map-selected-difficulty')!.getBoundingClientRect();
+      return {
+        width: overview.getBoundingClientRect().width,
+        height: overview.getBoundingClientRect().height,
+        identity_height: cover.height,
+        selected_height: selected.height,
+        joined_gap: innerWidth > 780 ? selected.left - cover.right : selected.top - cover.bottom,
+      };
+    })(),
   }));
   await writeFile(
     `${imagePath}.json`,
@@ -365,7 +392,142 @@ test('set results show matched and stored counts, eight previews and server page
   ]);
 });
 
-test('isolated catalogue fields and opened Select follow coverage on a background in both themes', async ({
+test('catalogue cards keep equal compact tracks and usable links across content, widths and views', async ({
+  page,
+}) => {
+  const state = await fixture(page, 'en', 'light');
+  state.previewLimit = 24; // An oversized response must still respect the eight-link preview cap.
+  state.maps = state.maps.filter(
+    (map) =>
+      [2588526, 2_010_000_001, 2_010_000_005].includes(map.native_set_id) || map.id === 980300,
+  );
+  const longTitle = 'A long catalogue title 圖譜タイトル'.repeat(9);
+  state.maps[0].title = longTitle;
+  state.maps[0].artist = 'UnbrokenArtistName'.repeat(18);
+  state.maps[0].creator = 'UnbrokenMapperName'.repeat(18);
+  state.maps[0].version = 'UnbrokenDifficultyName'.repeat(18);
+  state.maps.find((map) => map.id === 980300)!.title = 'One';
+  for (const width of [1440, 1254, 1024, 800, 780, 600, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const view of ['grid', 'list']) {
+      await page.goto(`/beatmaps?view=${view}`);
+      const cards = page.locator('.discovery-set');
+      await expect(cards).toHaveCount(4);
+      await page.evaluate(() => document.fonts.ready);
+      const first = cards.first();
+      await expect(first.locator('.difficulty-chip')).toHaveCount(8);
+      await expect(first.getByRole('heading')).toHaveAttribute('title', longTitle);
+      await expect(
+        first.getByRole('link', { name: '20 more matching difficulties' }),
+      ).toHaveAttribute(
+        'href',
+        `/beatmaps/980000?returnTo=${encodeURIComponent(`/beatmaps?view=${view}`)}#set-difficulties`,
+      );
+      const geometry = await cards.evaluateAll((records) =>
+        records.map((card) => {
+          const bounds = card.getBoundingClientRect();
+          const identity = card.querySelector('.discovery-set-main')!.getBoundingClientRect();
+          const artwork = card.querySelector('.map-artwork')!.getBoundingClientRect();
+          const preview = card.querySelector('.difficulty-strip')!.getBoundingClientRect();
+          const slots = ['h2', '.discovery-artist', '.discovery-set-copy p', '.discovery-set-meta'];
+          return {
+            height: bounds.height,
+            identityHeight: identity.height,
+            artworkHeight: artwork.height,
+            previewHeight: preview.height,
+            slotOffsets: slots.map(
+              (selector) =>
+                card.querySelector(selector)!.getBoundingClientRect().top - identity.top,
+            ),
+            links: [...card.querySelectorAll('a')].map((link) => {
+              const target = link.getBoundingClientRect();
+              const rail = link.closest('.difficulty-strip');
+              const railBounds = rail?.getBoundingClientRect();
+              const localScroll =
+                rail &&
+                railBounds &&
+                getComputedStyle(rail).overflowX === 'auto' &&
+                railBounds.left >= bounds.left &&
+                railBounds.right <= bounds.right + 1;
+              return {
+                width: target.width,
+                height: target.height,
+                inside:
+                  ((target.left >= bounds.left && target.right <= bounds.right + 1) ||
+                    Boolean(localScroll)) &&
+                  target.top >= bounds.top &&
+                  target.bottom <= bounds.bottom + 1,
+              };
+            }),
+          };
+        }),
+      );
+      const range = (values: number[]) => Math.max(...values) - Math.min(...values);
+      expect(
+        range(geometry.map((card) => card.height)),
+        `${width}px ${view} card height`,
+      ).toBeLessThanOrEqual(1);
+      expect(
+        range(geometry.map((card) => card.identityHeight)),
+        `${width}px ${view} identity height`,
+      ).toBeLessThanOrEqual(1);
+      expect(
+        range(geometry.map((card) => card.previewHeight)),
+        `${width}px ${view} preview height`,
+      ).toBeLessThanOrEqual(1);
+      for (let slot = 0; slot < 4; slot++)
+        expect(
+          range(geometry.map((card) => card.slotOffsets[slot])),
+          `${width}px ${view} text slot ${slot}`,
+        ).toBeLessThanOrEqual(1);
+      if (width > 1050) {
+        // The desktop record stays denser than the former eight-difficulty three-row card.
+        expect(geometry[0].height).toBeLessThan(view === 'grid' ? 330 : 180);
+        expect(geometry[0].previewHeight).toBeLessThan(100);
+      }
+      if (width <= 600) {
+        expect(geometry[0].previewHeight).toBeLessThanOrEqual(65);
+        const rail = first.locator('.difficulty-strip');
+        const last = rail.getByRole('link').last();
+        await last.focus();
+        await expect(last).toBeFocused();
+        await expect(last).toBeInViewport();
+        await expect.poll(() => rail.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+        await expect
+          .poll(() =>
+            last.evaluate((element) => {
+              const bounds = element.getBoundingClientRect();
+              const rail = element.closest('.difficulty-strip')!.getBoundingClientRect();
+              return bounds.left >= rail.left && bounds.right <= rail.right + 1;
+            }),
+          )
+          .toBe(true);
+      }
+      for (const card of geometry) {
+        expect(Math.abs(card.artworkHeight - card.identityHeight)).toBeLessThanOrEqual(1);
+        for (const link of card.links) {
+          expect(link.width, `${width}px ${view} target width`).toBeGreaterThanOrEqual(44);
+          expect(link.height, `${width}px ${view} target height`).toBeGreaterThanOrEqual(44);
+          expect(link.inside, `${width}px ${view} target within record or its local rail`).toBe(
+            true,
+          );
+        }
+      }
+      await noOverflow(page);
+    }
+  }
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto('/beatmaps?view=grid');
+  const lastPreview = page.locator('.discovery-set').first().locator('.difficulty-chip').last();
+  await lastPreview.focus();
+  await expect(lastPreview).toBeFocused();
+  await expect(lastPreview).toBeInViewport();
+  await lastPreview.press('Enter');
+  await expect(page).toHaveURL(/\/beatmaps\/980007\?/);
+  await expect(page.locator('.back-link')).toHaveAttribute('href', '/beatmaps?view=grid');
+});
+
+test('catalogue toolbar uses one transparent material layer with readable fields in both themes', async ({
   page,
 }) => {
   const state = await fixture(page);
@@ -407,22 +569,37 @@ test('isolated catalogue fields and opened Select follow coverage on a backgroun
       const mode = page.locator('#discovery-mode');
       const search = page.getByLabel('Search', { exact: true });
       for (const control of [mode, search]) {
-        await expect(control).toHaveCSS('backdrop-filter', level === 0 ? 'blur(0px)' : 'blur(8px)');
-        const color = await control.evaluate(
-          (element) => getComputedStyle(element).backgroundColor,
-        );
-        expect(color).toBe(
-          level === 0
-            ? theme === 'dark'
-              ? 'rgb(16, 16, 19)'
-              : 'rgb(252, 252, 252)'
-            : theme === 'dark'
-              ? 'rgba(16, 16, 19, 0.55)'
-              : 'rgba(252, 252, 252, 0.55)',
-        );
+        await expect(control).toHaveCSS('backdrop-filter', 'none');
+        const alpha = await control.evaluate((element) => {
+          const canvas = document.createElement('canvas');
+          canvas.width = canvas.height = 1;
+          const context = canvas.getContext('2d')!;
+          context.fillStyle = getComputedStyle(element).backgroundColor;
+          context.fillRect(0, 0, 1, 1);
+          return context.getImageData(0, 0, 1, 1).data[3] / 255;
+        });
+        // Fields frame their value without stacking another opaque/glass fill.
+        expect(alpha).toBeGreaterThan(0);
+        expect(alpha).toBeLessThan(0.06);
       }
       await expect(page.locator('.discovery-controls')).toHaveCSS('backdrop-filter', 'none');
-      await expect(page.locator('.discovery-reading-ground')).toHaveCSS('backdrop-filter', 'none');
+      await expect(page.locator('.discovery-reading-ground')).toHaveAttribute(
+        'data-material',
+        'section',
+      );
+      await expect(page.locator('.discovery-reading-ground')).toHaveCSS(
+        'backdrop-filter',
+        level === 0 ? 'blur(0px)' : 'blur(8px)',
+      );
+      const groundAlpha = await page.locator('.discovery-reading-ground').evaluate((element) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 1;
+        const context = canvas.getContext('2d')!;
+        context.fillStyle = getComputedStyle(element).backgroundColor;
+        context.fillRect(0, 0, 1, 1);
+        return context.getImageData(0, 0, 1, 1).data[3] / 255;
+      });
+      expect(groundAlpha).toBeCloseTo(level === 0 ? 1 : 0.7, 2);
       const contrastSamples = await page.locator('.discovery-reading-ground').evaluate((ground) => {
         const canvas = document.createElement('canvas');
         canvas.width = canvas.height = 1;
@@ -434,7 +611,7 @@ test('isolated catalogue fields and opened Select follow coverage on a backgroun
           });
           return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
         };
-        const background = getComputedStyle(ground, '::before').backgroundColor;
+        const background = getComputedStyle(ground).backgroundColor;
         return [
           ...ground.querySelectorAll(
             '.page-heading p, .discovery-search > label, .discovery-filter-row label',
@@ -564,8 +741,11 @@ test('known siblings work without an archive, page fully and preserve score vari
   await expect(selector.getByText('28 known difficulties in this set')).toBeVisible();
   await expect(selector.locator('.set-difficulty-row')).toHaveCount(24);
   await expect(selector.locator('.set-difficulty-strip .difficulty-chip')).toHaveCount(24);
-  await expect(page.getByRole('link', { name: /Download.*\.osu/ })).toHaveCount(1);
-  await expect(page.getByRole('link', { name: /Download.*\.osz/ })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: /Download.*\.osu/ })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: /Download.*\.osz/ })).toHaveAttribute(
+    'href',
+    'https://osu.direct/api/d/2588526',
+  );
   await expect.poll(() => state.scoreQueries.at(-1)?.get('variant')).toBe('relax');
   await expect(page.getByRole('link', { name: 'RX fixture player', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Normal', exact: true }).click();
@@ -779,6 +959,8 @@ test('review capture matrix uses document top and writes per-capture metadata', 
   await capture(page, 'desktop-dark-zh', 'zh-TW', 'dark');
   await page.setViewportSize({ width: 1280, height: 720 });
   await capture(page, '1280-dark-zh', 'zh-TW', 'dark');
+  await page.setViewportSize({ width: 1288, height: 720 });
+  await capture(page, 'user-1288-dark-zh', 'zh-TW', 'dark');
   await page.setViewportSize({ width: 1254, height: 714 });
   await capture(page, '1254-dark-zh', 'zh-TW', 'dark');
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -795,6 +977,9 @@ for (const { locale, theme, width, name } of [
   { locale: 'ja', theme: 'dark', width: 320, name: 'mobile-dark-ja-320' },
 ])
   test(`review capture ${name}`, async ({ page }) => {
+    // Settle native focus scrolling before the Tab chain, as the capture helper
+    // already does later for screenshots. The site's html uses smooth scrolling.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     const state = await fixture(page, locale, theme);
     state.maps = state.maps.filter((map) =>
       [2588526, 2_010_000_001, 2_010_000_003, 2_010_000_005].includes(map.native_set_id),
@@ -802,14 +987,53 @@ for (const { locale, theme, width, name } of [
     await page.setViewportSize({ width, height: 844 });
     await page.goto('/beatmaps');
     await expect(page.locator('.discovery-set')).toHaveCount(4);
+    await page.evaluate(() => document.fonts.ready);
     const preview = page.locator('.discovery-set').first().locator('.difficulty-strip');
     await expect(preview.getByRole('link')).toHaveCount(8);
-    // Eight touch targets occupy four compact rows, leaving the next set nearby.
+    // A single scrolling row keeps every set compact regardless of difficulty count.
     expect(
       await preview.evaluate((element) => element.getBoundingClientRect().height),
-    ).toBeLessThan(210);
+    ).toBeLessThanOrEqual(65);
     await expect(preview.getByRole('link').first()).toHaveAccessibleName(/Difficulty 1.*1[.,]25/);
     await expect(preview.getByRole('link').last()).toContainText('3.21');
+    await preview.getByRole('link').first().focus();
+    for (let index = 0; index < 8; index++) {
+      const link = preview.getByRole('link').nth(index);
+      await expect(link).toBeFocused();
+      await expect(link).toBeInViewport();
+      await expect
+        .poll(
+          () =>
+            link.evaluate((element, linkIndex) => {
+              const target = element.getBoundingClientRect();
+              const container = element.closest('.difficulty-strip')!;
+              const rail = container.getBoundingClientRect();
+              // Native scrolling rounds its offsets to CSS pixels while DOMRects
+              // retain fractions. Bound both edges by the same one-pixel allowance.
+              return {
+                link_index: linkIndex + 1,
+                target: { left: target.left, right: target.right, width: target.width },
+                rail: { left: rail.left, right: rail.right, width: rail.width },
+                scroll_left: container.scrollLeft,
+                clipped_left: Math.max(0, rail.left - target.left),
+                clipped_right: Math.max(0, target.right - rail.right),
+                within: target.left >= rail.left - 1 && target.right <= rail.right + 1,
+              };
+            }, index),
+          {
+            message: `${name}: keyboard focus must reveal difficulty ${index + 1} within one CSS pixel`,
+          },
+        )
+        .toEqual(expect.objectContaining({ within: true }));
+      if (index < 7) await link.press('Tab');
+    }
+    await expect.poll(() => preview.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+    await noOverflow(page);
+    await preview.evaluate((element) => {
+      if (document.activeElement instanceof HTMLElement && element.contains(document.activeElement))
+        document.activeElement.blur();
+      element.scrollTo({ left: 0, top: 0, behavior: 'instant' });
+    });
     await capture(page, name, locale, theme);
     await page.goto('/beatmaps/980000');
     await expect(page.locator('.set-difficulty-row')).toHaveCount(24);

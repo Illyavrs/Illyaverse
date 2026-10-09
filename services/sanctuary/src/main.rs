@@ -423,6 +423,7 @@ fn router(state: AppState) -> Router {
             get(maps::package_difficulties),
         )
         .route("/api/v1/beatmaps/{id}/download", get(maps::download))
+        .route("/api/v1/beatmaps/{id}/archive", get(maps::archive_download))
         .route("/api/v1/beatmaps/{id}/osu", get(maps::osu_file))
         .route(
             "/api/v1/beatmaps/{id}/scores",

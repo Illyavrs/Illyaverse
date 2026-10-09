@@ -392,32 +392,75 @@ pub async fn package_difficulties(
     availability::require_active_set(&state.db, native_set_id).await?;
     Ok(page(items, total, p, size))
 }
-async fn file_response(state: &AppState, id: i64, archive: bool) -> ApiResult<Response> {
+#[derive(Clone, Copy, PartialEq)]
+enum MapFileKind {
+    Preferred,
+    Osu,
+    Archive,
+}
+
+fn stored_file_path(
+    osu_path: String,
+    archive_path: Option<String>,
+    kind: MapFileKind,
+) -> ApiResult<String> {
+    let path = match kind {
+        MapFileKind::Osu => osu_path,
+        MapFileKind::Preferred => archive_path.unwrap_or(osu_path),
+        MapFileKind::Archive => {
+            let path = archive_path.unwrap_or(osu_path);
+            if !path.to_ascii_lowercase().ends_with(".osz") {
+                return Err(ApiError::missing());
+            }
+            path
+        }
+    };
+    if std::path::Path::new(&path).is_absolute() || path.contains("..") {
+        return Err(ApiError::internal("unsafe stored map path"));
+    }
+    Ok(path)
+}
+
+async fn file_response(state: &AppState, id: i64, kind: MapFileKind) -> ApiResult<Response> {
     let native_set_id = availability::require_active_map(&state.db, id).await?;
     let row = sqlx::query("SELECT b.osu_path,COALESCE(a.archive_path,b.archive_path) AS archive_path FROM beatmaps b LEFT JOIN official_beatmapset_archive_members am ON am.beatmap_id=b.id LEFT JOIN official_beatmapset_archives a ON a.id=am.archive_id WHERE b.id=$1")
         .bind(id)
         .fetch_optional(&state.db)
         .await?
         .ok_or_else(ApiError::missing)?;
-    let path = if archive {
-        row.get::<Option<String>, _>("archive_path")
-            .unwrap_or_else(|| row.get("osu_path"))
-    } else {
-        row.get("osu_path")
-    };
-    if std::path::Path::new(&path).is_absolute() || path.contains("..") {
-        return Err(ApiError::internal("unsafe stored map path"));
-    }
+    let path = stored_file_path(row.get("osu_path"), row.get("archive_path"), kind)?;
     let bytes = tokio::fs::read(state.maps_root.join(&path)).await;
     availability::require_active_set(&state.db, native_set_id).await?;
-    let bytes = bytes?;
+    let bytes = match bytes {
+        Err(error)
+            if kind == MapFileKind::Archive && error.kind() == std::io::ErrorKind::NotFound =>
+        {
+            return Err(ApiError::missing());
+        }
+        result => result?,
+    };
+    if kind == MapFileKind::Archive && zip::ZipArchive::new(Cursor::new(&bytes)).is_err() {
+        return Err(ApiError::internal("invalid stored map archive"));
+    }
     let filename = format!(
         "illyaverse-{id}.{}",
-        if path.ends_with(".osz") { "osz" } else { "osu" }
+        if kind == MapFileKind::Archive || path.ends_with(".osz") {
+            "osz"
+        } else {
+            "osu"
+        }
     );
     Ok((
         [
-            (header::CONTENT_TYPE, "application/octet-stream".to_string()),
+            (
+                header::CONTENT_TYPE,
+                if kind == MapFileKind::Archive {
+                    "application/x-osu-archive"
+                } else {
+                    "application/octet-stream"
+                }
+                .to_string(),
+            ),
             (
                 header::CONTENT_DISPOSITION,
                 format!("attachment; filename=\"{filename}\""),
@@ -428,10 +471,16 @@ async fn file_response(state: &AppState, id: i64, archive: bool) -> ApiResult<Re
         .into_response())
 }
 pub async fn download(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult<Response> {
-    file_response(&state, id, true).await
+    file_response(&state, id, MapFileKind::Preferred).await
+}
+pub async fn archive_download(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> ApiResult<Response> {
+    file_response(&state, id, MapFileKind::Archive).await
 }
 pub async fn osu_file(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult<Response> {
-    file_response(&state, id, false).await
+    file_response(&state, id, MapFileKind::Osu).await
 }
 
 pub struct ParsedMap {
@@ -1798,6 +1847,195 @@ mod uploaded_map_list_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn strict_archive_selection_never_substitutes_a_difficulty_file() {
+        for path in [None, Some("retained.osu".to_string())] {
+            assert!(stored_file_path("difficulty.osu".into(), path, MapFileKind::Archive).is_err());
+        }
+        assert_eq!(
+            stored_file_path(
+                "difficulty.osu".into(),
+                Some("retained.osz".into()),
+                MapFileKind::Archive
+            )
+            .unwrap(),
+            "retained.osz"
+        );
+        assert_eq!(
+            stored_file_path("legacy.OSZ".into(), None, MapFileKind::Archive).unwrap(),
+            "legacy.OSZ"
+        );
+        assert!(
+            stored_file_path(
+                "difficulty.osu".into(),
+                Some("../retained.osz".into()),
+                MapFileKind::Archive
+            )
+            .is_err()
+        );
+        assert_eq!(
+            stored_file_path("difficulty.osu".into(), None, MapFileKind::Preferred).unwrap(),
+            "difficulty.osu"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires ILLYA_TEST_DATABASE_URL; owned disposable PostgreSQL 17"]
+    async fn strict_archive_endpoint_preserves_assets_and_never_falls_back_after_discovery() {
+        use super::map_mutation_tests::{
+            MULTIPART, MutationFixture, actor, multipart, osu_bytes, request,
+        };
+        use axum::{
+            body::{Body, to_bytes},
+            http::Request,
+        };
+        use tower::ServiceExt;
+
+        let fixture = MutationFixture::new("strict_archive", "http://127.0.0.1:1".into()).await;
+        let state = fixture.state.clone();
+        let app = fixture.app.clone();
+        let result = tokio::spawn(async move {
+            let (_, _, _, cookie) = actor(
+                &state,
+                "StrictArchive",
+                &["beatmaps.upload", "beatmaps.moderate"],
+            )
+            .await;
+            let osu = osu_bytes("Strict archive original");
+            let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+            for (name, bytes) in [
+                ("difficulty.osu", osu.as_slice()),
+                ("music.mp3", b"owned synthetic music".as_slice()),
+                ("background.jpg", b"owned synthetic image".as_slice()),
+            ] {
+                writer
+                    .start_file(name, zip::write::SimpleFileOptions::default())
+                    .unwrap();
+                std::io::Write::write_all(&mut writer, bytes).unwrap();
+            }
+            let payload = writer.finish().unwrap().into_inner();
+            let (status, published) = request(
+                &app,
+                "/api/v1/beatmaps/upload",
+                Some(&cookie),
+                false,
+                MULTIPART,
+                multipart("complete.osz", &payload),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{published}");
+            let id = published["items"][0]["id"].as_i64().unwrap();
+            let path = format!("/api/v1/beatmaps/{id}/archive");
+            let response = app
+                .clone()
+                .oneshot(Request::builder().uri(&path).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                response.headers()[header::CONTENT_TYPE],
+                "application/x-osu-archive"
+            );
+            assert_eq!(
+                response.headers()[header::CONTENT_DISPOSITION]
+                    .to_str()
+                    .unwrap(),
+                format!("attachment; filename=\"illyaverse-{id}.osz\"")
+            );
+            assert_eq!(
+                to_bytes(response.into_body(), 2 * 1024 * 1024)
+                    .await
+                    .unwrap()
+                    .as_ref(),
+                payload
+            );
+
+            // Discovery can precede a storage race. Missing original bytes must
+            // return an unavailable archive, even while the .osu still exists.
+            let archive_path: String =
+                sqlx::query_scalar("SELECT archive_path FROM beatmaps WHERE id=$1")
+                    .bind(id)
+                    .fetch_one(&state.db)
+                    .await
+                    .unwrap();
+            let retained = state.maps_root.join(&archive_path);
+            let parked = retained.with_extension("owned-fixture-parked");
+            tokio::fs::rename(&retained, &parked).await.unwrap();
+            let response = app
+                .clone()
+                .oneshot(Request::builder().uri(&path).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::NOT_FOUND);
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri(format!("/api/v1/beatmaps/{id}/osu"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                to_bytes(response.into_body(), 2 * 1024 * 1024)
+                    .await
+                    .unwrap()
+                    .as_ref(),
+                osu
+            );
+            tokio::fs::rename(&parked, &retained).await.unwrap();
+
+            let standalone = osu_bytes("Strict archive raw-only");
+            let (status, uploaded) = request(
+                &app,
+                "/api/v1/beatmaps/upload",
+                Some(&cookie),
+                false,
+                MULTIPART,
+                multipart("single.osu", &standalone),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{uploaded}");
+            let standalone_id = uploaded["items"][0]["id"].as_i64().unwrap();
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri(format!("/api/v1/beatmaps/{standalone_id}/archive"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+            let native_set_id = published["package"]["native_set_id"].as_i64().unwrap();
+            assert_eq!(
+                crate::beatmap_availability_tests::change(
+                    &app,
+                    &cookie,
+                    native_set_id,
+                    true,
+                    0,
+                    "Owned fixture withdrawal"
+                )
+                .await
+                .0,
+                StatusCode::OK
+            );
+            let response = app
+                .clone()
+                .oneshot(Request::builder().uri(&path).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::GONE);
+        })
+        .await;
+        fixture.finish(result).await;
+    }
+
     fn archive(name: &str, data: &[u8]) -> Vec<u8> {
         let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
         zip.start_file(name, zip::write::SimpleFileOptions::default())

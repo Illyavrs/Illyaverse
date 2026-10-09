@@ -190,8 +190,9 @@ async function fixture(
   locale: 'zh-TW' | 'en' | 'ja',
   theme: 'dark' | 'light',
   changes: Partial<FixtureState> = {},
+  appearance: Partial<Preferences> = {},
 ) {
-  const pref = preferences(locale, theme);
+  const pref = { ...preferences(locale, theme), ...appearance };
   await page
     .context()
     .addCookies([{ name: 'illya_locale', value: locale, url: baseURL ?? 'http://localhost:3000' }]);
@@ -289,10 +290,11 @@ async function stableLayout(page: BrowserPage) {
     .toBe(true);
 }
 
-async function capture(page: BrowserPage, name: string, state: string) {
+async function capture(page: BrowserPage, name: string, state: string, hoverLatestMap = false) {
   await stableLayout(page);
   const hierarchy = process.env.ILLYA_MAP_DISCOVERY_CAPTURE === '1';
-  if (!hierarchy && process.env.ILLYA_CAPTURE_WORKFLOW_REVIEW !== '1') return;
+  const hoverReview = hoverLatestMap && process.env.ILLYA_HOME_HOVER_CAPTURE === '1';
+  if (!hierarchy && !hoverReview && process.env.ILLYA_CAPTURE_WORKFLOW_REVIEW !== '1') return;
   await page.evaluate(() => {
     document.documentElement.style.setProperty('scroll-behavior', 'auto', 'important');
     (document.activeElement as HTMLElement | null)?.blur();
@@ -300,14 +302,25 @@ async function capture(page: BrowserPage, name: string, state: string) {
   });
   await page.mouse.move(0, 0);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  if (hoverLatestMap) {
+    const row = page.locator('.home-catalogue .map-record').first();
+    const box = await row.boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.move(box!.x + 24, box!.y + Math.min(box!.height / 2, 60));
+    await expect.poll(async () => (await latestMapFacts(page)).rowAlpha).toBeCloseTo(0.04, 2);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  }
   const output = path.resolve(
     '../../.impeccable/review',
-    `${hierarchy ? 'map-hierarchy-home' : 'community-home'}-${name}`,
+    `${hoverLatestMap ? 'home-hover' : hierarchy ? 'map-hierarchy-home' : 'community-home'}-${name}`,
   );
   await page.screenshot({ path: `${output}.png`, fullPage: true, animations: 'disabled' });
   const sourceFiles = [
     'src/features/home.tsx',
     'src/features/home.css',
+    'src/features/beatmaps.tsx',
+    'src/styles/map-discovery.css',
+    'src/components/providers.tsx',
     'src/app/globals.css',
     'src/app/layout.tsx',
     'messages/zh-TW.json',
@@ -338,6 +351,10 @@ async function capture(page: BrowserPage, name: string, state: string) {
           raised: getComputedStyle(document.documentElement).getPropertyValue('--surface-raised'),
         })),
         state,
+        interaction: hoverLatestMap
+          ? 'Latest beatmap row hovered at document top.'
+          : 'Resting page.',
+        latest_map: hoverLatestMap ? await latestMapFacts(page) : undefined,
         data: 'Synthetic QA fixtures intercepted at existing public API routes; no native-client or live activity claims.',
         sources,
       },
@@ -345,6 +362,92 @@ async function capture(page: BrowserPage, name: string, state: string) {
       2,
     ) + '\n',
   );
+}
+
+async function latestMapFacts(page: BrowserPage) {
+  return page
+    .locator('.home-catalogue .map-record')
+    .first()
+    .evaluate((row) => {
+      const panel = row.closest('.home-catalogue-panel')!;
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 1;
+      const context = canvas.getContext('2d')!;
+      const paint = (color: string) => {
+        context.fillStyle = color;
+        context.fillRect(0, 0, 1, 1);
+      };
+      const pixel = (color: string) => {
+        context.clearRect(0, 0, 1, 1);
+        paint(color);
+        return Array.from(context.getImageData(0, 0, 1, 1).data);
+      };
+      const luminance = (channels: number[]) => {
+        const linear = channels.slice(0, 3).map((channel) => {
+          const value = channel / 255;
+          return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+        });
+        return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+      };
+      const rowStyle = getComputedStyle(row);
+      const panelStyle = getComputedStyle(panel);
+      const veil = getComputedStyle(document.querySelector('.global-veil')!).backgroundColor;
+      const copy = [
+        ...row.querySelectorAll(
+          '.map-main > strong, .map-record-artist, .map-record-mapper, .map-record-difficulty, .map-record-mode, .status-text, .exclusive, .map-numbers strong, .map-numbers > span',
+        ),
+      ];
+      const contrast = copy.map((element) => {
+        const text = luminance(pixel(getComputedStyle(element).color));
+        // These endpoints bound every possible uploaded scene beneath the configured dim veil.
+        const samples = ['#000000', '#ffffff'].map((scene) => {
+          paint(scene);
+          paint(veil);
+          paint(panelStyle.backgroundColor);
+          paint(rowStyle.backgroundColor);
+          const ground = luminance(Array.from(context.getImageData(0, 0, 1, 1).data));
+          return (Math.max(text, ground) + 0.05) / (Math.min(text, ground) + 0.05);
+        });
+        return { label: element.textContent, minimum: Math.min(...samples) };
+      });
+      const geometry = [row, ...row.querySelectorAll('.map-art, .map-main, .map-numbers')].map(
+        (element) => {
+          const box = element.getBoundingClientRect();
+          return { x: box.x, y: box.y, width: box.width, height: box.height };
+        },
+      );
+      const panelBox = panel.getBoundingClientRect();
+      const rowBox = row.getBoundingClientRect();
+      const resolveColor = (color: string) => {
+        const probe = document.createElement('span');
+        probe.style.color = color;
+        row.appendChild(probe);
+        const resolved = pixel(getComputedStyle(probe).color);
+        probe.remove();
+        return resolved;
+      };
+      return {
+        rowAlpha: pixel(rowStyle.backgroundColor)[3] / 255,
+        panelAlpha: pixel(panelStyle.backgroundColor)[3] / 255,
+        rowBlur: rowStyle.backdropFilter,
+        panelBlur: panelStyle.backdropFilter,
+        nestedBlurCount: [row, ...row.querySelectorAll('*')].filter(
+          (element) => getComputedStyle(element).backdropFilter !== 'none',
+        ).length,
+        titleColor: pixel(getComputedStyle(row.querySelector('.map-main > strong')!).color),
+        actionColor: resolveColor('var(--readable-accent)'),
+        rowInsetLeft: rowBox.left - panelBox.left,
+        rowInsetRight: panelBox.right - rowBox.right,
+        contentInsetLeft: geometry[1].x - rowBox.left,
+        contentInsetRight: rowBox.right - (geometry[3].x + geometry[3].width),
+        dividerInset: getComputedStyle(row, '::after').left,
+        outlineStyle: rowStyle.outlineStyle,
+        outlineWidth: rowStyle.outlineWidth,
+        outlineOffset: rowStyle.outlineOffset,
+        geometry,
+        contrast,
+      };
+    });
 }
 
 for (const width of [1440, 1254]) {
@@ -376,6 +479,25 @@ for (const width of [1440, 1254]) {
       '7,890',
     ]);
     await expect(page.locator('.home-catalogue .map-row')).toHaveCount(3);
+    await expect(page.locator('.home-catalogue-panel')).toHaveCSS('backdrop-filter', 'blur(8px)');
+    await expect(page.locator('.home-catalogue-panel')).toHaveCSS(
+      'border-bottom-left-radius',
+      '14px',
+    );
+    await expect(page.locator('.home-catalogue-panel')).toHaveCSS(
+      'background-color',
+      'rgba(24, 24, 27, 0.55)',
+    );
+    expect(
+      await page.locator('html').evaluate((root) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 1;
+        const context = canvas.getContext('2d')!;
+        context.fillStyle = getComputedStyle(root).getPropertyValue('--page-ground').trim();
+        context.fillRect(0, 0, 1, 1);
+        return [...context.getImageData(0, 0, 1, 1).data];
+      }),
+    ).toEqual([0, 0, 0, 255]);
     await expect(page.locator('.home-leader-list > li')).toHaveCount(5);
     await expect(page.locator('.home-score-list > li')).toHaveCount(3);
     await expect(page.getByText('QA PRIVATE PENDING SCORE')).toHaveCount(0);
@@ -552,3 +674,159 @@ test('signed-in staff shortcuts and independent score/ranking recovery remain ac
   expect(state.requests['/beatmaps']).toBe(mapRequests);
   await stableLayout(page);
 });
+
+for (const scenario of [
+  {
+    width: 1254,
+    locale: 'zh-TW',
+    theme: 'dark',
+    accent: '#5bbbc1',
+    panelBlur: 18,
+    opacity: 0.37,
+    sceneBlur: 6,
+  },
+  {
+    width: 390,
+    locale: 'en',
+    theme: 'light',
+    accent: '#6e63d3',
+    panelBlur: 8,
+    opacity: 0.55,
+    sceneBlur: 0,
+  },
+] as const) {
+  test(`latest beatmap hover preserves material and geometry at ${scenario.width}px ${scenario.theme}`, async ({
+    page,
+    baseURL,
+  }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await fixture(
+      page,
+      baseURL,
+      scenario.locale,
+      scenario.theme,
+      {},
+      {
+        accent_color: scenario.accent,
+        background_url: '/media/home-hover-material-fixture.png',
+        background_blur: scenario.sceneBlur,
+        panel_blur: scenario.panelBlur,
+        panel_opacity: scenario.opacity,
+      },
+    );
+    // Original geometric calibration pixels shared with material-control QA, never player artwork.
+    await page.route('**/media/home-hover-material-fixture.png', (route) =>
+      route.fulfill({
+        contentType: 'image/png',
+        body: Buffer.from(
+          'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAPklEQVR4nGM4s3MmVuQSXYgVkaqeYdSCUQuGgAXUMgiX+lELRi0YChbQPKONWjBqwRCwgOYZbdSCUQsGvwUAGpBcW8YKdfIAAAAASUVORK5CYII=',
+          'base64',
+        ),
+      }),
+    );
+    await page.setViewportSize({ width: scenario.width, height: 1000 });
+    await page.goto('/');
+    const root = page.locator('html');
+    const row = page.locator('.home-catalogue .map-record').first();
+    await expect(row).toHaveAttribute('href', '/beatmaps/6101');
+    await expect(page.locator('.global-scene')).toHaveCSS(
+      'background-image',
+      /home-hover-material-fixture\.png/,
+    );
+    await page.evaluate(async () => {
+      const image = new Image();
+      image.src = '/media/home-hover-material-fixture.png';
+      await image.decode();
+    });
+    await stableLayout(page);
+
+    for (const level of [0, 25, 50, 75, 100]) {
+      await page
+        .locator('.header-tools button')
+        .filter({ has: page.locator('svg.lucide-palette') })
+        .click();
+      const coverage = page.locator('#quick-glass_level').getByRole('slider');
+      await coverage.focus();
+      await page.keyboard.press('Home');
+      for (let value = 0; value < Math.floor(level / 10); value++)
+        await page.keyboard.press('PageUp');
+      for (let value = 0; value < level % 10; value++) await page.keyboard.press('ArrowRight');
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.appearance-sheet')).toBeHidden();
+      await expect(root).toHaveAttribute('data-glass-level', String(level));
+      await expect(page.locator('.site-header')).toHaveCSS(
+        'backdrop-filter',
+        `blur(${scenario.panelBlur}px)`,
+      );
+      await expect(page.locator('.home-introduction')).toHaveCSS(
+        'backdrop-filter',
+        `blur(${level >= 25 ? scenario.panelBlur : 0}px)`,
+      );
+      await expect(page.locator('.home-catalogue .home-section-heading')).toHaveCSS(
+        'backdrop-filter',
+        `blur(${level >= 50 ? scenario.panelBlur : 0}px)`,
+      );
+      await expect(page.locator('.global-scene')).toHaveCSS(
+        'filter',
+        `blur(${scenario.sceneBlur}px)`,
+      );
+      await expect(page.locator('.global-veil')).toHaveCSS(
+        'background-color',
+        scenario.theme === 'dark' ? 'rgba(0, 0, 0, 0.76)' : 'rgba(255, 255, 255, 0.76)',
+      );
+      await page.mouse.move(0, 0);
+      await expect.poll(async () => (await latestMapFacts(page)).rowAlpha).toBe(0);
+      const resting = await latestMapFacts(page);
+      expect(resting.panelBlur).toBe(`blur(${level >= 75 ? scenario.panelBlur : 0}px)`);
+      expect(resting.panelAlpha).toBeCloseTo(level >= 75 ? scenario.opacity : 1, 2);
+      expect(resting.nestedBlurCount).toBe(0);
+      expect(resting.rowInsetLeft).toBe(1);
+      expect(resting.rowInsetRight).toBe(1);
+      expect(resting.contentInsetLeft).toBe(scenario.width <= 600 ? 16 : 20);
+      expect(resting.contentInsetRight).toBeCloseTo(scenario.width <= 600 ? 16 : 20, 2);
+      expect(resting.dividerInset).toBe(scenario.width <= 600 ? '16px' : '20px');
+      await row.hover();
+      await expect.poll(async () => (await latestMapFacts(page)).rowAlpha).toBeCloseTo(0.04, 2);
+      await expect
+        .poll(async () => {
+          const facts = await latestMapFacts(page);
+          return JSON.stringify(facts.titleColor) === JSON.stringify(facts.actionColor);
+        })
+        .toBe(true);
+      const hovered = await latestMapFacts(page);
+      expect(hovered.geometry).toEqual(resting.geometry);
+      expect(hovered.panelAlpha).toBe(resting.panelAlpha);
+      expect(hovered.panelBlur).toBe(resting.panelBlur);
+      expect(hovered.rowBlur).toBe('none');
+      expect(hovered.nestedBlurCount).toBe(0);
+      for (const sample of hovered.contrast)
+        expect(sample.minimum, sample.label ?? '').toBeGreaterThanOrEqual(4.5);
+      if (level === 100)
+        await capture(
+          page,
+          `${scenario.width}-${scenario.theme}-${scenario.locale}-background`,
+          `Synthetic populated homepage; custom accent; panel blur ${scenario.panelBlur}px, opacity ${scenario.opacity}; geometric background fixture; latest beatmap hovered.`,
+          true,
+        );
+      await page.mouse.move(0, 0);
+      await expect.poll(async () => (await latestMapFacts(page)).rowAlpha).toBe(0);
+    }
+
+    await row.focus();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Shift+Tab');
+    await expect(row).toBeFocused();
+    await expect.poll(async () => (await latestMapFacts(page)).rowAlpha).toBeCloseTo(0.04, 2);
+    const focused = await latestMapFacts(page);
+    expect(focused.outlineStyle).toBe('solid');
+    expect(focused.outlineWidth).toBe('2px');
+    expect(focused.outlineOffset).toBe('-3px');
+    expect(focused.nestedBlurCount).toBe(0);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await expect(row).toHaveCSS('transition-duration', '0s');
+    await expect(row.locator('.map-main > strong')).toHaveCSS('transition-duration', '0s');
+    await stableLayout(page);
+    expect(errors).toEqual([]);
+  });
+}

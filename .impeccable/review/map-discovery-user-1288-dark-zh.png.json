@@ -1,0 +1,49 @@
+{
+  "captured_at": "2026-10-09T02:38:16.878Z",
+  "url": "http://localhost:19000/beatmaps",
+  "locale": "zh-TW",
+  "theme": "dark",
+  "synthetic": true,
+  "artwork_origin": "https://assets.ppy.sh/beatmaps/{validated_official_set_id}/covers/cover.jpg; browser rendered only; fallback on failure",
+  "width": 1288,
+  "height": 720,
+  "scroll_x": 0,
+  "scroll_y": 0,
+  "document_width": 1288,
+  "document_height": 1439,
+  "actual_theme": "dark",
+  "actual_locale": "zh-TW",
+  "font_status": "loaded",
+  "reduced_motion": true,
+  "catalogue_cards": [
+    {
+      "width": 559,
+      "height": 323,
+      "identity_height": 168,
+      "preview_height": 92,
+      "preview_count": 8
+    },
+    {
+      "width": 559,
+      "height": 323,
+      "identity_height": 168,
+      "preview_height": 92,
+      "preview_count": 2
+    },
+    {
+      "width": 559,
+      "height": 323,
+      "identity_height": 168,
+      "preview_height": 92,
+      "preview_count": 2
+    },
+    {
+      "width": 559,
+      "height": 323,
+      "identity_height": 168,
+      "preview_height": 92,
+      "preview_count": 2
+    }
+  ],
+  "detail_overview": null
+}

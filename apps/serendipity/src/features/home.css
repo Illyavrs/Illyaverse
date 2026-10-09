@@ -180,7 +180,39 @@
   overflow: hidden;
 }
 .home-community .home-catalogue-panel .map-record-list {
+  padding-inline: 0;
+}
+.home-community .home-catalogue-panel .map-record-list .map-record {
+  position: relative;
   padding-inline: 20px;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  transition: background-color 160ms ease-out;
+}
+.home-community .home-catalogue-panel .map-record:last-child {
+  border-bottom: 0;
+}
+.home-community .home-catalogue-panel .map-record:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  inset: auto 20px 0;
+  height: 1px;
+  background: var(--border);
+  pointer-events: none;
+}
+/* The enclosing panel owns the material; a row adds only a thin interaction veil. */
+.home-community .home-catalogue-panel .map-record:is(:hover, :focus-visible) {
+  background: color-mix(in srgb, var(--foreground) 4%, transparent);
+}
+.home-community .home-catalogue-panel .map-record .map-main > strong {
+  transition: color 160ms ease-out;
+}
+.home-community .home-catalogue-panel .map-record:is(:hover, :focus-visible) .map-main > strong {
+  color: var(--readable-accent);
+}
+.home-community .home-catalogue-panel .map-record:focus-visible {
+  outline-offset: -3px;
+  border-radius: 0;
 }
 .home-community .home-empty {
   padding: 24px 20px;
@@ -519,8 +551,11 @@
     align-items: stretch;
     gap: 24px;
   }
-  .home-community .home-catalogue-panel .map-record-list {
+  .home-community .home-catalogue-panel .map-record-list .map-record {
     padding-inline: 16px;
+  }
+  .home-community .home-catalogue-panel .map-record:not(:last-child)::after {
+    inset-inline: 16px;
   }
   .home-community .home-section-heading {
     padding: 14px 16px;

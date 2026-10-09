@@ -365,6 +365,11 @@ function DiscoverySkeleton({ compact = false }: { compact?: boolean }) {
 function MapSetCard({ set, returnTo }: { set: DiscoverySet; returnTo: string }) {
   const t = useTranslations('mapDiscovery');
   const map = set.representative;
+  const preview = set.preview.slice(0, 8);
+  const mappedBy = t('mappedBy', { creator: map.creator });
+  const matchingModes = set.matching_modes
+    .map((mode) => modes[mode] ?? t('unknownMode'))
+    .join(' / ');
   const length =
     set.length_min === set.length_max
       ? mapDuration(set.length_min)
@@ -382,9 +387,11 @@ function MapSetCard({ set, returnTo }: { set: DiscoverySet; returnTo: string }) 
               <span className="discovery-source">{t('source.local')}</span>
             )}
           </div>
-          <h2>{map.title}</h2>
-          <span className="discovery-artist">{map.artist}</span>
-          <p>{t('mappedBy', { creator: map.creator })}</p>
+          <h2 title={map.title}>{map.title}</h2>
+          <span className="discovery-artist" title={map.artist}>
+            {map.artist}
+          </span>
+          <p title={mappedBy}>{mappedBy}</p>
           <div className="discovery-set-meta">
             <span className="discovery-stars">
               <Star aria-hidden="true" />
@@ -394,16 +401,36 @@ function MapSetCard({ set, returnTo }: { set: DiscoverySet; returnTo: string }) 
               <Clock aria-hidden="true" />
               {length}
             </span>
-            <span>
-              {set.matching_modes.map((mode) => modes[mode] ?? t('unknownMode')).join(' / ')}
+            <span className="discovery-modes" title={matchingModes}>
+              {matchingModes}
             </span>
           </div>
         </div>
         <ArrowRight className="discovery-open" aria-hidden="true" />
       </Link>
       <div className="discovery-difficulties">
-        <div className="difficulty-strip">
-          {set.preview.map((difficulty) => (
+        <div
+          className="difficulty-strip"
+          onFocusCapture={(event) => {
+            const rail = event.currentTarget;
+            if (
+              !(event.target instanceof HTMLAnchorElement) ||
+              rail.scrollWidth <= rail.clientWidth
+            )
+              return;
+            const target = event.target.getBoundingClientRect();
+            const bounds = rail.getBoundingClientRect();
+            const inset = 6;
+            const delta =
+              target.left < bounds.left + inset
+                ? target.left - bounds.left - inset
+                : target.right > bounds.right - inset
+                  ? target.right - bounds.right + inset
+                  : 0;
+            if (delta !== 0) rail.scrollBy({ left: delta, behavior: 'instant' });
+          }}
+        >
+          {preview.map((difficulty) => (
             <DifficultyChip
               map={difficulty}
               key={difficulty.id}
@@ -416,12 +443,12 @@ function MapSetCard({ set, returnTo }: { set: DiscoverySet; returnTo: string }) 
           <span>
             {t('matchedStored', { matched: set.matching_count, stored: set.stored_count })}
           </span>
-          {set.matching_count > set.preview.length && (
+          {set.matching_count > preview.length && (
             <Link
               href={`${beatmapDifficultyHref(map, { returnTo })}#set-difficulties`}
               className="discovery-more"
             >
-              {t('moreDifficulties', { count: set.matching_count - set.preview.length })}
+              {t('moreDifficulties', { count: set.matching_count - preview.length })}
               <ArrowRight aria-hidden="true" />
             </Link>
           )}
@@ -513,7 +540,7 @@ export function MapDiscoveryPage() {
   const outOfRange = data && page > Math.max(1, Math.ceil(data.total / data.page_size));
   return (
     <div className="page-container map-discovery">
-      <div className="discovery-reading-ground">
+      <div className="discovery-reading-ground" data-material="section">
         <PageHeading title={maps('title')} description={t('description')}>
           {user && hasPermission(user.permissions, 'beatmaps.upload') && (
             <Button asChild>

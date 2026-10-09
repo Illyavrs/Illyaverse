@@ -99,6 +99,7 @@ export type Beatmap = BeatmapDifficulty & {
   native_set_id?: number;
   availability?: BeatmapAvailability;
   official_id: number | null;
+  official_set_id?: number | null;
   bpm: number;
   max_combo: number;
   play_count: number;

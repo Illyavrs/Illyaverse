@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-08T17:23:55.095154Z",
+  "generatedAt": "2026-10-09T02:28:46Z",
   "title": "Design System: Illyaverse — Serendipity",
   "extensions": {
     "colorMeta": {
@@ -1303,7 +1303,7 @@
       "Do connect entity identity, facts, controls and records with clear surface levels and seams.",
       "Do align comparable numeric values and use tabular figures for ranks, scores and control outputs.",
       "Do retain labels alongside status, grade and difficulty color, and show only facts provided by the running API.",
-      "Do preserve 44px catalogue and score action targets and the two-column mobile difficulty preview.",
+      "Do preserve 44px catalogue and score action targets and every mobile catalogue difficulty link in its compact scrolling rail.",
       "Do keep keyboard focus visible, honor reduced motion and contain dense horizontal content locally.",
       "Do use ordinary zh-TW/en/ja labels and real runtime covers or player-uploaded media."
     ],

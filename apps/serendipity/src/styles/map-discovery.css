@@ -20,19 +20,32 @@
   --difficulty-expert: #6848a2;
   --difficulty-extreme: #9c4436;
 }
-/* One reading ground protects the heading and labels without changing the
-   fields' section material or adding another layer of backdrop blur. */
-.discovery-reading-ground {
+/* The catalogue toolbar owns one glass layer; its fields use thin neutral
+   veils so their fills do not accumulate into opaque panels. */
+.map-discovery .discovery-reading-ground {
   position: relative;
   isolation: isolate;
-}
-.discovery-reading-ground::before {
-  content: '';
-  position: absolute;
-  inset: -12px -16px 0;
-  z-index: -1;
+  margin: -12px -16px 0;
+  padding: 12px 16px 0;
   border-radius: var(--radius);
-  background: color-mix(in srgb, var(--background) 92%, transparent);
+  background: var(--section-surface-strong);
+  backdrop-filter: blur(var(--section-blur));
+}
+.discovery-reading-ground
+  :is(.page-heading p, .discovery-search > label, .discovery-filter-row label) {
+  color: var(--foreground);
+}
+.discovery-reading-ground .discovery-search [data-slot='input'],
+.discovery-reading-ground .discovery-filter-row [data-slot='select-trigger'] {
+  background: color-mix(in srgb, var(--foreground) 4%, transparent);
+  backdrop-filter: none;
+}
+.discovery-reading-ground .discovery-filter-row [data-slot='select-trigger']:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+.discovery-reading-ground .discovery-search [data-slot='input']::placeholder {
+  color: var(--foreground);
+  opacity: 1;
 }
 .map-discovery .page-heading {
   margin-bottom: 28px;
@@ -168,14 +181,19 @@
   height: 16px;
 }
 
-/* Artwork, identity and difficulty links form a joined record. */
+/* Equivalent records reserve the same identity, preview and footer tracks.
+   A short title or a small set must not move the next catalogue row. */
 .discovery-results {
   display: grid;
-  align-items: start;
+  align-items: stretch;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
 }
 .discovery-set {
+  --catalogue-preview-columns: 4;
+  --catalogue-preview-rows: 2;
+  display: grid;
+  grid-template-rows: 168px auto;
   min-width: 0;
   overflow: hidden;
   border-color: var(--border);
@@ -185,7 +203,7 @@
   grid-template-columns: 120px minmax(0, 1fr);
   position: relative;
   min-width: 0;
-  min-height: 158px;
+  min-height: 0;
   color: var(--foreground);
 }
 .map-artwork {
@@ -225,51 +243,64 @@
   flex-direction: column;
 }
 .discovery-set-copy {
-  align-self: center;
+  display: grid;
+  grid-template-rows: 28px 44px 18px 16px 28px;
+  row-gap: 2px;
   min-width: 0;
-  padding: 18px 32px 18px 18px;
+  padding: 13px 32px 13px 16px;
 }
 .discovery-set h2 {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
-  margin: 7px 0 2px;
-  font-size: 21px;
+  margin: 0;
+  font-size: 19px;
   font-weight: 850;
-  line-height: 1.2;
+  line-height: 22px;
   overflow-wrap: anywhere;
 }
 .discovery-artist {
   display: block;
   color: var(--foreground);
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 12px;
+  line-height: 18px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .discovery-set-copy p {
-  margin: 4px 0 13px;
+  margin: 0;
   color: var(--secondary-text);
   font-size: 11px;
+  line-height: 16px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .discovery-set-meta {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-rows: repeat(2, 12px);
   align-items: center;
-  gap: 5px 12px;
+  gap: 4px 12px;
   color: var(--secondary-text);
   font-size: 11px;
+  line-height: 12px;
   font-variant-numeric: tabular-nums;
 }
 .discovery-set-meta > span {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.discovery-set-meta .discovery-modes {
+  display: block;
+  grid-column: 1 / -1;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .discovery-set-meta svg {
   width: 12px;
@@ -281,9 +312,11 @@
 }
 .discovery-set-statuses {
   display: flex;
-  align-items: center;
+  align-items: start;
+  align-content: start;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 0 8px;
+  overflow: hidden;
 }
 .discovery-status {
   display: inline-flex;
@@ -298,6 +331,7 @@
 .discovery-source {
   color: var(--secondary-text);
   font-size: 10px;
+  line-height: 14px;
 }
 .discovery-open {
   position: absolute;
@@ -314,8 +348,46 @@
   color: var(--readable-accent);
 }
 .discovery-difficulties {
-  padding: 10px 14px 7px;
+  display: grid;
+  grid-template-rows: calc(var(--catalogue-preview-rows) * 48px - 4px) 44px;
+  padding: 8px 12px;
   border-top: 1px solid var(--border);
+}
+.discovery-difficulties > .difficulty-strip {
+  display: grid;
+  grid-template-columns: repeat(var(--catalogue-preview-columns), minmax(0, 1fr));
+  grid-template-rows: repeat(var(--catalogue-preview-rows), 44px);
+  align-content: start;
+  gap: 4px;
+}
+.discovery-difficulties .difficulty-chip.compact {
+  display: grid;
+  grid-template-columns: 5px minmax(0, 1fr);
+  grid-template-rows: repeat(2, 14px);
+  width: 100%;
+  gap: 2px 7px;
+  padding: 6px 8px;
+}
+.discovery-difficulties .difficulty-chip-copy {
+  grid-column: 2;
+  grid-row: 1;
+  display: block;
+  line-height: 14px;
+}
+.discovery-difficulties .difficulty-chip.compact .difficulty-version {
+  display: block;
+  max-width: 100%;
+}
+.discovery-difficulties .difficulty-chip.compact .difficulty-marker {
+  grid-column: 1;
+  grid-row: 1 / 3;
+  height: 24px;
+}
+.discovery-difficulties .difficulty-rating {
+  grid-column: 2;
+  grid-row: 2;
+  font-size: 11px;
+  line-height: 14px;
 }
 .difficulty-strip {
   display: flex;
@@ -406,14 +478,13 @@
   background: color-mix(in srgb, var(--difficulty-color) 12%, var(--surface));
 }
 .discovery-difficulty-heading {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  padding-top: 3px;
+  gap: 12px;
   color: var(--secondary-text);
   font-size: 10px;
+  line-height: 14px;
 }
 .discovery-more {
   display: inline-flex;
@@ -423,10 +494,15 @@
   color: var(--readable-accent);
   font-size: 11px;
   font-weight: 800;
+  line-height: 14px;
+  justify-self: end;
+  justify-content: end;
+  text-align: right;
 }
 .discovery-more svg {
   width: 12px;
   height: 12px;
+  flex-shrink: 0;
 }
 .view-list {
   grid-template-columns: minmax(0, 1fr);
@@ -434,19 +510,21 @@
 }
 .view-list .discovery-set {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
 }
 .view-list .discovery-set-main {
   grid-template-columns: 154px minmax(0, 1fr);
-  min-height: 154px;
+  min-height: 168px;
+}
+.view-list .discovery-set-copy {
+  align-self: center;
 }
 .view-list .discovery-difficulties {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
+  align-content: center;
   border-top: 0;
   border-left: 1px solid var(--border);
-  padding: 12px 16px;
+  padding: 8px 12px;
 }
 .discovery-pagination {
   display: flex;
@@ -516,7 +594,7 @@
 .beatmap-overview {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 244px;
-  gap: 18px;
+  gap: 0;
   align-items: stretch;
 }
 .beatmap-detail .map-detail-cover {
@@ -526,6 +604,8 @@
   gap: 0;
   padding: 0;
   overflow: hidden;
+  border-right: 0;
+  border-radius: var(--radius) 0 0 var(--radius);
 }
 .beatmap-detail .map-detail-art.map-artwork {
   width: 100%;
@@ -602,6 +682,7 @@
 .map-selected-difficulty {
   padding: 24px 20px;
   min-width: 0;
+  border-radius: 0 var(--radius) var(--radius) 0;
 }
 .map-selected-name {
   display: flex;
@@ -945,27 +1026,34 @@
 }
 
 @media (max-width: 1050px) {
+  .discovery-set {
+    --catalogue-preview-columns: 3;
+    --catalogue-preview-rows: 3;
+  }
   .discovery-set-main {
     grid-template-columns: 96px minmax(0, 1fr);
   }
   .discovery-set-copy {
-    padding: 16px 26px 16px 14px;
+    padding: 13px 26px 13px 14px;
   }
   .discovery-set h2 {
     font-size: 19px;
   }
   .view-list .discovery-set {
-    grid-template-columns: minmax(0, 1fr) minmax(240px, 0.75fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .view-list .discovery-set-main {
     grid-template-columns: 120px minmax(0, 1fr);
   }
   .beatmap-overview {
     grid-template-columns: minmax(0, 1fr) 220px;
-    gap: 14px;
   }
 }
 @media (max-width: 780px) {
+  .discovery-set {
+    --catalogue-preview-columns: 4;
+    --catalogue-preview-rows: 2;
+  }
   .discovery-results {
     grid-template-columns: minmax(0, 1fr);
     gap: 14px;
@@ -974,13 +1062,14 @@
     grid-template-columns: 132px minmax(0, 1fr);
   }
   .discovery-set-copy {
-    padding: 18px 32px 18px 18px;
+    padding: 13px 32px 13px 16px;
   }
   .discovery-set h2 {
-    font-size: 22px;
+    font-size: 19px;
   }
   .view-list .discovery-set {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 168px auto;
   }
   .view-list .discovery-difficulties {
     border-left: 0;
@@ -989,12 +1078,18 @@
   .beatmap-overview {
     grid-template-columns: minmax(0, 1fr);
   }
+  .beatmap-detail .map-detail-cover {
+    border-right: 1px solid var(--border);
+    border-bottom: 0;
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
   .map-selected-difficulty {
     display: grid;
     grid-template-columns: minmax(0, 0.7fr) minmax(0, 1fr);
     align-items: start;
     gap: 24px;
     padding: 20px;
+    border-radius: 0 0 var(--radius) var(--radius);
   }
   .map-selected-name {
     border-bottom: 0;
@@ -1039,12 +1134,28 @@
     justify-content: space-between;
     width: 100%;
   }
+  .discovery-difficulties {
+    grid-template-rows: 64px 44px;
+  }
+  .discovery-difficulties > .difficulty-strip {
+    grid-template-columns: none;
+    grid-template-rows: 44px;
+    grid-auto-flow: column;
+    grid-auto-columns: 152px;
+    gap: 6px;
+    padding: 6px 6px 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-inline: contain;
+    scroll-padding-inline: 6px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--divider-strong) transparent;
+  }
   .discovery-set-main {
     grid-template-columns: 96px minmax(0, 1fr);
-    min-height: 164px;
   }
   .discovery-set-copy {
-    padding: 15px 26px 15px 14px;
+    padding: 13px 26px 13px 14px;
   }
   .discovery-set h2 {
     font-size: 19px;
@@ -1055,18 +1166,8 @@
   .discovery-more {
     min-height: 44px;
   }
-  .discovery-difficulties > .difficulty-strip {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 4px 6px;
-  }
   .discovery-difficulties .difficulty-chip.compact {
-    width: 100%;
-    gap: 5px;
     padding-inline: 6px;
-  }
-  .discovery-difficulties .difficulty-chip-copy {
-    flex: 1;
   }
   .beatmap-detail .map-detail-art.map-artwork {
     height: 178px;

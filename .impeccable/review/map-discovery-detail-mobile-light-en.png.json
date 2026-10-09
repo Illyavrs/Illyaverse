@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-10-08T17:25:20.204Z",
+  "captured_at": "2026-10-09T02:38:18.895Z",
   "url": "http://localhost:19000/beatmaps/980000",
   "locale": "en",
   "theme": "light",
@@ -10,9 +10,17 @@
   "scroll_x": 0,
   "scroll_y": 0,
   "document_width": 390,
-  "document_height": 2188,
+  "document_height": 2227,
   "actual_theme": "light",
   "actual_locale": "en",
   "font_status": "loaded",
-  "reduced_motion": true
+  "reduced_motion": true,
+  "catalogue_cards": [],
+  "detail_overview": {
+    "width": 358,
+    "height": 741.40625,
+    "identity_height": 498.765625,
+    "selected_height": 242.640625,
+    "joined_gap": 0
+  }
 }

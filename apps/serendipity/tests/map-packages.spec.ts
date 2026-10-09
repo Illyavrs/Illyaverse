@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import english from '../messages/en.json';
 import japanese from '../messages/ja.json';
@@ -326,6 +327,99 @@ async function captureReview(page: Page, name: string) {
   );
 }
 
+async function captureDownloadReview(
+  page: Page,
+  state: 'retained' | 'unavailable',
+  width: number,
+  theme: 'dark' | 'light',
+) {
+  if (process.env.ILLYA_MAP_DOWNLOAD_CAPTURE !== '1') return;
+  await page.setViewportSize({ width, height: 900 });
+  await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
+  await expect(page.locator('html')).toHaveClass(new RegExp(`\\b${theme}\\b`));
+  await expect(page.locator('.map-downloads')).toBeVisible();
+  const metrics = await page.evaluate(async () => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    await document.fonts.ready;
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
+    return {
+      width: innerWidth,
+      height: innerHeight,
+      document_width: document.documentElement.scrollWidth,
+      document_height: document.documentElement.scrollHeight,
+      scroll_x: scrollX,
+      scroll_y: scrollY,
+      actual_theme: document.documentElement.classList.contains('light') ? 'light' : 'dark',
+      actual_locale: document.documentElement.lang,
+      font_status: document.fonts.status,
+      download_controls: [
+        ...document.querySelectorAll<HTMLAnchorElement | HTMLButtonElement>(
+          '.map-downloads a, .map-downloads button',
+        ),
+      ].map((control) => ({
+        text: control.textContent?.trim(),
+        href: control instanceof HTMLAnchorElement ? control.getAttribute('href') : null,
+        disabled: control instanceof HTMLButtonElement && control.disabled,
+      })),
+      download_hint: document.querySelector('.map-downloads .hint')?.textContent?.trim(),
+    };
+  });
+  expect(metrics.scroll_x).toBe(0);
+  expect(metrics.scroll_y).toBe(0);
+  expect(metrics.document_width).toBeLessThanOrEqual(metrics.width);
+  const root = path.resolve(__dirname, '../../..');
+  const directory = path.join(root, '.impeccable/review');
+  mkdirSync(directory, { recursive: true });
+  const filename = `map-download-${state}-${width}-${theme}-en.png`;
+  const sourceFiles = [
+    'apps/serendipity/src/features/beatmaps.tsx',
+    'apps/serendipity/src/features/map-discovery.tsx',
+    'apps/serendipity/src/styles/map-discovery.css',
+    'apps/serendipity/src/app/globals.css',
+    'apps/serendipity/src/components/ui/button.tsx',
+    'apps/serendipity/src/lib/types.ts',
+    'apps/serendipity/messages/en.json',
+    'apps/serendipity/tests/map-packages.spec.ts',
+  ];
+  const sourceHashes = Object.fromEntries(
+    sourceFiles.map((file) => [
+      file,
+      createHash('sha256')
+        .update(readFileSync(path.join(root, file)))
+        .digest('hex'),
+    ]),
+  );
+  await page.screenshot({
+    path: path.join(directory, filename),
+    fullPage: true,
+    animations: 'disabled',
+  });
+  writeFileSync(
+    path.join(directory, `${filename}.json`),
+    JSON.stringify(
+      {
+        captured_at: new Date().toISOString(),
+        url: page.url(),
+        synthetic: true,
+        provenance:
+          'Synthetic intercepted API metadata; UI proof only. No persisted package bytes, real accounts, downloads or retained runtime mutations.',
+        state,
+        theme,
+        locale: 'en',
+        full_page: true,
+        from_top: true,
+        source_hashes_sha256: sourceHashes,
+        ...metrics,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
 const uploadFile = {
   name: 'original-package-fixture.osz',
   mimeType: 'application/octet-stream',
@@ -421,7 +515,7 @@ test('typed new upload and exact retry expose existing IDs, current statuses and
   await expect(result).not.toContainText(state.copy.common.pending);
   await expect(
     result.getByRole('link', { name: state.copy.maps.downloadPackage, exact: true }),
-  ).toHaveAttribute('href', packageMetadata().download_url);
+  ).toHaveAttribute('href', `/api/v1/beatmaps/${members[0].id}/archive`);
   expect(await selectedFile(page)).toBeNull();
   await result.getByRole('button', { name: state.copy.common.next, exact: true }).click();
   await expect(result.locator('.package-difficulty-row')).toHaveCount(1);
@@ -533,9 +627,16 @@ test('a service upload failure preserves the file and the same form can retry su
   await expect(
     page
       .locator('.map-upload-result')
+      .getByRole('button', { name: state.copy.maps.downloadPackage, exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page
+      .locator('.map-upload-result')
       .getByRole('link', { name: state.copy.maps.downloadDifficulty, exact: true }),
-  ).toHaveAttribute('href', `/api/v1/beatmaps/${members[0].id}/download`);
-  await expect(page.locator('.map-upload-result')).toContainText(state.copy.maps.singleFileHint);
+  ).toHaveCount(0);
+  await expect(page.locator('.map-upload-result')).toContainText(
+    state.copy.maps.archiveUnavailableHint,
+  );
   expect(state.uploads).toHaveLength(2);
   expect(await selectedFile(page)).toBeNull();
   assertClean(state);
@@ -554,17 +655,18 @@ test('a 25-difficulty package pages complete membership and identifies the curre
   await expect(section).toContainText('25 known difficulties in this set');
   await expect(section.locator('.set-difficulty-disclosure')).not.toHaveAttribute('open');
   await expect(section.locator('.set-difficulty-strip a').first()).toBeVisible();
+  await captureDownloadReview(page, 'retained', 1288, 'dark');
   await openDifficultyDetails(section, state.copy.mapDiscovery.difficultyDetails);
   await expect(section.locator('.package-difficulty-row')).toHaveCount(24);
   await expect(section.locator('[aria-current="page"]')).toHaveCount(0);
   await expect(section.locator('.discovery-pagination')).toContainText('1 / 2');
   await expect(
     page.getByRole('link', { name: state.copy.maps.downloadPackage, exact: true }),
-  ).toHaveAttribute('href', `/api/v1/beatmaps/${members[0].id}/download`);
+  ).toHaveAttribute('href', `/api/v1/beatmaps/${current.id}/archive`);
   await expect(
     page.getByRole('link', { name: state.copy.maps.downloadDifficulty, exact: true }),
-  ).toHaveAttribute('href', `/api/v1/beatmaps/${current.id}/osu`);
-  await expect(page.getByText(state.copy.maps.singleFileHint, { exact: true })).toBeVisible();
+  ).toHaveCount(0);
+  await expect(page.getByText(state.copy.maps.archiveDownloadHint, { exact: true })).toBeVisible();
   await captureReview(page, 'workflow-map-package-members');
   await section.getByRole('button', { name: state.copy.mapDiscovery.next, exact: true }).click();
   await expect(section.locator('.discovery-pagination')).toContainText('2 / 2');
@@ -689,7 +791,7 @@ test('package loading and failure retain the parent map and expose a working ret
   assertClean(state);
 });
 
-test('a standalone package clearly downloads one osu difficulty without music or other assets', async ({
+test('a raw-only local set disables the complete package download and explains the missing assets', async ({
   page,
 }) => {
   const map = beatmap(members[0], 'osu');
@@ -698,11 +800,17 @@ test('a standalone package clearly downloads one osu difficulty without music or
   await page.goto(`/beatmaps/${map.id}`);
   await expect(
     page.getByRole('link', { name: state.copy.maps.downloadDifficulty, exact: true }),
-  ).toHaveAttribute('href', map.download_url);
-  await expect(page.getByText(state.copy.maps.singleFileHint, { exact: true })).toBeVisible();
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: state.copy.maps.downloadPackage, exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByText(state.copy.maps.archiveUnavailableHint, { exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByRole('link', { name: state.copy.maps.downloadPackage, exact: true }),
   ).toHaveCount(0);
+  await captureDownloadReview(page, 'unavailable', 390, 'light');
   await openDifficultyDetails(
     page.locator('.map-package'),
     state.copy.mapDiscovery.difficultyDetails,
@@ -716,7 +824,7 @@ test('a standalone package clearly downloads one osu difficulty without music or
 });
 
 for (const kind of ['osu', 'osz'] as const) {
-  test(`official package-null detail uses the actual ${kind} download kind and shows its one known stored difficulty`, async ({
+  test(`official ${kind} storage offers a complete set with retained archives taking priority`, async ({
     page,
   }) => {
     const map: FixtureMap = {
@@ -734,15 +842,25 @@ for (const kind of ['osu', 'osz'] as const) {
     await expect(page.getByRole('heading', { name: longTitle, exact: true })).toBeVisible();
     await expect(
       page.getByRole('link', {
-        name: state.copy.maps[kind === 'osu' ? 'downloadDifficulty' : 'downloadPackage'],
+        name: state.copy.maps.downloadPackage,
         exact: true,
       }),
-    ).toHaveAttribute('href', map.download_url);
-    await expect(page.getByText(state.copy.maps.singleFileHint, { exact: true })).toBeVisible();
-    if (kind === 'osz')
-      await expect(
-        page.getByRole('link', { name: state.copy.maps.downloadDifficulty, exact: true }),
-      ).toHaveAttribute('href', `/api/v1/beatmaps/${map.id}/osu`);
+    ).toHaveAttribute(
+      'href',
+      kind === 'osz' ? `/api/v1/beatmaps/${map.id}/archive` : 'https://osu.direct/api/d/456789',
+    );
+    await expect(
+      page.getByText(
+        state.copy.maps[kind === 'osz' ? 'archiveDownloadHint' : 'mirrorDownloadHint'],
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: state.copy.maps.officialSetPage, exact: true }),
+    ).toHaveAttribute('href', 'https://osu.ppy.sh/beatmapsets/456789');
+    await expect(
+      page.getByRole('link', { name: state.copy.maps.downloadDifficulty, exact: true }),
+    ).toHaveCount(0);
     const selector = page.locator('.map-package');
     await openDifficultyDetails(selector, state.copy.mapDiscovery.difficultyDetails);
     await expect(selector.locator('.package-difficulty-row')).toHaveCount(1);
@@ -754,6 +872,60 @@ for (const kind of ['osu', 'osz'] as const) {
     );
     await expect(selector.locator('.discovery-pagination')).toHaveCount(0);
     expect(state.queries).toContainEqual({ id: map.id, page: 1, pageSize: 24 });
+    assertClean(state);
+  });
+}
+
+test('retained package metadata takes priority over raw-file metadata and external provider links', async ({
+  page,
+}) => {
+  const map: FixtureMap = {
+    ...beatmap(members[0], 'osu'),
+    source: 'official',
+    official_id: 654321,
+    official_set_id: 456789,
+    native_set_id: 456789,
+    package: packageMetadata(),
+    download_url: 'https://untrusted.invalid/raw.osu',
+  };
+  const state = await fixtures(page, { map });
+  await page.goto(`/beatmaps/${map.id}`);
+  await expect(
+    page.getByRole('link', { name: state.copy.maps.downloadPackage, exact: true }),
+  ).toHaveAttribute('href', `/api/v1/beatmaps/${map.id}/archive`);
+  await expect(page.locator('.map-downloads a[href*="osu.direct"]')).toHaveCount(0);
+  await expect(page.locator('.map-downloads a[href*="untrusted.invalid"]')).toHaveCount(0);
+  await expect(page.getByText(state.copy.maps.archiveDownloadHint, { exact: true })).toBeVisible();
+  assertClean(state);
+});
+
+for (const [name, source, officialSetId, nativeSetId] of [
+  ['local source', 'local', 456789, 456789],
+  ['missing official set', 'official', null, 456789],
+  ['zero official set', 'official', 0, 0],
+  ['negative official set', 'official', -1, -1],
+  ['fractional official set', 'official', 456789.5, 456789.5],
+  ['local set namespace', 'official', 2_000_000_031, 2_000_000_031],
+  ['mismatched native set', 'official', 456789, 2_000_000_031],
+] as const) {
+  test(`raw-only ${name} cannot produce an external package link`, async ({ page }) => {
+    const map: FixtureMap = {
+      ...beatmap(members[0], 'osu'),
+      source,
+      official_id: source === 'official' ? 654321 : null,
+      official_set_id: officialSetId,
+      native_set_id: nativeSetId,
+      package: null,
+    };
+    const state = await fixtures(page, { map });
+    await page.goto(`/beatmaps/${map.id}`);
+    await expect(
+      page.getByRole('button', { name: state.copy.maps.downloadPackage, exact: true }),
+    ).toBeDisabled();
+    await expect(page.locator('.map-downloads a')).toHaveCount(0);
+    await expect(
+      page.getByText(state.copy.maps.archiveUnavailableHint, { exact: true }),
+    ).toBeVisible();
     assertClean(state);
   });
 }

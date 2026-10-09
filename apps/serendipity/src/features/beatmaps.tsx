@@ -106,27 +106,57 @@ function DifficultyRows({ items, currentId }: { items: BeatmapDifficulty[]; curr
 
 function MapDownloads({ map }: { map: Beatmap }) {
   const t = useTranslations('maps');
-  const archive = map.download_kind === 'osz';
-  const downloadUrl = map.download_url || `/api/v1/beatmaps/${map.id}/download`;
+  if (map.availability?.withdrawn) return null;
+  const archive = map.package?.kind === 'osz' || map.download_kind === 'osz';
+  const setId = map.official_set_id;
+  const officialSetId =
+    map.source === 'official' &&
+    typeof setId === 'number' &&
+    Number.isSafeInteger(setId) &&
+    setId > 0 &&
+    setId <= 1_999_999_999 &&
+    (map.native_set_id === undefined || map.native_set_id === setId)
+      ? setId
+      : null;
+  // osu.direct's browser extension uses /api/d/ for complete beatmapsets.
+  const downloadUrl = archive
+    ? `/api/v1/beatmaps/${map.id}/archive`
+    : officialSetId
+      ? `https://osu.direct/api/d/${officialSetId}`
+      : null;
   return (
     <div className="map-downloads">
       <div className="actions">
-        <Button asChild>
-          <a href={archive ? (map.package?.download_url ?? downloadUrl) : downloadUrl}>
-            <Download />
-            {t(archive ? 'downloadPackage' : 'downloadDifficulty')}
-          </a>
-        </Button>
-        {archive && (
+        {downloadUrl ? (
+          <Button asChild>
+            <a href={downloadUrl} rel={archive ? undefined : 'noopener noreferrer'}>
+              <Download aria-hidden="true" />
+              {t('downloadPackage')}
+            </a>
+          </Button>
+        ) : (
+          <Button disabled>
+            <Download aria-hidden="true" />
+            {t('downloadPackage')}
+          </Button>
+        )}
+        {officialSetId && (
           <Button asChild variant="outline">
-            <a href={`/api/v1/beatmaps/${map.id}/osu`}>
-              <Download />
-              {t('downloadDifficulty')}
+            <a href={`https://osu.ppy.sh/beatmapsets/${officialSetId}`} rel="noopener noreferrer">
+              {t('officialSetPage')}
             </a>
           </Button>
         )}
       </div>
-      <p className="hint">{t('singleFileHint')}</p>
+      <p className="hint">
+        {t(
+          archive
+            ? 'archiveDownloadHint'
+            : officialSetId
+              ? 'mirrorDownloadHint'
+              : 'archiveUnavailableHint',
+        )}
+      </p>
     </div>
   );
 }
@@ -140,7 +170,6 @@ function UploadResult({
 }) {
   const t = useTranslations('maps');
   const [page, setPage] = useState(1);
-  const archive = result.package.kind === 'osz';
   return (
     <section className="map-upload-result" aria-labelledby="map-upload-result-title" tabIndex={-1}>
       <h2 id="map-upload-result-title">
@@ -165,15 +194,7 @@ function UploadResult({
       )}
       <DifficultyRows items={result.items.slice((page - 1) * 24, page * 24)} />
       <Pagination page={page} total={result.items.length} onChange={setPage} />
-      <div className="actions">
-        <Button asChild variant="outline">
-          <a href={result.package.download_url}>
-            <Download />
-            {t(archive ? 'downloadPackage' : 'downloadDifficulty')}
-          </a>
-        </Button>
-      </div>
-      {!archive && <p className="hint">{t('singleFileHint')}</p>}
+      <MapDownloads map={{ ...result.items[0], package: result.package }} />
     </section>
   );
 }

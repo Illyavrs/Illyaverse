@@ -22,6 +22,7 @@ const packageId = '0b248fbf-63e3-4f34-a7ad-1ae5bbc728d4';
 const members: Beatmap[] = Array.from({ length: 25 }, (_, index) => ({
   id: 96300 + index,
   official_id: 96300 + index,
+  official_set_id: setId,
   native_set_id: setId,
   title: 'Official archive fixture with a long movement title for wrapping',
   artist: 'Official fixture artist',
@@ -349,7 +350,7 @@ test('complete official multipart import and exact retry preserve current status
   await expect(result.locator('.status-ranked').first()).toHaveText(state.copy.common.ranked);
   await expect(
     result.getByRole('link', { name: state.copy.maps.downloadPackage, exact: true }),
-  ).toHaveAttribute('href', archiveResult.package.download_url);
+  ).toHaveAttribute('href', `/api/v1/beatmaps/${members[0].id}/archive`);
   expect(state.archives).toHaveLength(1);
   expect(state.archives[0].contentType).toContain('multipart/form-data; boundary=');
   expect(state.archives[0].body).toMatch(new RegExp(`name="official_set_id"\\r\\n\\r\\n${setId}`));
@@ -396,10 +397,14 @@ test('official archive detail reuses actual osz downloads and independent paged 
   await expect(panel.locator('.package-difficulty-row')).toHaveCount(24);
   await expect(
     page.getByRole('link', { name: state.copy.maps.downloadPackage, exact: true }),
-  ).toHaveAttribute('href', archiveResult.package.download_url);
+  ).toHaveAttribute('href', `/api/v1/beatmaps/${members[24].id}/archive`);
   await expect(
     page.getByRole('link', { name: state.copy.maps.downloadDifficulty, exact: true }),
-  ).toHaveAttribute('href', `/api/v1/beatmaps/${members[24].id}/osu`);
+  ).toHaveCount(0);
+  await expect(page.getByText(state.copy.maps.archiveDownloadHint, { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: state.copy.maps.officialSetPage, exact: true }),
+  ).toHaveAttribute('href', `https://osu.ppy.sh/beatmapsets/${setId}`);
   await panel.getByRole('button', { name: state.copy.mapDiscovery.next, exact: true }).click();
   await expect(panel.locator('.discovery-pagination')).toContainText('2 / 2');
   await expect(panel.locator('.set-difficulty-disclosure')).not.toHaveAttribute('open');

@@ -17,19 +17,21 @@ function preferences(locale = 'en', mode = 'dark') {
     border_radius: 14,
   };
 }
-function fixtureMap(index = 0, withdrawn = false) {
+function fixtureMap(index = 0, withdrawn = false, retainedOfficialArchive = false) {
   const id = 990600 + index;
+  const nativeSetId = index < 2 ? 990700 : 990700 + index;
   return {
     id,
-    native_set_id: index < 2 ? 990700 : 990700 + index,
-    official_id: null,
+    native_set_id: nativeSetId,
+    official_id: retainedOfficialArchive ? id : null,
+    official_set_id: retainedOfficialArchive ? nativeSetId : null,
     title: `Withdrawal fixture ${index}`,
     artist: 'Illyaverse fixture',
     creator: 'Fixture mapper',
     version: `Difficulty ${index}`,
     mode: 0,
     status: index === 1 ? 'loved' : 'ranked',
-    source: 'local',
+    source: retainedOfficialArchive ? 'official' : 'local',
     stars: 3.25,
     bpm: 180,
     length_seconds: 120,
@@ -37,8 +39,19 @@ function fixtureMap(index = 0, withdrawn = false) {
     play_count: 0,
     md5: '0'.repeat(32),
     download_url: `/api/v1/beatmaps/${id}/download`,
-    download_kind: 'osu',
-    package: null,
+    download_kind: retainedOfficialArchive ? 'osz' : 'osu',
+    package: retainedOfficialArchive
+      ? {
+          id: 'f577cd73-2a7a-4fbd-8981-24254348d06d',
+          native_set_id: nativeSetId,
+          kind: 'osz',
+          legacy: false,
+          source: 'official',
+          difficulty_count: 2,
+          beatmap_ids: [990600, 990601],
+          download_url: '/api/v1/beatmaps/990600/download',
+        }
+      : null,
     availability: {
       withdrawn,
       revision: withdrawn ? 1 : 0,
@@ -231,7 +244,10 @@ test('whole-set withdrawal preserves failed reason and independent ranking statu
     { setId: 990700, withdrawn: true, expected_revision: 0, reason: '管理測試：保留成績與 Replay' },
   ]);
   expect(state.items.slice(0, 2).map((map) => map.status)).toEqual(['ranked', 'loved']);
-  await selectField(page.locator('[data-slot="select-trigger"][data-field-name=availability]'), 'withdrawn');
+  await selectField(
+    page.locator('[data-slot="select-trigger"][data-field-name=availability]'),
+    'withdrawn',
+  );
   await expect(page.locator('.admin-map-table tbody tr')).toHaveCount(2);
   await expect(row).toContainText('已下架');
 });
@@ -263,10 +279,18 @@ test('accepted withdrawal hides downloads during failed refresh and cannot be re
   page,
 }) => {
   const state = await fixture(page);
+  state.items[0] = fixtureMap(0, false, true);
+  state.items[1] = fixtureMap(1, false, true);
+  await page.route('https://assets.ppy.sh/**', (route) => route.abort());
   await page.goto('/beatmaps/990600?management=1');
+  await expect(page.getByRole('link', { name: 'Download .osz', exact: true })).toHaveAttribute(
+    'href',
+    '/api/v1/beatmaps/990600/archive',
+  );
   await expect(
-    page.getByRole('link', { name: 'Download this difficulty .osu', exact: true }),
-  ).toHaveCount(1);
+    page.getByRole('link', { name: 'Official beatmapset page', exact: true }),
+  ).toHaveAttribute('href', 'https://osu.ppy.sh/beatmapsets/990700');
+  await expect(page.locator('.map-downloads a')).toHaveCount(2);
   await page.getByRole('button', { name: 'Withdraw set', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Reason', { exact: true }).fill('Temporary availability review');
@@ -275,6 +299,10 @@ test('accepted withdrawal hides downloads during failed refresh and cannot be re
   await expect(dialog).toContainText('The set was withdrawn.');
   await expect(dialog).toContainText('The change was saved.');
   await expect(page.locator('.map-downloads')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Download .osz', exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole('link', { name: 'Official beatmapset page', exact: true }),
+  ).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Confirm withdrawal', exact: true })).toHaveCount(
     0,
   );
@@ -341,13 +369,20 @@ test('last-page withdrawal clamps page and live filter changes preserve independ
   await dialog.getByRole('button', { name: 'Confirm withdrawal', exact: true }).click();
   await expect.poll(() => Number(new URL(page.url()).searchParams.get('page') ?? 1)).toBe(1);
   await expect(page.locator('.admin-map-table tbody tr')).toHaveCount(24);
-  await selectField(page.locator('[data-slot="select-trigger"][data-field-name=availability]'), 'all');
+  await selectField(
+    page.locator('[data-slot="select-trigger"][data-field-name=availability]'),
+    'all',
+  );
   await selectField(page.locator('[data-slot="select-trigger"][data-field-name=status]'), 'ranked');
   expect(new URL(page.url()).searchParams.get('availability')).toBe('all');
   expect(new URL(page.url()).searchParams.get('source')).toBe('local');
   await page.goBack();
-  await expect(page.locator('[data-slot="select-trigger"][data-field-name=status]')).toHaveAttribute('data-value', 'all');
-  await expect(page.locator('[data-slot="select-trigger"][data-field-name=availability]')).toHaveAttribute('data-value', 'all');
+  await expect(
+    page.locator('[data-slot="select-trigger"][data-field-name=status]'),
+  ).toHaveAttribute('data-value', 'all');
+  await expect(
+    page.locator('[data-slot="select-trigger"][data-field-name=availability]'),
+  ).toHaveAttribute('data-value', 'all');
   expect(state.writes).toHaveLength(1);
 });
 

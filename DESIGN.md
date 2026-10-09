@@ -330,7 +330,7 @@ Use tight 4–8px control spacing, 12–16px nearby-action gaps, 20–28px group
 - **At 800px:** home content stacks; route navigation becomes a menu sheet; profile sticky navigation uses the mobile header offset. Profile scores give grade and a wider, two-line title the top row, with a footer spanning their area: mods and accuracy/combo remain at the left, performance/contribution at the right, and a 44px action target beside the record. Full dates, hit counts and extended facts remain available in the menu.
 - **At 780px:** catalogue results become one column and map detail areas stack.
 - **At 640px:** score detail identity, performance and fact bands rearrange into compact rows and a two-column fact grid.
-- **At 600px:** gutters, padding and contextual type reduce; home actions wrap; profile identity uses an 80px avatar rather than 108px, preserving half-overlap when a banner exists; catalogue filters and difficulty previews use two columns. Compact difficulty controls retain a minimum height (44px), so eight previews occupy four rows.
+- **At 600px:** gutters, padding and contextual type reduce; home actions wrap; profile identity uses an 80px avatar rather than 108px, preserving half-overlap when a banner exists. Catalogue filters use two columns; up to eight difficulty previews remain in one locally scrolling row with 44px links, a reserved 64px track and a thin scrollbar. Focus stays visible inside the rail.
 - **At 420px:** map cover tracks narrow and supporting difficulty names truncate within their bounded controls. Complete accessible link labels retain identity.
 - **Dense records:** rankings preserve a minimum width (650px); score tables preserve 860px, or 1040px for weighted best-score collections, inside local horizontal wrappers. Markdown tables preserve 640px. Do not shrink these factual columns into unreadable cells.
 
@@ -378,9 +378,13 @@ Secondary metadata badges use paired secondary colors and pill corners. Difficul
 
 A record uses the base material for its assigned coverage group, a quiet border and the live radius. Joined section headings use the raised level; prominent identity and score headers use the strong level; support rails and key numeric columns use the inset level. Common content padding is 24px, with surface-specific 18–28px padding and tighter mobile values. Hover emphasizes a record with the appropriate existing surface level. The group determines glass or solid; the level determines its neutral tone.
 
+Catalogue cards reserve a bounded identity track (168px), equally sized difficulty-preview tracks and aligned footers. Titles use at most two lines; artist, mapper and mode text truncate within their own tracks while retaining complete link identity. Home map records place restrained neutral hover/focus feedback across the full row (4% foreground), with content and divider insets (20px desktop, 16px mobile). The containing panel supplies the material and blur; the row adds no second glass layer.
+
 ### Inputs / Fields
 
 Fields use semantic foregrounds, inset material, input borders and medium corners. Shared shadcn/Radix Select triggers are at least 38px tall by default; compact locale and chart contexts use 34px, while catalogue search and actions use 52px desktop and 48px mobile. Labels sit above the fields, values truncate within bounded triggers, and keyboard focus, invalid and disabled states remain visible. Numeric outputs use tabular figures.
+
+The catalogue toolbar uses its section group's strong material. Search and Select fields inside it use a thin neutral veil (4% foreground, 8% on Select hover), without another backdrop filter; supporting copy and placeholders retain the theme foreground. The section's coverage tier determines glass or solid material.
 
 ### Floating Controls
 
@@ -393,6 +397,8 @@ The utility header groups site identity, locale, appearance and account actions;
 ### Community Records
 
 Player, map and score records put identity beside aligned facts and nearby actions. Rankings right-align comparable numeric columns and leave player identity to the left. Map records use genuine runtime covers with an original icon fallback. Profiles render a banner only when one exists. Score verification, grade and difficulty retain text and semantic color; unavailable facts stay unavailable rather than being visually inferred.
+
+Map detail joins cover, identity and full-set actions to the current difficulty's fact rail with one shared outer silhouette and an internal seam; on narrow screens the same joined structure stacks. The normal download label describes a complete `.osz` set. A retained archive takes priority; official provider fallback identifies osu.direct and retains an official-page action, while a local raw-only map shows a disabled package action and an honest unavailable explanation.
 
 ### Profile Identity and Placement
 
@@ -416,7 +422,7 @@ Compact rows join a visible grade, numeric star difficulty, title/version/date, 
 - **Do** connect entity identity, facts, controls and records with clear surface levels and seams.
 - **Do** align comparable numeric values and use tabular figures for ranks, scores and control outputs.
 - **Do** retain labels alongside status, grade and difficulty color, and show only facts provided by the running API.
-- **Do** preserve 44px catalogue and score action targets and the two-column mobile difficulty preview.
+- **Do** preserve 44px catalogue and score action targets and every mobile catalogue difficulty link in its compact scrolling rail.
 - **Do** keep keyboard focus visible, honor reduced motion and contain dense horizontal content locally.
 - **Do** use ordinary zh-TW/en/ja labels and real runtime covers or player-uploaded media.
 
