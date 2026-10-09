@@ -1,17 +1,17 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {
   artifactNames, checkedDocker, cleanupTemp, completeBackup, dockerEnvironment, nonce, ownedProject, ownedResource,
-  ownedTempDirectory, ownerLabel, privateDirectory, projectName, validImage, verifyBackup,
+  ownedTempDirectory, ownerLabel, privateDirectory, projectName, readSourceMigrations, validImage, verifyBackup,
 } from '../recovery-lib.mjs';
 import { backupArguments, backupDeployment, validateBackupSource } from '../recovery-backup.mjs';
 import {
-  cleanupProject, databaseSnapshot, drillArguments, recoveryConfig, recoveryDrill, requireFreshProject, sameDatabase, validateRecoveryConfig,
+  checkMigrations, cleanupProject, databaseSnapshot, drillArguments, recoveryConfig, recoveryDrill, requireFreshProject, sameDatabase, sanctuaryImageReference, validateRecoveryConfig,
 } from '../disposable-recovery-drill.mjs';
 import { workspace } from '../protocol-smoke.mjs';
 
@@ -376,6 +376,114 @@ test('database equality gates schema, all rows, sequences, migration checksums a
     ['migrations', snapshotMigrations.replace('a'.repeat(96), 'b'.repeat(96))],
     ['rowCounts', { _sqlx_migrations: 1, users: 2 }], ['tableCount', 3], ['sequenceCount', 3],
   ]) assert.equal(sameDatabase(source, { ...structuredClone(restored), [key]: changed }), false, key);
+});
+
+const migrationFilename = version => `${String(version).padStart(4, '0')}_fixture.sql`;
+const migrationBytes = version => Buffer.from(`-- exact bytes café migration ${version}\r\nSELECT ${version};\r\n`, 'utf8');
+const migrationChecksum = bytes => createHash('sha384').update(bytes).digest('hex');
+const migrationLedger = records => records.map(record => `${record.version}|t|${record.checksum}`).join('\n');
+
+async function migrationFixture(directory, count) {
+  await mkdir(directory);
+  // Create out of order to ensure discovery chooses numeric migration order.
+  for (let version = count; version >= 1; version--) await writeFile(path.join(directory, migrationFilename(version)), migrationBytes(version));
+  return Array.from({ length: count }, (_, index) => ({
+    filename: migrationFilename(index + 1), version: index + 1, checksum: migrationChecksum(migrationBytes(index + 1)),
+  }));
+}
+
+test('migration discovery hashes exact bytes in numeric order and an appended 23rd migration preserves the first 22 records', async t => {
+  const root = await temporaryRoot(t);
+  const directory = path.join(root, 'migrations');
+  const expected22 = await migrationFixture(directory, 22);
+  await writeFile(path.join(directory, 'README.txt'), 'Non-SQL files do not enter the migration ledger.');
+  const captured22 = await readSourceMigrations(directory);
+  assert.deepEqual(captured22, expected22);
+  assert.equal(await checkMigrations({ migrations: migrationLedger(captured22) }, captured22), 22);
+  assert.notEqual(captured22[0].checksum, migrationChecksum(migrationBytes(1).toString('utf8').replaceAll('\r\n', '\n')));
+  await writeFile(path.join(directory, migrationFilename(23)), migrationBytes(23));
+  const captured23 = await readSourceMigrations(directory);
+  assert.equal(captured23.length, 23);
+  assert.deepEqual(captured23.slice(0, 22), captured22);
+  assert.deepEqual(captured23.at(-1), { filename: migrationFilename(23), version: 23, checksum: migrationChecksum(migrationBytes(23)) });
+  // The old captured expectation remains usable without rediscovering the source.
+  assert.equal(await checkMigrations({ migrations: migrationLedger(captured22) }, captured22), 22);
+  assert.equal(await checkMigrations({ migrations: migrationLedger(captured23) }, captured23), 23);
+  await assert.rejects(async () => checkMigrations({ migrations: migrationLedger(captured22) }, captured23), /migration|checksum/i);
+});
+
+test('migration validation refuses failed, extra, missing, duplicate, reordered and changed ledger entries', async t => {
+  const root = await temporaryRoot(t);
+  const directory = path.join(root, 'migrations');
+  const expected = await migrationFixture(directory, 23);
+  const records = await readSourceMigrations(directory);
+  assert.deepEqual(records, expected);
+  const lines = migrationLedger(records).split('\n');
+  for (const [name, change] of [
+    ['failed migration', value => { value[4] = value[4].replace('|t|', '|f|'); }],
+    ['extra migration', value => { value.push(`24|t|${migrationChecksum(migrationBytes(24))}`); }],
+    ['missing migration', value => { value.splice(4, 1); }],
+    ['duplicate migration', value => { value.push(value[4]); }],
+    ['changed version', value => { value[4] = value[4].replace(/^5\|/, '25|'); }],
+    ['changed checksum', value => { value[4] = `5|t|${'0'.repeat(96)}`; }],
+    ['reordered migration', value => { value.reverse(); }],
+  ]) {
+    const changed = [...lines];
+    change(changed);
+    await assert.rejects(async () => checkMigrations({ migrations: changed.join('\n') }, records), /migration|checksum/i, name);
+  }
+  await assert.rejects(async () => checkMigrations({ migrations: '' }, records), /migration|checksum/i);
+  await assert.rejects(async () => checkMigrations({ migrations: `${lines.join('\n')}\n` }, records), /migration|checksum/i);
+  await writeFile(path.join(directory, migrationFilename(5)), Buffer.concat([migrationBytes(5), Buffer.from('-- changed exact bytes\n')]));
+  const changedSource = await readSourceMigrations(directory);
+  assert.notEqual(changedSource[4].checksum, records[4].checksum);
+  await assert.rejects(async () => checkMigrations({ migrations: migrationLedger(records) }, changedSource), /migration|checksum/i);
+});
+
+test('migration discovery refuses an empty SQL set, unsupported SQL filenames and duplicate numeric versions', async t => {
+  const root = await temporaryRoot(t);
+  const empty = path.join(root, 'empty');
+  await mkdir(empty);
+  await writeFile(path.join(empty, 'README.txt'), 'No SQL files.');
+  await assert.rejects(() => readSourceMigrations(empty), /migration|SQL|empty/i);
+  for (const [index, filename] of ['unexpected.sql', '0001-bad.sql'].entries()) {
+    const directory = path.join(root, `unsupported-${index}`);
+    await mkdir(directory);
+    await writeFile(path.join(directory, filename), 'SELECT 1;\n');
+    await assert.rejects(() => readSourceMigrations(directory), /migration|SQL|filename/i);
+  }
+  const duplicate = path.join(root, 'duplicate');
+  await mkdir(duplicate);
+  await writeFile(path.join(duplicate, '0001_first.sql'), 'SELECT 1;\n');
+  await writeFile(path.join(duplicate, '0001_second.sql'), 'SELECT 2;\n');
+  await assert.rejects(() => readSourceMigrations(duplicate), /duplicate|migration|version/i);
+});
+
+test('migration discovery refuses nonregular and linked SQL entries', async t => {
+  const root = await temporaryRoot(t);
+  const nonregular = path.join(root, 'nonregular');
+  await mkdir(nonregular);
+  await mkdir(path.join(nonregular, '0001_directory.sql'));
+  await assert.rejects(() => readSourceMigrations(nonregular), /migration|regular|SQL/i);
+  const linked = path.join(root, 'linked');
+  const target = path.join(root, 'link-target');
+  await mkdir(linked);
+  await mkdir(target);
+  // Windows junctions exercise linked-entry refusal without elevated symlink rights.
+  await symlink(target, path.join(linked, '0001_linked.sql'), process.platform === 'win32' ? 'junction' : 'dir');
+  await assert.rejects(() => readSourceMigrations(linked), /migration|regular|link|SQL/i);
+});
+
+test('repository migration expectations derive their numeric versions and checksums from the current source files', async () => {
+  const records = await readSourceMigrations();
+  assert.equal(records.length > 0, true);
+  assert.deepEqual(records.map(record => record.version), records.map(record => record.version).sort((left, right) => left - right));
+  assert.equal(new Set(records.map(record => record.version)).size, records.length);
+  for (const record of records) {
+    assert.equal(record.version, Number(record.filename.split('_')[0]));
+    assert.equal(record.checksum, migrationChecksum(await readFile(path.join(workspace, 'migrations', record.filename))));
+  }
+  assert.equal(await checkMigrations({ migrations: migrationLedger(records) }, records), records.length);
 });
 
 test('project, nonce and image identities use strict full-string allowlists', () => {
@@ -762,6 +870,47 @@ test('drill arguments allow only no arguments or dry run', () => {
   assert.deepEqual(drillArguments(['--dry-run']), { dryRun: true });
   for (const args of [['--project', 'illyaverse'], ['--dry-run', '--dry-run'], ['--file', 'compose.yaml'], ['--build'], ['--help']])
     assert.throws(() => drillArguments(args), /accepts only/);
+});
+
+const invalidSanctuaryImages = [
+  null, '', 1, {}, 'illyaverse/sanctuary:local', 'illyaverse/sanctuary:approved', '--pull=always', '--context production',
+  ` ${images.sanctuary}`, `${images.sanctuary}\n`, `${images.sanctuary} --pull always`, `sha256:${'A'.repeat(64)}`,
+  `sha256:${'2'.repeat(63)}`, `sha256:${'2'.repeat(65)}`, images.sanctuary.toUpperCase(),
+];
+
+test('Sanctuary image selection defaults to the local tag and permits only explicit immutable lower-case SHA IDs', () => {
+  assert.equal(sanctuaryImageReference(), 'illyaverse/sanctuary:local');
+  assert.equal(sanctuaryImageReference(images.sanctuary), images.sanctuary);
+  for (const value of invalidSanctuaryImages) assert.throws(() => sanctuaryImageReference(value), /immutable sha256 image ID/);
+});
+
+test('live drill refuses invalid explicit Sanctuary images before invoking any external runner', async () => {
+  const calls = [];
+  for (const sanctuaryImage of invalidSanctuaryImages) {
+    await assert.rejects(() => recoveryDrill({
+      environment: { ILLYA_ALLOW_DISPOSABLE_TEST: '1' }, sanctuaryImage,
+      runner: async (...args) => { calls.push(args); assert.fail('Invalid image override invoked an external command'); },
+    }), /immutable sha256 image ID/);
+  }
+  assert.deepEqual(calls, []);
+});
+
+test('live drill inspects the explicit immutable image ID and rejects a different result before project discovery or file creation', async () => {
+  const calls = [];
+  const runner = async (command, args) => {
+    calls.push({ command, args: [...args] });
+    assert.equal(command, 'docker');
+    assert.equal(calls.length <= 2, true, 'Mismatched image inspection reached project resources or privacy commands');
+    assert.deepEqual(args, ['image', 'inspect', calls.length === 1 ? 'postgres:17-alpine' : images.sanctuary, '--format', '{{.Id}}']);
+    return { code: 0, stdout: `${images.postgres}\n`, stderr: '' };
+  };
+  await assert.rejects(() => recoveryDrill({
+    environment: { ILLYA_ALLOW_DISPOSABLE_TEST: '1' }, sanctuaryImage: images.sanctuary, runner,
+  }), /differs from the explicitly approved immutable image ID/);
+  assert.deepEqual(calls, [
+    { command: 'docker', args: ['image', 'inspect', 'postgres:17-alpine', '--format', '{{.Id}}'] },
+    { command: 'docker', args: ['image', 'inspect', images.sanctuary, '--format', '{{.Id}}'] },
+  ]);
 });
 
 function guardlessEnvironment() {

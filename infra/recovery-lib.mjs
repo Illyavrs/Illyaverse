@@ -3,13 +3,31 @@ import { createReadStream } from 'node:fs';
 import { chmod, lstat, mkdir, readFile, readdir, realpath, rename, rmdir, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { runCommand } from './protocol-smoke.mjs';
+import { runCommand, workspace } from './protocol-smoke.mjs';
 
 export const ownerLabel = 'io.illyaverse.recovery.owner';
 export const artifactNames = ['illyaverse.dump', 'shared-data.tar.gz'];
 export const exactMatch = (pattern, value) => typeof value === 'string' && pattern.exec(value)?.[0] === value;
 export const validImage = value => exactMatch(/^sha256:[a-f0-9]{64}$/, value);
 export const nonce = () => randomBytes(8).toString('hex');
+
+export async function readSourceMigrations(directory = path.join(workspace, 'migrations')) {
+  const files = (await readdir(directory)).filter(name => name.endsWith('.sql'));
+  if (!files.length) throw new Error('Recovery requires at least one checked-in SQL migration.');
+  const versions = new Set();
+  const migrations = [];
+  for (const filename of files) {
+    if (!exactMatch(/^[0-9]{4}_[a-z0-9_]+\.sql$/, filename)) throw new Error('Unexpected source migration filename.');
+    const version = Number(filename.slice(0, 4));
+    if (version < 1 || versions.has(version)) throw new Error('Source migration versions must be positive and unique.');
+    versions.add(version);
+    const file = path.join(directory, filename);
+    const stat = await lstat(file);
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('Source SQL migrations must be regular files without links.');
+    migrations.push({ filename, version, checksum: createHash('sha384').update(await readFile(file)).digest('hex') });
+  }
+  return migrations.sort((left, right) => left.version - right.version);
+}
 
 export function projectName(value) {
   if (!exactMatch(/^[a-z][a-z0-9_-]{0,62}$/, value))

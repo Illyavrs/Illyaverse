@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
-import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { requireDisposable, workspace } from './protocol-smoke.mjs';
+import { requireDisposable } from './protocol-smoke.mjs';
 import {
   artifactNames, checkedDocker, cleanupTemp, exactMatch, nonce, ownedProject, ownedResource,
-  ownedTempDirectory, ownerLabel, validImage, verifyBackup,
+  ownedTempDirectory, ownerLabel, readSourceMigrations, validImage, verifyBackup,
 } from './recovery-lib.mjs';
 import { backupDeployment } from './recovery-backup.mjs';
 
@@ -13,6 +13,12 @@ export function drillArguments(args) {
   if (args.length === 0) return { dryRun: false };
   if (args.length === 1 && args[0] === '--dry-run') return { dryRun: true };
   throw new Error('Recovery drill accepts only --dry-run; projects, images, paths and Docker flags cannot be supplied.');
+}
+
+export function sanctuaryImageReference(value) {
+  if (value === undefined) return 'illyaverse/sanctuary:local';
+  if (!validImage(value)) throw new Error('An explicit recovery Sanctuary image must be an existing immutable sha256 image ID.');
+  return value;
 }
 
 export function recoveryConfig({ project, owner, images, password, sessionSecret, internalKey, restore = false }) {
@@ -198,11 +204,14 @@ export function sameDatabase(source, restored) {
     .every(key => JSON.stringify(source[key]) === JSON.stringify(restored[key]));
 }
 
-async function checkMigrations(snapshot) {
-  const files = (await readdir(path.join(workspace, 'migrations'))).filter(name => /^[0-9]{4}_.+\.sql$/.test(name)).sort();
-  if (files.length !== 22) throw new Error('Update this recovery drill when the repository migration count changes from 22.');
-  const expected = await Promise.all(files.map(async file => `${Number(file.slice(0, 4))}|t|${createHash('sha384').update(await readFile(path.join(workspace, 'migrations', file))).digest('hex')}`));
-  if (snapshot.migrations !== expected.join('\n')) throw new Error('Pinned Sanctuary image must apply all 22 exact checked-in migration checksums.');
+export function checkMigrations(snapshot, sourceMigrations) {
+  if (!Array.isArray(sourceMigrations) || !sourceMigrations.length || sourceMigrations.some((migration, index) =>
+      !Number.isInteger(migration.version) || migration.version < 1 || !exactMatch(/^[a-f0-9]{96}$/, migration.checksum) ||
+      (index > 0 && sourceMigrations[index - 1].version >= migration.version)))
+    throw new Error('Recovery requires the ordered source migration versions and exact SHA-384 checksums.');
+  const expected = sourceMigrations.map(({ version, checksum }) => `${version}|t|${checksum}`).join('\n');
+  if (snapshot.migrations !== expected) throw new Error(`Pinned Sanctuary image must apply all ${sourceMigrations.length} exact current-source migration versions and checksums.`);
+  return sourceMigrations.length;
 }
 
 async function fileSnapshot(docker, base) {
@@ -216,15 +225,17 @@ async function fileSnapshot(docker, base) {
   return { hashes: result, ownership };
 }
 
-export async function recoveryDrill({ dryRun = false, environment = process.env, runner } = {}) {
+export async function recoveryDrill({ dryRun = false, environment = process.env, runner, sanctuaryImage } = {}) {
   if (dryRun) {
-    console.log('Recovery drill dry run: no Docker calls or files created. Live mode generates two nonce-owned fresh Compose projects/volumes, pins existing postgres:17-alpine and illyaverse/sanctuary:local image IDs, applies 22 exact migrations, creates synthetic DB/media/maps/replays, invokes the guarded deployment backup helper with all owned writers stopped, checks binary backup + SHA manifest, restores into fresh volumes, compares schema/all rows/sequences/file hashes/UID:GID, verifies readiness, then audits ownership and removes only its two projects and exact temporary files.');
+    console.log('Recovery drill dry run: no Docker calls or files created. Live mode generates two nonce-owned fresh Compose projects/volumes, pins existing postgres:17-alpine and illyaverse/sanctuary:local image IDs, derives every expected migration version and exact SHA-384 checksum from current SQL files, creates synthetic DB/media/maps/replays, invokes the guarded deployment backup helper with all owned writers stopped, checks binary backup + SHA manifest, restores into fresh volumes, compares schema/all rows/sequences/file hashes/UID:GID, verifies readiness, then audits ownership and removes only its two projects and exact temporary files.');
     return;
   }
   requireDisposable(environment);
+  const sanctuaryReference = sanctuaryImageReference(sanctuaryImage);
+  const sourceMigrations = await readSourceMigrations();
   const owner = nonce();
   const projects = ['source', 'restore'].map(role => `illya-recovery-${owner}-${role}`);
-  const report = { format: 'illyaverse-disposable-recovery-v1', owner, projects, images: {}, backupHelper: 'backupDeployment',
+  const report = { format: 'illyaverse-disposable-recovery-v1', owner, projects, images: {}, backupHelper: 'backupDeployment', sourceMigrations,
     checks: {}, cleanup: { projects: [], temporaryFiles: false } };
   const controller = new AbortController();
   const docker = checkedDocker({ environment, runner, signal: controller.signal });
@@ -235,9 +246,11 @@ export async function recoveryDrill({ dryRun = false, environment = process.env,
   const files = ['source.json', 'restore.json', 'empty.env', ...artifactNames, ...artifactNames.map(name => `${name}.partial`), 'manifest.json', 'manifest.json.partial'];
   try {
     const images = {};
-    for (const [service, tag] of [['postgres', 'postgres:17-alpine'], ['sanctuary', 'illyaverse/sanctuary:local']]) {
+    for (const [service, tag] of [['postgres', 'postgres:17-alpine'], ['sanctuary', sanctuaryReference]]) {
       images[service] = (await docker(['image', 'inspect', tag, '--format', '{{.Id}}'])).trim();
       if (!validImage(images[service])) throw new Error('Recovery drill requires both existing local images; it never builds or pulls.');
+      if (service === 'sanctuary' && sanctuaryImage !== undefined && images[service] !== sanctuaryImage)
+        throw new Error('The inspected Sanctuary image differs from the explicitly approved immutable image ID.');
     }
     report.images = images;
     for (const project of projects) await requireFreshProject(docker, project, owner);
@@ -266,7 +279,7 @@ export async function recoveryDrill({ dryRun = false, environment = process.env,
     await docker([...source, 'run', '--rm', '-T', '--no-deps', '--pull', 'never', '--entrypoint', 'sh', 'sanctuary', '-c', `set -eu\numask 022\nmkdir -p /data/media /data/maps /data/replays\n${seed}`]);
     await docker([...source, 'up', '-d', '--no-build', '--pull', 'never', 'archive']);
     const sourceDb = await databaseSnapshot(docker, source, { canonicalizeSchema: true, owner });
-    await checkMigrations(sourceDb);
+    checkMigrations(sourceDb, sourceMigrations);
     const sourceFiles = await fileSnapshot(docker, source);
     const backupDirectory = path.join(directory, 'backup');
     // Exercise the same source guards, read-only helper, binary copies and completion
@@ -298,11 +311,11 @@ export async function recoveryDrill({ dryRun = false, environment = process.env,
     report.restore = { database: restoredDb, files: restoredFiles };
     if (!sameDatabase(sourceDb, restoredDb) || JSON.stringify(restoredFiles) !== JSON.stringify(sourceFiles))
       throw new Error('Restored schema/all table rows/sequences/migrations/file hashes/ownership differ from source.');
-    report.checks = { migrationCount: 22, schema: true, allTableRows: true, sequences: true, fileHashes: true, ownership: true };
+    report.checks = { migrationCount: sourceMigrations.length, schema: true, allTableRows: true, sequences: true, fileHashes: true, ownership: true };
     await docker([...restore, 'up', '-d', '--no-build', '--pull', 'never', '--wait', '--wait-timeout', '120', 'sanctuary']);
     await docker([...restore, 'exec', '-T', 'sanctuary', 'curl', '--fail', '--silent', 'http://127.0.0.1:8080/health/ready']);
     await docker([...restore, 'stop', '--timeout', '10', 'sanctuary']);
-    await checkMigrations(await databaseSnapshot(docker, restore));
+    checkMigrations(await databaseSnapshot(docker, restore), sourceMigrations);
     report.checks.readiness = true;
     console.log('Recovery comparison and restored Sanctuary readiness passed.');
   } catch (error) {

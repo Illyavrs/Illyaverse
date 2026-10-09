@@ -105,7 +105,7 @@ Compose [以 `service_healthy` 等待依賴](https://docs.docker.com/compose/how
 升級前先備份資料庫、整個 `shared_data` volume 與部署密鑰，並在隔離環境驗證可還原。`/data/media`、`/data/maps`、`/data/replays` 必須屬於同一個停止寫入的時間點；只保存資料庫或只保存上傳圖片不足以還原部署。
 
 1. 先切到維護狀態，阻止新的網站、遊戲與背景工作請求。使用來源部署原有的 project name、`.env` 與 Compose files，停止 Sanctuary／Resonance；production 每次都帶上兩個 `-f`。其他直接連到資料庫或 `/data` 的自訂 writer 也必須停止。保留 PostgreSQL 啟動，讓 `pg_dump` 可以讀取它。
-2. 記錄來源 commit、image IDs、PostgreSQL major、成功套用的 migration versions／checksums、各資料表 row counts，以及 `/data` 檔案的相對路徑、SHA-256 與 UID／GID。這些私有基準必須在停止寫入後取得，供還原時比對。目前來源 migration 到 `0022_rank_history.sql`；應有 versions 1–22 且 `success=true`，不可因為新資料庫能啟動就省略核對。
+2. 記錄來源 commit、image IDs、PostgreSQL major、成功套用的 migration versions／checksums、各資料表 row counts，以及 `/data` 檔案的相對路徑、SHA-256 與 UID／GID。這些私有基準必須在停止寫入後取得，供還原時比對。Migration 預期版本清單和 SHA-384 必須依備份對應來源的 `migrations/*.sql` 實際 bytes 取得，且每個版本 `success=true`，不可因為新資料庫能啟動就省略核對。
 3. 執行 backup helper，指定正確來源 project 與一個**尚不存在**的私有輸出目錄。以下 project name 是範例，必須改成來源部署的實際名稱；每次備份使用新的目錄。
 
 本機 Compose：
@@ -199,7 +199,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Shared data restore failed; retain this projec
 
 Sanctuary／Resonance 使用 `10001:10001`，必須確認 `/data/media`、`/data/maps`、`/data/replays` 和其中的檔案具有來源 ownership，且服務使用者能讀寫它們；不要只把三個子目錄的檔案重新上傳。
 
-還原後、Sanctuary 啟動前，比對來源成功 migration versions／checksums、全部資料表的 row counts 與代表資料內容，並核對 `/data` 的完整檔案列表、SHA-256 與 ownership。這些結果應和停止 writer 後保存的來源基準一致。若來源是目前版本，`_sqlx_migrations` 應保留 versions 1–22 全部成功；不能把空白 DB 上重新跑完 22 個 migration 當成資料還原通過。
+還原後、Sanctuary 啟動前，比對來源成功 migration versions／checksums、全部資料表的 row counts 與代表資料內容，並核對 `/data` 的完整檔案列表、SHA-256 與 ownership。這些結果應和停止 writer 後保存的來源基準一致。`_sqlx_migrations` 必須完整保留備份來源實際套用的版本與 checksums，不可套用另一個 checkout 或較舊部署的固定數量；空白 DB 上重新完成 migration 不能代替資料還原驗證。
 
 只有上述比對通過後才啟動 Sanctuary，讓 SQLx 正常驗證已還原的 migration。先將 Compose 的三個 app image 指向來源記錄的 immutable images，或確認本機 tags 的 image IDs 完全相符，再用 `--no-build --pull never` 啟動備份對應版本；要升級到較新 commit，另依正常 migration 流程在這份可丟棄的還原副本驗證。接著啟動 Resonance／Serendipity，檢查 readiness 與實際資料存取：
 
@@ -232,7 +232,7 @@ Remove-Item Env:ILLYA_ALLOW_DISPOSABLE_TEST
 
 演練使用獨立可丟棄的來源／還原 projects，在停止自建 writer 後呼叫同一個 `backupDeployment` 營運 helper，實際驗證來源 guard、唯讀封裝、binary-safe `docker cp`、完成 manifest，再還原 dump 與完整 `/data`，比對 migration／全部 rows／sequences／schema／檔案 hashes／ownership 和 readiness；它不會使用營運 project 的資料。成功結果只證明當次程式版本與演練資料的流程，正式備份仍需私有密鑰、來源基準及實際還原驗收。
 
-Schema 比對先在演練來源 PostgreSQL 內建立新的 schema-only reference DB，透過 PostgreSQL 17 parser 正規化來源定義，再比對還原後的完整 schema。這涵蓋 `pg_restore` 對 CHECK 內相同邏輯 AND 括號的正規化；原始 schema dump 雜湊也會保留。reference DB 隨演練來源 volume 清除，migration checksums 仍直接比對全部 22 份來源 SQL bytes。
+Schema 比對先在演練來源 PostgreSQL 內建立新的 schema-only reference DB，透過 PostgreSQL 17 parser 正規化來源定義，再比對還原後的完整 schema。這涵蓋 `pg_restore` 對 CHECK 內相同邏輯 AND 括號的正規化；原始 schema dump 雜湊也會保留。reference DB 隨演練來源 volume 清除。演練從目前 `migrations/*.sql` 推導完整預期版本清單和 SHA-384，要求全部成功且逐份 checksum 相符；報告保留這份來源清單與實際數量，舊的 22-version 部署與演練紀錄仍按原始檢查點保存。
 
 現在的媒體 volume 是單機儲存。如果之後要水平擴充，需先加入共用 object storage 與多實例一致的節流／chat event transport；不能只增加 replica 而沿用每個容器各自的本機檔案或記憶體狀態。
 
