@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-09T05:35:42Z",
+  "generatedAt": "2026-10-09T07:38:20Z",
   "title": "Design System: Illyaverse — Serendipity",
   "extensions": {
     "colorMeta": {
@@ -988,11 +988,11 @@
     "typographyMeta": {
       "display": {
         "displayName": "Display",
-        "purpose": "Factual home introduction."
+        "purpose": "Base display role; the factual home wordmark overrides it at 64px and 52px with weight 900, 1.05 leading and -0.04em tracking."
       },
       "display-mobile": {
         "displayName": "Display mobile",
-        "purpose": "Home introduction at 600px and below."
+        "purpose": "Base mobile display role; the factual home wordmark overrides it at 36px below 600px and 32px below 360px."
       },
       "headline": {
         "displayName": "Headline",
@@ -1059,9 +1059,9 @@
         "purpose": "Motion shared layout projection moves the active route underline between links."
       },
       {
-        "name": "route-content",
+        "name": "root-crossfade",
         "value": "180ms cubic-bezier(0.16, 1, 0.3, 1)",
-        "purpose": "Native View Transition for route content; the persistent shell stays anchored. A slow snapshot releases after 700ms while loading feedback continues."
+        "purpose": "Native whole-root crossfade preserves scene-sampling glass without a permanent named main backdrop root; the unchanged header stays visually anchored. A slow snapshot releases after 700ms while real loading feedback continues."
       },
       {
         "name": "home-character-enter",
@@ -1070,8 +1070,8 @@
       },
       {
         "name": "navigation-pending",
-        "value": "1s ease-in-out infinite; opacity 100ms ease-out",
-        "purpose": "A 3px top bar reflects outstanding route work, initial SWR loads and public-map requests. Reduced motion uses a static full-width line."
+        "value": "transform 200ms cubic-bezier(0.16, 1, 0.3, 1); opacity 150ms ease-out",
+        "purpose": "A 3px top bar paints its 12% segment on the first pending frame for real route work, initial SWR loads and explicit preview/search requests. It advances below 90% while pending, completes after a 220ms minimum visible interval and retains a 180ms visual tail; accessible pending ends with actual work. Reduced motion holds the pending segment still and shows completion without transitions."
       }
     ],
     "breakpoints": [
@@ -1307,8 +1307,8 @@
       "name": "Dense Catalogue Record",
       "kind": "card",
       "refersTo": "catalogue-card",
-      "description": "Equal-height song identity with a 44px difficulty summary. The preview uses the missing-cover fallback; production opens accessible difficulty links in a floating popover.",
-      "html": "<article class=\"ds-catalogue-card\"><a class=\"ds-catalogue-main\" href=\"#map\" aria-label=\"Open map: Map title by Artist\"><span class=\"ds-catalogue-cover\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M4 6v14M8 6v14M12 4v16M16 6l4 14\"/></svg><span>Cover unavailable</span></span><span class=\"ds-catalogue-copy\"><strong>Map title</strong><span class=\"ds-catalogue-artist\">Artist</span><span class=\"ds-catalogue-mapper\">Mapped by Creator</span><span class=\"ds-catalogue-facts\">4.82 stars · 3:24 · osu!</span></span></a><div class=\"ds-catalogue-footer\"><span class=\"ds-catalogue-status\">Ranked</span><button class=\"ds-catalogue-summary\" type=\"button\" aria-label=\"Show difficulties for Map title. 3 matching, 3 stored\" aria-expanded=\"false\"><span class=\"ds-catalogue-ticks\" aria-hidden=\"true\"><i></i><i></i><i></i></span><span>3</span><svg viewBox=\"0 0 24 24\" width=\"12\" height=\"12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"m6 9 6 6 6-6\"/></svg></button></div></article>",
+      "description": "Equal-height song identity with a 44px difficulty summary. This specimen uses the missing-cover fallback; production hover, keyboard and touch open a complete read-only metadata popover with bounded scrolling, stored fallback, retry and withdrawal feedback. The main identity link opens the set.",
+      "html": "<article class=\"ds-catalogue-card\"><a class=\"ds-catalogue-main\" href=\"#map\" aria-label=\"Open map: Map title by Artist\"><span class=\"ds-catalogue-cover\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M4 6v14M8 6v14M12 4v16M16 6l4 14\"/></svg><span>Cover unavailable</span></span><span class=\"ds-catalogue-copy\"><strong>Map title</strong><span class=\"ds-catalogue-artist\">Artist</span><span class=\"ds-catalogue-mapper\">Mapped by Creator</span><span class=\"ds-catalogue-facts\">4.82 stars · 3:24 · osu!</span></span></a><div class=\"ds-catalogue-footer\"><span class=\"ds-catalogue-status\">Ranked</span><button class=\"ds-catalogue-summary\" type=\"button\" aria-label=\"Show difficulties for Map title. 3 matching, 3 stored\" aria-expanded=\"false\"><span class=\"ds-catalogue-ticks\" aria-hidden=\"true\"><i></i><i></i><i></i></span><span>3</span></button></div></article>",
       "css": ".ds-catalogue-card{--ds-cover-width:96px;position:relative;isolation:isolate;height:124px;min-width:0;overflow:hidden;border:1px solid var(--border,#ffffff16);border-radius:var(--radius,14px);background:var(--surface,rgb(24 24 27 / .55));backdrop-filter:blur(var(--material-blur,8px));color:var(--foreground,#f5f5f5);font-family:var(--font-sans,'Nunito Variable','Noto Sans TC',sans-serif);}.ds-catalogue-main{display:grid;grid-template-columns:var(--ds-cover-width) minmax(0,1fr);grid-template-rows:minmax(0,1fr);height:100%;min-width:0;color:inherit;text-decoration:none;}.ds-catalogue-cover{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;padding:12px;background:var(--surface-strong,rgb(32 32 36 / .7));color:var(--secondary-text,#b5b5b5);font-size:11px;text-align:center;}.ds-catalogue-copy{display:grid;grid-template-rows:22px 16px 14px 14px;row-gap:2px;align-content:start;min-width:0;min-height:0;padding:8px 28px 44px 12px;}.ds-catalogue-copy>*{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.ds-catalogue-copy>strong{font-size:18px;font-weight:850;line-height:22px;}.ds-catalogue-artist{font-size:12px;line-height:16px;}.ds-catalogue-mapper{color:var(--secondary-text,#b5b5b5);font-size:11px;line-height:14px;}.ds-catalogue-facts{color:var(--secondary-text,#b5b5b5);font-size:10px;line-height:14px;font-variant-numeric:tabular-nums;}.ds-catalogue-main:hover{background:color-mix(in srgb,var(--foreground,#f5f5f5) 3%,transparent);}.ds-catalogue-main:hover strong{color:var(--readable-accent,#f9c1d9);}.ds-catalogue-footer{position:absolute;left:calc(var(--ds-cover-width) + 12px);right:8px;bottom:0;display:flex;align-items:center;justify-content:space-between;gap:8px;height:44px;}.ds-catalogue-status{color:var(--status-success,#91d8b1);font-size:10px;font-weight:850;}.ds-catalogue-summary{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:44px;min-height:44px;padding:0 6px;border:0;border-radius:calc(var(--radius,14px) * .45);background:transparent;color:inherit;cursor:pointer;font-family:inherit;font-size:11px;font-weight:800;font-variant-numeric:tabular-nums;}.ds-catalogue-ticks{display:inline-flex;gap:3px;}.ds-catalogue-ticks i{width:5px;height:13px;border-radius:3px;background:var(--difficulty-insane,#e59dc7);}.ds-catalogue-summary:hover,.ds-catalogue-summary[aria-expanded=true]{background:color-mix(in srgb,var(--foreground,#f5f5f5) 8%,transparent);}.ds-catalogue-main:focus-visible,.ds-catalogue-summary:focus-visible{outline:2px solid var(--ring,#f9c1d9);outline-offset:-3px;}@media(max-width:600px){.ds-catalogue-card{--ds-cover-width:82px;height:112px;}.ds-catalogue-copy{grid-template-rows:20px 14px 12px 12px;row-gap:0;padding:6px 24px 44px 10px;}.ds-catalogue-copy>strong{font-size:16px;line-height:20px;}.ds-catalogue-artist{font-size:11px;line-height:14px;}.ds-catalogue-mapper,.ds-catalogue-facts{font-size:10px;line-height:12px;}.ds-catalogue-footer{left:calc(var(--ds-cover-width) + 10px);right:4px;gap:4px;}}@media(max-width:420px){.ds-catalogue-card{--ds-cover-width:70px;}.ds-catalogue-cover>span{display:none;}}"
     }
   ],
@@ -1370,7 +1370,7 @@
       "Do connect entity identity, facts, controls and records with clear surface levels and seams.",
       "Do align comparable numeric values and use tabular figures for ranks, scores and control outputs.",
       "Do retain labels alongside status, grade and difficulty color, and show only facts provided by the running API.",
-      "Do preserve 44px catalogue and score action targets and every available difficulty link through the popover or complete set selector.",
+      "Do preserve 44px difficulty-summary and score action targets, complete read-only card previews and every available difficulty link in the full set selector.",
       "Do keep keyboard focus visible, honor reduced motion and contain dense horizontal content locally.",
       "Do use ordinary zh-TW/en/ja labels, real runtime covers, player-uploaded media and the explicitly authorized original homepage character.",
       "Do keep route motion purposeful and request feedback tied to outstanding work, including a reduced-motion presentation."

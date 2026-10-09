@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { flushSync } from 'react-dom';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { LazyMotion, MotionConfig } from 'motion/react';
@@ -28,6 +29,7 @@ type NavigationOperation = {
   releaseView: () => void;
   view?: ViewTransition;
   fallback?: ReturnType<typeof setTimeout>;
+  cancelCommit?: () => void;
   sawPending: boolean;
 };
 type NavigationProgress = {
@@ -68,14 +70,85 @@ function routeUrl(url: URL) {
 // A background tab may not receive animation frames, so it also has a short bound.
 function afterCommit(callback: () => void) {
   let completed = false;
+  let secondFrame = 0;
   const finish = () => {
     if (completed) return;
     completed = true;
     clearTimeout(bound);
+    cancelAnimationFrame(firstFrame);
+    cancelAnimationFrame(secondFrame);
     callback();
   };
   const bound = setTimeout(finish, 120);
-  requestAnimationFrame(() => requestAnimationFrame(finish));
+  const firstFrame = requestAnimationFrame(() => {
+    secondFrame = requestAnimationFrame(finish);
+  });
+  return () => {
+    completed = true;
+    clearTimeout(bound);
+    cancelAnimationFrame(firstFrame);
+    cancelAnimationFrame(secondFrame);
+  };
+}
+
+// The visible tail acknowledges even a cached navigation. data-pending and the
+// accessible state still describe real work, never this short completion tail.
+function NavigationIndicator({ pending, label }: { pending: boolean; label: string }) {
+  const indicator = useRef<HTMLDivElement>(null);
+  const startedAt = useRef(0);
+  const amount = useRef(0.12);
+  useLayoutEffect(() => {
+    const element = indicator.current;
+    if (!element) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let creep: ReturnType<typeof setTimeout> | undefined;
+    const setAmount = (value: number) => {
+      amount.current = value;
+      element.style.setProperty('--navigation-progress', String(value));
+    };
+    if (pending) {
+      if (element.dataset.visible !== 'true') {
+        startedAt.current = performance.now();
+        setAmount(0.12);
+      } else if (amount.current === 1) {
+        startedAt.current = performance.now();
+        setAmount(0.12);
+      }
+      element.dataset.visible = 'true';
+      element.dataset.phase = 'pending';
+      const tick = () => {
+        setAmount(Math.min(0.9, amount.current + (0.9 - amount.current) * 0.09));
+        creep = setTimeout(tick, 250);
+      };
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+        creep = setTimeout(tick, 250);
+    } else if (element.dataset.visible === 'true') {
+      timer = setTimeout(
+        () => {
+          setAmount(1);
+          element.dataset.phase = 'complete';
+          timer = setTimeout(() => {
+            element.dataset.visible = 'false';
+          }, 180);
+        },
+        Math.max(0, 220 - (performance.now() - startedAt.current)),
+      );
+    }
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(creep);
+    };
+  }, [pending]);
+  return (
+    <div
+      ref={indicator}
+      className="navigation-progress"
+      data-pending={pending}
+      role="progressbar"
+      aria-label={label}
+      aria-hidden={!pending}
+    />
+  );
 }
 
 function NavigationCommitObserver() {
@@ -109,11 +182,20 @@ export function NavigationProgressProvider({ children }: { children: ReactNode }
 
   const settle = useCallback((current: NavigationOperation, skip = false) => {
     if (current.fallback) clearTimeout(current.fallback);
+    current.cancelCommit?.();
     if (skip) current.view?.skipTransition();
     current.releaseView();
     current.finish();
     if (operation.current === current) operation.current = null;
   }, []);
+
+  const scheduleSettle = useCallback(
+    (current: NavigationOperation) => {
+      current.cancelCommit?.();
+      current.cancelCommit = afterCommit(() => settle(current));
+    },
+    [settle],
+  );
 
   const commit = useCallback(
     (url: string) => {
@@ -121,10 +203,10 @@ export function NavigationProgressProvider({ children }: { children: ReactNode }
       committedUrl.current = url;
       const current = operation.current;
       if (current && (current.destination === url || (previous !== null && previous !== url))) {
-        afterCommit(() => settle(current));
+        scheduleSettle(current);
       }
     },
-    [settle],
+    [scheduleSettle],
   );
 
   const navigate = useCallback(
@@ -139,9 +221,15 @@ export function NavigationProgressProvider({ children }: { children: ReactNode }
       const committed = new Promise<void>((resolve) => {
         releaseView = resolve;
       });
+      let finish = () => {};
+      // Native transitions freeze the old rendering while their update waits.
+      // Paint the initial progress segment into that snapshot before capture.
+      flushSync(() => {
+        finish = beginRequest();
+      });
       const current: NavigationOperation = {
         destination: routeUrl(destination),
-        finish: beginRequest(),
+        finish,
         releaseView,
         sawPending: false,
       };
@@ -199,8 +287,8 @@ export function NavigationProgressProvider({ children }: { children: ReactNode }
     const current = operation.current;
     if (!current) return;
     if (transitionPending) current.sawPending = true;
-    else if (current.sawPending) afterCommit(() => settle(current));
-  }, [transitionPending, settle]);
+    else if (current.sawPending) scheduleSettle(current);
+  }, [transitionPending, scheduleSettle]);
 
   useEffect(() => {
     const onPopState = () => {
@@ -235,13 +323,7 @@ export function NavigationProgressProvider({ children }: { children: ReactNode }
     <MotionConfig reducedMotion="user">
       <LazyMotion features={loadMotion} strict>
         <NavigationContext.Provider value={context}>
-          <div
-            className="navigation-progress"
-            data-pending={pending}
-            role="progressbar"
-            aria-label={t('loading')}
-            aria-hidden={!pending}
-          />
+          <NavigationIndicator pending={pending} label={t('loading')} />
           <Suspense fallback={null}>
             <NavigationCommitObserver />
           </Suspense>

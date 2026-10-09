@@ -3,13 +3,12 @@
 import { useEffect, useId, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
 import { NavigationLink as Link, useNavigationProgress } from '@/components/navigation-motion';
 import Image from 'next/image';
-import { Popover as PopoverPrimitive } from 'radix-ui';
+import { MapCardPreview } from './map-card-preview';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import {
   ArrowLeft,
   ArrowRight,
-  ChevronDown,
   Clock,
   Grid2X2,
   Library,
@@ -373,13 +372,8 @@ function DiscoverySkeleton({ compact = false }: { compact?: boolean }) {
 
 function MapSetCard({ set, returnTo }: { set: DiscoverySet; returnTo: string }) {
   const t = useTranslations('mapDiscovery');
-  const c = useTranslations('common');
-  const headingId = useId();
-  const countId = useId();
   const map = set.representative;
-  const preview = set.preview.slice(0, 8);
   const cover = mapCoverUrl(map.source, set.native_set_id);
-  const count = t('matchedStored', { matched: set.matching_count, stored: set.stored_count });
   const mappedBy = t('mappedBy', { creator: map.creator });
   const matchingModes = set.matching_modes
     .map((mode) => modes[mode] ?? t('unknownMode'))
@@ -424,79 +418,7 @@ function MapSetCard({ set, returnTo }: { set: DiscoverySet; returnTo: string }) 
           ))}
           {map.source === 'local' && <span className="discovery-source">{t('source.local')}</span>}
         </div>
-        <PopoverPrimitive.Root>
-          <PopoverPrimitive.Trigger asChild>
-            <button
-              type="button"
-              className="discovery-difficulty-trigger"
-              aria-label={`${t('setTitle')}: ${map.title}. ${count}`}
-              title={count}
-            >
-              <span className="discovery-difficulty-ticks" aria-hidden="true">
-                {preview.map((difficulty) => (
-                  <span
-                    className="difficulty-marker"
-                    key={difficulty.id}
-                    style={
-                      {
-                        '--difficulty-color': `var(--difficulty-${difficultyLevel(difficulty.stars)})`,
-                      } as CSSProperties
-                    }
-                  />
-                ))}
-              </span>
-              <span className="discovery-difficulty-count" aria-hidden="true">
-                {set.matching_count}
-              </span>
-              <ChevronDown aria-hidden="true" />
-            </button>
-          </PopoverPrimitive.Trigger>
-          <PopoverPrimitive.Portal>
-            <PopoverPrimitive.Content
-              className="discovery-difficulty-popover"
-              data-slot="popover-content"
-              data-material="floating"
-              align="end"
-              sideOffset={6}
-              collisionPadding={12}
-              aria-labelledby={headingId}
-              aria-describedby={countId}
-              onOpenAutoFocus={(event) => {
-                if (!(event.target instanceof HTMLElement)) return;
-                const firstDifficulty =
-                  event.target.querySelector<HTMLAnchorElement>('.difficulty-chip');
-                if (firstDifficulty) {
-                  event.preventDefault();
-                  firstDifficulty.focus();
-                }
-              }}
-            >
-              <div className="discovery-difficulty-popover-heading">
-                <div>
-                  <h3 id={headingId}>{t('setTitle')}</h3>
-                  <p id={countId}>{count}</p>
-                </div>
-                <PopoverPrimitive.Close aria-label={c('close')}>
-                  <X aria-hidden="true" />
-                </PopoverPrimitive.Close>
-              </div>
-              <div className="discovery-difficulty-options">
-                {preview.map((difficulty) => (
-                  <DifficultyChip map={difficulty} key={difficulty.id} navigation={{ returnTo }} />
-                ))}
-              </div>
-              {set.matching_count > preview.length && (
-                <Link
-                  href={`${beatmapDifficultyHref(map, { returnTo })}#set-difficulties`}
-                  className="discovery-more"
-                >
-                  {t('moreDifficulties', { count: set.matching_count - preview.length })}
-                  <ArrowRight aria-hidden="true" />
-                </Link>
-              )}
-            </PopoverPrimitive.Content>
-          </PopoverPrimitive.Portal>
-        </PopoverPrimitive.Root>
+        <MapCardPreview set={set} />
       </div>
     </article>
   );

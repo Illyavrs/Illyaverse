@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-10-09T05:32:03.354Z",
+  "captured_at": "2026-10-09T07:20:53.425Z",
   "url": "http://localhost:19000/beatmaps?view=grid",
   "locale": "en",
   "theme": "light",
@@ -10,7 +10,7 @@
   "scroll_x": 0,
   "scroll_y": 0,
   "document_width": 375,
-  "document_height": 1193,
+  "document_height": 1202,
   "actual_theme": "light",
   "actual_locale": "en",
   "font_status": "loaded",
@@ -20,7 +20,7 @@
       "width": 343,
       "height": 112,
       "identity_height": 110,
-      "trigger_width": 87.203125,
+      "trigger_width": 71.203125,
       "trigger_height": 44,
       "tick_count": 8,
       "permanently_reserved_difficulty_rows": 0,
@@ -30,7 +30,7 @@
       "width": 343,
       "height": 112,
       "identity_height": 110,
-      "trigger_width": 44.609375,
+      "trigger_width": 44,
       "trigger_height": 44,
       "tick_count": 2,
       "permanently_reserved_difficulty_rows": 0,
@@ -50,7 +50,7 @@
       "width": 343,
       "height": 112,
       "identity_height": 110,
-      "trigger_width": 44.609375,
+      "trigger_width": 44,
       "trigger_height": 44,
       "tick_count": 2,
       "permanently_reserved_difficulty_rows": 0,
@@ -59,67 +59,154 @@
   ],
   "difficulty_popover": {
     "width": 340,
-    "height": 542.296875,
+    "height": 380,
     "left": 14,
     "right": 354,
-    "top": 12,
-    "bottom": 554.296875,
-    "links": [
+    "top": 167,
+    "bottom": 547,
+    "rows": [
       {
-        "href": "/beatmaps/980000?returnTo=%2Fbeatmaps%3Fview%3Dgrid",
-        "accessible_name": "Open Difficulty 1, osu!, 1.25 stars",
-        "width": 322,
-        "height": 54.390625
+        "version": "Difficulty 1",
+        "mode": "osu!",
+        "stars": "1.25"
       },
       {
-        "href": "/beatmaps/980001?returnTo=%2Fbeatmaps%3Fview%3Dgrid",
-        "accessible_name": "Open Difficulty 2, taiko, 1.53 stars",
-        "width": 322,
-        "height": 54.390625
+        "version": "Difficulty 2",
+        "mode": "taiko",
+        "stars": "1.53"
       },
       {
-        "href": "/beatmaps/980002?returnTo=%2Fbeatmaps%3Fview%3Dgrid",
-        "accessible_name": "Open Difficulty 3, catch, 1.81 stars",
-        "width": 322,
-        "height": 54.390625
+        "version": "Difficulty 3",
+        "mode": "catch",
+        "stars": "1.81"
       },
       {
-        "href": "/beatmaps/980003?returnTo=%2Fbeatmaps%3Fview%3Dgrid",
-        "accessible_name": "Open Difficulty 4, mania, 2.09 stars",
-        "width": 322,
-        "height": 54.390625
+        "version": "Difficulty 4",
+        "mode": "mania",
+        "stars": "2.09"
       },
       {
-        "href": "/beatmaps/980004?returnTo=%2Fbeatmaps%3Fview%3Dgrid",
-        "accessible_name": "Open Difficulty 5, osu!, 2.37 stars",
-        "width": 322,
-        "height": 54.390625
+        "version": "Difficulty 5",
+        "mode": "osu!",
+        "stars": "2.37"
       },
       {
-        "href": "/beatmaps/980005?returnTo=%2Fbeatmaps%3Fview%3Dgrid",
-        "accessible_name": "Open Difficulty 6, taiko, 2.65 stars",
-        "width": 322,
-        "height": 54.390625
+        "version": "Difficulty 6",
+        "mode": "taiko",
+        "stars": "2.65"
       },
       {
-        "href": "/beatmaps/980006?returnTo=%2Fbeatmaps%3Fview%3Dgrid",
-        "accessible_name": "Open Difficulty 7, catch, 2.93 stars",
-        "width": 322,
-        "height": 54.390625
+        "version": "Difficulty 7",
+        "mode": "catch",
+        "stars": "2.93"
       },
       {
-        "href": "/beatmaps/980007?returnTo=%2Fbeatmaps%3Fview%3Dgrid",
-        "accessible_name": "Open Difficulty 8, mania, 3.21 stars",
-        "width": 322,
-        "height": 54.390625
+        "version": "Difficulty 8",
+        "mode": "mania",
+        "stars": "3.21"
       },
       {
-        "href": "/beatmaps/980000?returnTo=%2Fbeatmaps%3Fview%3Dgrid#set-difficulties",
-        "accessible_name": "20 more matching difficulties",
-        "width": 322,
-        "height": 44
+        "version": "Difficulty 9",
+        "mode": "osu!",
+        "stars": "3.49"
+      },
+      {
+        "version": "Difficulty 10",
+        "mode": "taiko",
+        "stars": "3.77"
+      },
+      {
+        "version": "Difficulty 11",
+        "mode": "catch",
+        "stars": "4.05"
+      },
+      {
+        "version": "Difficulty 12",
+        "mode": "mania",
+        "stars": "4.33"
+      },
+      {
+        "version": "Difficulty 13",
+        "mode": "osu!",
+        "stars": "4.61"
+      },
+      {
+        "version": "Difficulty 14",
+        "mode": "taiko",
+        "stars": "4.89"
+      },
+      {
+        "version": "Difficulty 15",
+        "mode": "catch",
+        "stars": "5.17"
+      },
+      {
+        "version": "Difficulty 16",
+        "mode": "mania",
+        "stars": "5.45"
+      },
+      {
+        "version": "Difficulty 17",
+        "mode": "osu!",
+        "stars": "5.73"
+      },
+      {
+        "version": "Difficulty 18",
+        "mode": "taiko",
+        "stars": "6.01"
+      },
+      {
+        "version": "Difficulty 19",
+        "mode": "catch",
+        "stars": "6.29"
+      },
+      {
+        "version": "Difficulty 20",
+        "mode": "mania",
+        "stars": "6.57"
+      },
+      {
+        "version": "Difficulty 21",
+        "mode": "osu!",
+        "stars": "6.85"
+      },
+      {
+        "version": "Difficulty 22",
+        "mode": "taiko",
+        "stars": "7.13"
+      },
+      {
+        "version": "Difficulty 23",
+        "mode": "catch",
+        "stars": "7.41"
+      },
+      {
+        "version": "Difficulty 24",
+        "mode": "mania",
+        "stars": "7.69"
+      },
+      {
+        "version": "Difficulty 25",
+        "mode": "osu!",
+        "stars": "7.97"
+      },
+      {
+        "version": "Difficulty 26",
+        "mode": "taiko",
+        "stars": "8.25"
+      },
+      {
+        "version": "Difficulty 27",
+        "mode": "catch",
+        "stars": "8.53"
+      },
+      {
+        "version": "Difficulty 28",
+        "mode": "mania",
+        "stars": "8.81"
       }
-    ]
+    ],
+    "links": []
   },
   "detail_overview": null
 }

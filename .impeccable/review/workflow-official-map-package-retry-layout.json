@@ -5,7 +5,7 @@
       "layout": "desktop",
       "filename": "workflow-official-map-package-retry-desktop-dark-en.png",
       "viewport_width": 1440,
-      "document_width": 1440,
+      "document_width": 1425,
       "scroll_y": 0,
       "theme": "dark"
     },
@@ -13,7 +13,7 @@
       "layout": "desktop",
       "filename": "workflow-official-map-package-retry-desktop-light-en.png",
       "viewport_width": 1440,
-      "document_width": 1440,
+      "document_width": 1425,
       "scroll_y": 0,
       "theme": "light"
     },
@@ -21,7 +21,7 @@
       "layout": "mobile",
       "filename": "workflow-official-map-package-retry-mobile-dark-en.png",
       "viewport_width": 390,
-      "document_width": 390,
+      "document_width": 375,
       "scroll_y": 0,
       "theme": "dark"
     },
@@ -29,7 +29,7 @@
       "layout": "mobile",
       "filename": "workflow-official-map-package-retry-mobile-light-en.png",
       "viewport_width": 390,
-      "document_width": 390,
+      "document_width": 375,
       "scroll_y": 0,
       "theme": "light"
     }

@@ -312,7 +312,7 @@ test('old account preferences gain coverage default and save failure preserves i
   expect(state.writes).toHaveLength(2);
 });
 
-test('language Select supports keyboard selection, Escape focus and bounded menus in both themes', async ({ page }) => {
+test('language menu supports keyboard selection, Escape focus and bounded menus in both themes', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 844 });
   const state = await fixture(page, 'en');
   await page.goto('/settings');
@@ -322,10 +322,10 @@ test('language Select supports keyboard selection, Escape focus and bounded menu
     await controls.getByRole('button', { name: theme, exact: true }).click();
     await language.focus();
     await language.press('Enter');
-    const listbox = page.getByRole('listbox');
+    const listbox = page.getByRole('menu');
     await expect(listbox).toBeVisible();
-    await expect(listbox.getByRole('option')).toHaveCount(3);
-    await expect(listbox.getByRole('option', { name: 'EN', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(listbox.getByRole('menuitemradio')).toHaveCount(3);
+    await expect(listbox.getByRole('menuitemradio', { name: 'English', exact: true })).toHaveAttribute('aria-checked', 'true');
     await expect(listbox).toHaveCSS('backdrop-filter', 'blur(8px)');
     const bounds = await listbox.boundingBox();
     expect(bounds?.x).toBeGreaterThanOrEqual(0);
@@ -337,21 +337,21 @@ test('language Select supports keyboard selection, Escape focus and bounded menu
     await expect(language).toHaveAttribute('data-value', 'en');
   }
   await language.press('Enter');
-  await expect(page.getByRole('listbox')).toBeVisible();
-  await expect(page.getByRole('option', { name: 'EN', exact: true })).toBeFocused();
+  await expect(page.getByRole('menu')).toBeVisible();
+  await expect(page.getByRole('menuitemradio', { name: 'English', exact: true })).toBeFocused();
   await page.keyboard.press('End');
-  await expect(page.getByRole('option', { name: '日本語', exact: true })).toBeFocused();
+  await expect(page.getByRole('menuitemradio', { name: '日本語', exact: true })).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(language).toHaveAttribute('data-value', 'ja');
   await expect.poll(() => state.writes.some((write) => write.locale === 'ja')).toBe(true);
   await language.focus();
   await language.press('Enter');
-  await expect(page.getByRole('listbox')).toBeVisible();
-  await expect(page.getByRole('option', { name: '日本語', exact: true })).toBeFocused();
+  await expect(page.getByRole('menu')).toBeVisible();
+  await expect(page.getByRole('menuitemradio', { name: '日本語', exact: true })).toBeFocused();
   await page.keyboard.press('Home');
-  await expect(page.getByRole('option', { name: '繁中', exact: true })).toBeFocused();
+  await expect(page.getByRole('menuitemradio', { name: '繁體中文', exact: true })).toBeFocused();
   await page.keyboard.press('ArrowDown');
-  await expect(page.getByRole('option', { name: 'EN', exact: true })).toBeFocused();
+  await expect(page.getByRole('menuitemradio', { name: 'English', exact: true })).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(language).toHaveAttribute('data-value', 'en');
   await expect(language).toBeFocused();

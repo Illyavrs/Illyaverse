@@ -67,54 +67,56 @@ html {
 }
 .navigation-progress {
   position: fixed;
-  z-index: 100;
+  z-index: 10000;
   inset: 0 0 auto;
   height: 3px;
   overflow: hidden;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 100ms ease-out;
+  --navigation-progress: 0.12;
+  view-transition-name: navigation-progress;
+  transition: opacity 150ms ease-out;
 }
-.navigation-progress[data-pending='true'] {
+.navigation-progress[data-visible='true'] {
   opacity: 1;
+}
+.navigation-progress[data-phase='pending'] {
+  transition: none;
 }
 .navigation-progress::after {
   content: '';
   display: block;
   height: 100%;
-  width: 35%;
+  width: 100%;
   background: var(--user-accent);
-  transform: translateX(-100%);
-}
-.navigation-progress[data-pending='true']::after {
-  animation: navigation-pending 1s ease-in-out infinite;
-}
-@keyframes navigation-pending {
-  to {
-    transform: translateX(390%);
-  }
+  transform-origin: left;
+  transform: scaleX(var(--navigation-progress));
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* The persistent shell stays anchored while only route content changes. */
-.main-content {
-  view-transition-name: route-content;
-}
+/* A named main would become a backdrop root even outside transitions, preventing
+   its glass panels from sampling the global scene. Capture the complete root so
+   its glass stays intact; the identical persistent header remains anchored. */
 ::view-transition-group(root) {
-  animation: none;
-}
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation: none;
-  mix-blend-mode: normal;
-}
-::view-transition-group(route-content) {
   animation-duration: 180ms;
   animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
 }
-::view-transition-old(route-content),
-::view-transition-new(route-content) {
+::view-transition-old(root),
+::view-transition-new(root) {
   animation-duration: 180ms;
   mix-blend-mode: normal;
+}
+::view-transition-group(navigation-progress) {
+  z-index: 10000;
+  animation: none;
+}
+::view-transition-old(navigation-progress),
+::view-transition-new(navigation-progress) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-old(navigation-progress):not(:only-child) {
+  display: none;
 }
 ::view-transition {
   pointer-events: none;
@@ -123,13 +125,9 @@ html {
   html {
     scroll-behavior: auto;
   }
-  .navigation-progress {
+  .navigation-progress,
+  .navigation-progress::after {
     transition: none;
-  }
-  .navigation-progress[data-pending='true']::after {
-    animation: none;
-    width: 100%;
-    transform: none;
   }
   ::view-transition-group(*),
   ::view-transition-old(*),

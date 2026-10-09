@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-10-09T05:31:20.020Z",
+  "captured_at": "2026-10-09T07:20:11.538Z",
   "route": "/",
   "viewport": {
     "width": 390,
@@ -46,25 +46,25 @@
     "geometry": [
       {
         "x": 17,
-        "y": 726.125,
+        "y": 772.125,
         "width": 341,
         "height": 104
       },
       {
         "x": 33,
-        "y": 741.625,
+        "y": 787.625,
         "width": 56,
         "height": 72
       },
       {
         "x": 99,
-        "y": 740.65625,
+        "y": 786.65625,
         "width": 189.375,
         "height": 73.921875
       },
       {
         "x": 298.375,
-        "y": 755.234375,
+        "y": 801.234375,
         "width": 43.625,
         "height": 44.78125
       }
@@ -107,16 +107,16 @@
   "hero_asset": "User-supplied original RGBA PNG; display-only CSS crop; no generated artwork.",
   "data": "Synthetic QA fixtures intercepted at existing public API routes; no native-client or live activity claims.",
   "sources": {
-    "src/features/home.tsx": "5de64565393391f5f98373200f4f30e0ce5d00bb332c9a05af9db70c1c8f9131",
-    "src/features/home.css": "4dd09eea200d55e14300d9209a182ce02cb5175fea6c9f0378e04bfc76ec9f65",
-    "src/features/beatmaps.tsx": "8ca8477e66056000e65ce634a4b22f93ad3a56b74505ab28c744c0947c6d0c6e",
-    "src/styles/map-discovery.css": "039bb7df7987059e66f5bbd53e79afb6374d0b88c2febd537a3003998c592703",
+    "src/features/home.tsx": "f3ae8c9dd4b97ebcc79fd16e01fbcc039dceeebddebc55a725a5e16a0ab6d811",
+    "src/features/home.css": "26ad82f72c130aa3d160dd2e2993857d7a23ba1db7b1fae658c1861a88c857d4",
+    "src/features/beatmaps.tsx": "29fb1d803dd7becb34c9d41f979466afa96b19002bcf510ab45f49672f56f40c",
+    "src/styles/map-discovery.css": "44e1acae74300a50d562da2dc51306a0fb438b2d5bf09ab47687a6deb51d995d",
     "src/components/providers.tsx": "fa4f6fa3f8a49761ebaf5550f39fed0906106cf4d99d37c5d004d2dc0c155761",
-    "src/app/globals.css": "2f183c43f235ba97f3dae9c6c5a3a713f98008906c9a83f30e8da6975166fa24",
+    "src/app/globals.css": "416a2191c358670080ac0321fc76423afee8820eb1d9187a45225114d97c17a7",
     "src/app/layout.tsx": "747fa3b50704dadd372339843c0832330dd90126da6b88e0538bf99fa257dd70",
-    "messages/zh-TW.json": "f30510c805f50284d68b2e162e2c5aea14eba755bc6e1032a5bb2548067fca4c",
-    "messages/en.json": "be37a498c6d4e82dd1650c19b39f7e65f4c8acf75b3d8bfe50f0069772496330",
-    "messages/ja.json": "11ca88e13f550f273356da6f56f3d59696367b8144eefbbae0e89aca6ff055d3",
+    "messages/zh-TW.json": "27ef0349d3483b673abe614ecfb991aafe85e48225b2e73c1177c780caaf2b75",
+    "messages/en.json": "c69173e0d813426d4f60c12b135373378cc6bfd57d967e355f553f1e8648feb2",
+    "messages/ja.json": "5ab81fbe97dd009dd42eee87df82c24a2770111f2e941af1da450d2fa5303fc6",
     "public/images/home-character.png": "d32cc7271ff33364e247c8d8988c16f61e50d7715cd500b6cbdece29c53c70e4"
   }
 }

@@ -304,11 +304,13 @@ test('single-ID JSON import remains the default and switching retains both draft
   await page
     .getByRole('button', { name: state.copy.maps.importDifficultyAction, exact: true })
     .click();
-  await expect(page.getByRole('status')).toHaveText(state.copy.maps.importSuccess);
+  await expect(page.locator('.map-upload-result').getByRole('status')).toHaveText(
+    state.copy.maps.importSuccess,
+  );
   expect(state.singles).toEqual([{ official_id: 96300 }]);
   expect(state.archives).toHaveLength(0);
   await selectField(page.locator('#official-import-kind'), 'archive');
-  await expect(page.getByRole('status')).toHaveCount(0);
+  await expect(page.locator('.map-upload-result').getByRole('status')).toHaveCount(0);
   await expect(page.locator('#official_set_id')).toHaveValue(String(setId));
   expect(
     await page
@@ -457,7 +459,9 @@ test('busy official archive controls and submit ref reject duplicate submissions
     );
   expect(state.archives).toHaveLength(1);
   hold.release();
-  await expect(page.getByRole('status')).toHaveText(state.copy.maps.importArchiveSuccess);
+  await expect(page.locator('.map-upload-result').getByRole('status')).toHaveText(
+    state.copy.maps.importArchiveSuccess,
+  );
   await expect(page.locator('#official-import-kind')).toBeEnabled();
   await page.locator('#official-import-kind').focus();
   await page.locator('#official-import-kind').press('Enter');
@@ -528,7 +532,9 @@ test('official set ID and archive file bounds block requests and preserve select
   await page
     .getByRole('button', { name: state.copy.maps.importArchiveAction, exact: true })
     .click();
-  await expect(page.getByRole('status')).toHaveText(state.copy.maps.importArchiveSuccess);
+  await expect(page.locator('.map-upload-result').getByRole('status')).toHaveText(
+    state.copy.maps.importArchiveSuccess,
+  );
   expect(state.archives).toHaveLength(1);
   assertClean(state);
 });

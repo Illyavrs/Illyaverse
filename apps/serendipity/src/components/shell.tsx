@@ -2,12 +2,26 @@
 import { NavigationLink as Link } from './navigation-motion';
 import { usePathname } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { Disc3, Menu, Palette, ArrowUpRight, LogOut } from 'lucide-react';
+import {
+  Disc3,
+  Menu,
+  Palette,
+  ArrowUpRight,
+  LogOut,
+  Globe2,
+  ChevronDown,
+  Check,
+} from 'lucide-react';
 import { LayoutGroup } from 'motion/react';
 import * as m from 'motion/react-m';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from './ui/button';
-import { FieldSelect } from './ui/field-select';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from './ui/dropdown-menu';
 import {
   Sheet,
   SheetContent,
@@ -32,6 +46,39 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useSession();
   const [navOpen, setNavOpen] = useState(false);
   const [error, setError] = useState('');
+  const [localeBusy, setLocaleBusy] = useState(false);
+  const localeInFlight = useRef(false);
+  const languageMenuRef = useRef<HTMLDivElement>(null);
+  const languageTriggerRef = useRef<HTMLButtonElement>(null);
+  const restoreLanguageFocus = useRef(false);
+  useEffect(() => {
+    if (localeBusy || !restoreLanguageFocus.current) return;
+    const frame = requestAnimationFrame(() => {
+      restoreLanguageFocus.current = false;
+      const active = document.activeElement;
+      if (active === document.body || languageMenuRef.current?.contains(active))
+        languageTriggerRef.current?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [localeBusy, locale]);
+  async function chooseLocale(value: string) {
+    if (!isLocale(value) || value === locale || localeInFlight.current) return;
+    // The menu closes while its trigger is disabled for saving. Restore focus
+    // after enabling the current trigger, unless the player focused elsewhere.
+    restoreLanguageFocus.current =
+      languageMenuRef.current?.contains(document.activeElement) ?? false;
+    localeInFlight.current = true;
+    setLocaleBusy(true);
+    setError('');
+    try {
+      await setLocale(value);
+    } catch {
+      setError(common('serviceError'));
+    } finally {
+      localeInFlight.current = false;
+      setLocaleBusy(false);
+    }
+  }
   const links = [
     ['/', 'home'],
     ['/news', 'news'],
@@ -80,19 +127,61 @@ export function Shell({ children }: { children: React.ReactNode }) {
             </span>
           </Link>
           <div className="header-tools">
-            <FieldSelect
-              aria-label={t('language')}
-              value={locale}
-              onValueChange={(value) => {
-                if (isLocale(value)) setLocale(value).catch(() => setError(common('serviceError')));
+            <DropdownMenu
+              modal={false}
+              onOpenChange={(open) => {
+                if (open)
+                  requestAnimationFrame(() => {
+                    languageMenuRef.current
+                      ?.querySelector<HTMLElement>('[aria-checked="true"]')
+                      ?.focus();
+                  });
               }}
-              className="language-select"
-              options={[
-                { value: 'zh-TW', label: '繁中' },
-                { value: 'en', label: 'EN' },
-                { value: 'ja', label: '日本語' },
-              ]}
-            />
+            >
+              <DropdownMenuTrigger asChild>
+                <Button
+                  ref={languageTriggerRef}
+                  variant="ghost"
+                  className="language-select language-menu-trigger"
+                  aria-label={t('language')}
+                  data-value={locale}
+                  disabled={localeBusy}
+                  aria-busy={localeBusy}
+                >
+                  <Globe2 aria-hidden="true" />
+                  <span>{locale === 'zh-TW' ? '繁中' : locale === 'ja' ? 'JA' : 'EN'}</span>
+                  <ChevronDown aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                ref={languageMenuRef}
+                align="end"
+                className="language-menu-content"
+                aria-label={t('language')}
+              >
+                {[
+                  { value: 'zh-TW', label: '繁體中文' },
+                  { value: 'en', label: 'English' },
+                  { value: 'ja', label: '日本語' },
+                ].map(({ value, label }) => (
+                  <DropdownMenuItem
+                    key={value}
+                    role="menuitemradio"
+                    aria-checked={locale === value}
+                    data-option-value={value}
+                    onSelect={() => void chooseLocale(value)}
+                    disabled={localeBusy}
+                  >
+                    <span lang={value}>{label}</span>
+                    {locale === value ? (
+                      <Check aria-hidden="true" />
+                    ) : (
+                      <span className="language-check-space" aria-hidden="true" />
+                    )}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Sheet>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon" aria-label={t('appearance')}>
@@ -199,7 +288,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <ArrowUpRight />
           </a>
         </nav>
-        <span className="footer-note">{common('legal')}</span>
+        <span className="footer-note">
+          {common('legal')} ·{' '}
+          <a className="flag-attribution" href="/flags/twemoji/ATTRIBUTION.txt">
+            Twemoji · CC BY 4.0
+          </a>
+        </span>
       </footer>
     </>
   );

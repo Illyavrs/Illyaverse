@@ -1,4 +1,6 @@
 @import 'tailwindcss';
+@import '../styles/official-map-search.css';
+@import '../styles/country-language.css';
 @custom-variant dark (&:is(.dark *));
 
 :root {
@@ -885,7 +887,8 @@ svg {
 .search-input > svg {
   position: absolute;
   left: 12px;
-  top: 10px;
+  top: 50%;
+  transform: translateY(-50%);
   width: 17px;
   height: 17px;
   color: var(--secondary-text);

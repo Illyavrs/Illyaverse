@@ -4,7 +4,81 @@ The subsequent shared appearance-state checkpoint is recorded in [appearance sta
 
 The current public profile presentation and website chat visibility checkpoint is recorded in [profile presentation](profile-presentation.md), including scoped source/image/browser evidence and remaining native submission limits.
 
-Last recorded evidence: 2026-10-08. Local Docker deployments and isolated-schema tests use synthetic fixtures; they are not a production player community. The INITIAL checkpoint below predates the follow-up chat, replay, mod and connection work. Later source gates and image checks are recorded in the follow-up sections; keep the INITIAL results separate from those checkpoints.
+Last recorded evidence: 2026-10-09. Local Docker deployments and isolated-schema tests use synthetic fixtures; they are not a production player community. The INITIAL checkpoint below predates the follow-up chat, replay, mod and connection work. Later source gates and image checks are recorded in the follow-up sections; keep the INITIAL results separate from those checkpoints.
+
+## Interface corrections and official metadata search checkpoint
+
+2026-10-09: the latest user screenshots define this scoped correction. Inactive
+client tabs have no decorative border, the selected profile mode has one accent
+underline, and the enlarged original homepage character extends above the glass
+panel beside the larger wordmark. The persistent named main transition was
+removed to restore scene sampling; request-linked top progress, compact catalogue
+search, complete read-only difficulty previews, full-name language selection and
+self-hosted Twemoji flags are covered in [interface corrections](interface-corrections.md).
+Official staff search deliberately fills the existing import form and cannot
+publish a result or retrieve a complete archive by itself. See
+[official metadata search](official-map-search.md) for authorization, rate,
+cache, cancellation and public retained-map preview boundaries.
+
+The Sanctuary gate passes **86 unit cases**, **19 opt-in PostgreSQL 17 cases**,
+rustfmt and all-target Sanctuary Clippy with warnings denied. The source harness
+was rerun after supplying its independently owned native-map database variable;
+the earlier missing-variable attempt remains separately recorded. All test
+database resources were removed. The final API image passes **24 isolated HTTP
+requests across seven categories**; no retained data or official credentials
+were used in that refusal/authentication gate. Protocol-launcher and immutable
+migration-file helper gates each pass six cases; all 22 migration files retain
+their original content digests.
+
+Final tested application images:
+
+- Sanctuary: `sha256:4f281bf4bf8e8ee94efbf43d7f09a2fcd28672d73150a7a91003b31c4a04680f`.
+- Serendipity: `sha256:222ba3298c2030a8a115ac0741fbf3d8cd2e1148b5e583bc09a7c7cc0ac63e20`.
+
+Full frontend ESLint, TypeScript and production Docker compilation pass. The
+final image passes **124 Chromium cases** in a fresh isolated project. Eight
+profile-layout cases passed on the earlier image and are recorded separately,
+rather than added to the final-image total. The initial browser run found a real
+language-menu focus restoration defect; its source fix and test-only timing,
+focus-readiness and transparent-shadow assertion repairs preceded confirmation.
+The final tests cover 1440px/1280px desktop, 390px/320px phones, both themes and
+three locales, actual blur/progress PNG pixels, keyboard/touch previews,
+stale-response cancellation and retained import drafts. Disposable containers,
+network, volumes and temporary environments were verified removed.
+
+All **96 confirmation PNGs** decode, match their declared bytes/SHA and pass
+nonblank/source-sidecar validation. A fresh independent generic finish reviewer
+visually inspected **21 required representatives** plus the latest three user
+defect images. This is distinct from machine validation of the remaining
+captures. Reviewer/documenter role substitution and the bounded verdict are
+recorded under `.impeccable/review/interface-corrections-*.md`. The one targeted
+detector run reports one primary rank-gradient finding, explicitly requested by
+the user, and 94 advisories; it is not presented as a zero-findings run.
+Source/design diff checks pass. The unchanged upstream graphics license retains
+its original trailing space on line 52 and its verified SHA-256; that single
+provenance file is explicitly excluded from the whitespace gate rather than
+silently editing the original license bytes.
+
+This repository checkpoint is post-build evidence; the frozen website image
+contains the preceding documentation snapshot. The tests do not certify native
+client login, gameplay, score submission or replay playback, and the permitted
+automatic `.osz` source remains an operator choice.
+
+At 07:46 UTC the guarded deployment passed in both retained projects, replacing
+only Sanctuary and Serendipity with the exact tested images. All ten services
+are healthy; the six PostgreSQL/Resonance/Caddy identities, state, health,
+timestamps and mounts, all original records/content digests, stored bytes,
+schema 22 and environment values are preserved. Client-test still has two
+users, 48 maps across 41 sets, two scores and one Replay; main still has two
+users and no maps or scores. Five read-only localhost page/status requests pass,
+and the actual `https://illya.test` browser homepage renders the new hero with
+the retained catalogue. Installed Git OpenSSL separately verifies the existing
+CA chain, hostname and an HTTP 200 response. Windows Schannel curl rejects that
+same explicitly supplied private CA; its failed probe is retained rather than
+reported as passing. No trust-store, hosts, firewall or native-game setting was
+changed. See [curl certificate verification](https://curl.se/docs/sslcerts.html)
+for the backend distinction; these observations do not assert a Windows trust
+repair or actual game-client certification.
 
 ## Original archive filename and raw-record checkpoint
 

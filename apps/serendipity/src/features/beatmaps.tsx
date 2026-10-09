@@ -40,6 +40,7 @@ import type {
 import { ScoreTable } from './scores';
 import { ScoreVariantControl, useScoreSelection } from '@/components/score-selection';
 import { BeatmapAvailabilityAction } from './admin';
+import { OfficialMapSearch } from './official-map-search';
 import {
   MapArtwork,
   MapMetadata,
@@ -631,6 +632,21 @@ export function MapUploadPage({ official = false }: { official?: boolean }) {
     setResult(null);
     setImported(null);
   }
+  function chooseOfficial(kind: 'difficulty' | 'archive', id: number) {
+    if (submitting.current) return;
+    clearFeedback();
+    setImportKind(kind);
+    const input = formRef.current?.elements.namedItem(
+      kind === 'difficulty' ? 'official_id' : 'official_set_id',
+    );
+    if (input instanceof HTMLInputElement) input.value = String(id);
+    requestAnimationFrame(() => {
+      const target = formRef.current?.elements.namedItem(
+        kind === 'difficulty' ? 'official_id' : 'file',
+      );
+      if (target instanceof HTMLInputElement) target.focus();
+    });
+  }
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (submitting.current) return;
@@ -729,6 +745,7 @@ export function MapUploadPage({ official = false }: { official?: boolean }) {
         description={t(official ? 'importDescription' : 'uploadDescription')}
       />
       <Protected permission={official ? 'beatmaps.import' : 'beatmaps.upload'}>
+        {official && <OfficialMapSearch onChoose={chooseOfficial} disabled={busy} />}
         <form ref={formRef} onSubmit={submit} className="glass upload-form" aria-busy={busy}>
           {official ? (
             <>

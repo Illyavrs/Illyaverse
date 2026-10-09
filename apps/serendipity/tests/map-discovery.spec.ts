@@ -41,6 +41,7 @@ function difficulty(index: number, setIndex = 0) {
   };
 }
 type FixtureDifficulty = ReturnType<typeof difficulty>;
+type FixturePreviewDifficulty = Omit<FixtureDifficulty, 'id'> & { id: number | null };
 
 async function fixture(page: Page, locale = 'en', theme = 'dark') {
   const appearance = {
@@ -72,6 +73,12 @@ async function fixture(page: Page, locale = 'en', theme = 'dark') {
     ).flat(),
     setQueries: [] as URLSearchParams[],
     selectorQueries: [] as string[],
+    previewQueries: [] as string[],
+    previewMaps: null as FixturePreviewDifficulty[] | null,
+    failPreview: 0,
+    holdPreview: false,
+    previewReleases: [] as (() => void)[],
+    previewSettled: [] as number[],
     scoreQueries: [] as URLSearchParams[],
     populatedScores: false,
     failSets: false,
@@ -171,6 +178,37 @@ async function fixture(page: Page, locale = 'en', theme = 'dark') {
         },
       });
     }
+    const preview = /^\/beatmaps\/(\d+)\/set\/preview$/.exec(routePath);
+    if (preview) {
+      const requestIndex = state.previewQueries.push(routePath) - 1;
+      const anchor = state.maps.find((map) => map.id === Number(preview[1]));
+      const status = state.withdrawn ? 404 : state.failPreview;
+      // Snapshot a held response so changing fixture metadata cannot rewrite an old request.
+      const items = (state.previewMaps ?? state.maps)
+        .filter((map) => map.native_set_id === anchor?.native_set_id)
+        .map((map) => ({ ...map }));
+      const storedCount = state.maps.filter(
+        (map) => map.native_set_id === anchor?.native_set_id,
+      ).length;
+      if (state.holdPreview)
+        await new Promise<void>((resolve) => state.previewReleases.push(resolve));
+      try {
+        if (status)
+          return await fail(route, status, status === 404 ? 'not_found' : 'service_unavailable');
+        if (!anchor) return await fail(route, 404, 'not_found');
+        return await route.fulfill({
+          json: {
+            native_set_id: anchor.native_set_id,
+            source: anchor.source,
+            items,
+            total: items.length,
+            stored_count: storedCount,
+          },
+        });
+      } finally {
+        state.previewSettled.push(requestIndex);
+      }
+    }
     const selector = /^\/beatmaps\/(\d+)\/set\/difficulties$/.exec(routePath);
     if (selector) {
       state.selectorQueries.push(`${routePath}${url.search}`);
@@ -251,6 +289,15 @@ async function fixture(page: Page, locale = 'en', theme = 'dark') {
     return fail(route, 404, 'fixture_unhandled');
   });
   return state;
+}
+
+function partialStoredSet(state: Awaited<ReturnType<typeof fixture>>) {
+  state.previewMaps = state.maps
+    .filter((map) => map.native_set_id === 2588526)
+    .map((map, index) => ({ ...map, id: index < 2 ? map.id : null }));
+  state.maps = state.maps.filter(
+    (map) => map.native_set_id !== 2588526 || [980000, 980001].includes(map.id),
+  );
 }
 
 async function noOverflow(page: Page) {
@@ -344,6 +391,11 @@ async function capture(
         right: bounds.right,
         top: bounds.top,
         bottom: bounds.bottom,
+        rows: [...popup.querySelectorAll('.difficulty-preview-row')].map((row) => ({
+          version: row.querySelector('.difficulty-version')?.textContent,
+          mode: row.querySelector('.difficulty-mode')?.textContent,
+          stars: row.querySelector('.difficulty-rating')?.textContent,
+        })),
         links: [...popup.querySelectorAll('a')].map((link) => ({
           href: link.getAttribute('href'),
           accessible_name: link.getAttribute('aria-label') ?? link.textContent,
@@ -385,9 +437,7 @@ async function capture(
   );
 }
 
-test('set results show matched and stored counts, eight popover previews and server pages', async ({
-  page,
-}) => {
+test('set results show complete read-only hover previews and server pages', async ({ page }) => {
   const state = await fixture(page);
   await page.goto('/beatmaps');
   await expect(page.locator('.discovery-set')).toHaveCount(24);
@@ -397,20 +447,17 @@ test('set results show matched and stored counts, eight popover previews and ser
   await expect(page.locator('.discovery-result-count > span')).toHaveText('Showing 1–24');
   const first = page.locator('.discovery-set').first();
   const trigger = first.locator('.discovery-difficulty-trigger');
-  await expect(trigger).toHaveAccessibleName(/28 matching · 28 stored difficulties/);
+  await expect(trigger).toHaveAccessibleName(/28 stored difficulties/);
   await expect(first.locator('.difficulty-chip')).toHaveCount(0);
   await expect(first.locator('.discovery-difficulty-ticks .difficulty-marker')).toHaveCount(8);
-  await trigger.click();
+  await trigger.hover();
   const popup = page.locator('.discovery-difficulty-popover');
-  await expect(popup.getByText('28 matching · 28 stored difficulties')).toBeVisible();
-  await expect(popup.locator('.difficulty-chip')).toHaveCount(8);
-  await expect(popup.getByRole('link', { name: '20 more matching difficulties' })).toHaveAttribute(
-    'href',
-    '/beatmaps/980000?returnTo=%2Fbeatmaps#set-difficulties',
-  );
+  await expect(popup.getByText('28 difficulties', { exact: true })).toBeVisible();
+  await expect(popup.locator('.difficulty-preview-row')).toHaveCount(28);
+  await expect(popup.getByRole('link')).toHaveCount(0);
   await expect(first.locator('.discovery-set-main .difficulty-chip')).toHaveCount(0);
   await expect(first.locator('.discovery-status')).toHaveCount(4);
-  await popup.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(page).toHaveURL(/page=2/);
   await expect(page.locator('.discovery-set')).toHaveCount(6);
@@ -419,13 +466,13 @@ test('set results show matched and stored counts, eight popover previews and ser
   await expect(page).not.toHaveURL(/page=2/);
   await expect(
     page.locator('.discovery-set').first().locator('.discovery-difficulty-trigger'),
-  ).toHaveAccessibleName(/7 matching · 28 stored difficulties/);
+  ).toHaveAccessibleName(/28 stored difficulties/);
   await expect(page.locator('.discovery-set').first().locator('.discovery-status')).toHaveText([
     'Unranked',
   ]);
 });
 
-test('dense catalogue cards keep one compact height and every difficulty reachable across widths and views', async ({
+test('dense catalogue cards keep one compact height and complete read-only previews across widths and views', async ({
   page,
 }) => {
   const state = await fixture(page, 'en', 'light');
@@ -504,59 +551,47 @@ test('dense catalogue cards keep one compact height and every difficulty reachab
       }
       await first.locator('.discovery-difficulty-trigger').click();
       const popup = page.locator('.discovery-difficulty-popover');
-      await expect(popup.getByRole('link', { name: /Open .*stars/ })).toHaveCount(8);
-      await expect(popup.locator('.difficulty-chip').first()).toHaveAccessibleName(/1[.,]25 stars/);
-      await expect(popup.locator('.difficulty-chip').last()).toHaveAccessibleName(/3[.,]21 stars/);
-      await expect(
-        popup.getByRole('link', { name: '20 more matching difficulties' }),
-      ).toHaveAttribute(
-        'href',
-        `/beatmaps/980000?returnTo=${encodeURIComponent(`/beatmaps?view=${view}`)}#set-difficulties`,
-      );
-      const links = await popup.getByRole('link').evaluateAll((anchors) =>
-        anchors.map((anchor) => ({
-          width: anchor.getBoundingClientRect().width,
-          height: anchor.getBoundingClientRect().height,
-        })),
-      );
-      for (const link of links) {
-        expect(link.width).toBeGreaterThanOrEqual(44);
-        expect(link.height).toBeGreaterThanOrEqual(44);
-      }
-      await popup.getByRole('button', { name: 'Close', exact: true }).click();
+      await expect(popup.locator('.difficulty-preview-row')).toHaveCount(28);
+      await expect(popup.getByRole('link')).toHaveCount(0);
+      await expect(popup.locator('.difficulty-version').first()).toHaveText(state.maps[0].version);
+      await expect(popup.locator('.difficulty-rating').first()).toContainText('1.25');
+      await expect(popup.locator('.difficulty-preview-row').first()).toHaveCSS('cursor', 'default');
+      await page.keyboard.press('Escape');
       await expect(first.locator('.discovery-difficulty-trigger')).toBeFocused();
       await noOverflow(page);
     }
   }
 });
 
-test('dense difficulty popovers open by keyboard, dismiss with focus restore and retain catalogue navigation', async ({
+test('read-only difficulty previews open on keyboard focus and keep catalogue navigation on the card', async ({
   page,
 }) => {
-  await fixture(page);
+  const state = await fixture(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/beatmaps?source=official&view=grid&sort=stars');
   await expect(page.locator('.discovery-set')).toHaveCount(15);
-  const trigger = page.locator('.discovery-set').first().locator('.discovery-difficulty-trigger');
-  await trigger.focus();
-  await trigger.press('Enter');
+  const card = page.locator('.discovery-set').first();
+  const trigger = card.locator('.discovery-difficulty-trigger');
+  await card.locator('.discovery-set-main').focus();
+  await page.keyboard.press('Tab');
   const popup = page.locator('.discovery-difficulty-popover');
   await expect(popup).toBeVisible();
-  await expect(popup.locator('.difficulty-chip').first()).toBeFocused();
-  await popup.locator('.difficulty-chip').first().press('Escape');
+  await expect(trigger).toBeFocused();
+  await expect(popup.locator('.difficulty-preview-row')).toHaveCount(28);
+  await expect(popup.getByRole('link')).toHaveCount(0);
+  await expect(popup.getByRole('button')).toHaveCount(0);
+  await expect(popup.locator('[tabindex]')).toHaveCount(0);
+  await trigger.press('Escape');
   await expect(popup).toHaveCount(0);
   await expect(trigger).toBeFocused();
   await trigger.press('Space');
   await expect(popup).toBeVisible();
-  await expect(popup.locator('.difficulty-chip').first()).toBeFocused();
-  await page.locator('.discovery-set').nth(2).locator('.discovery-set-statuses').click();
+  await expect(trigger).toBeFocused();
+  await page.getByRole('heading', { name: 'Beatmaps', exact: true }).click();
   await expect(popup).toHaveCount(0);
-  await trigger.click();
-  await popup.locator('.difficulty-chip').last().focus();
-  await expect(popup.locator('.difficulty-chip').last()).toBeFocused();
-  await expect(popup.locator('.difficulty-chip').last()).toBeInViewport();
-  await popup.locator('.difficulty-chip').last().press('Enter');
-  await expect(page).toHaveURL(/\/beatmaps\/980007\?/);
+  expect(state.selectorQueries).toHaveLength(0);
+  await card.locator('.discovery-set-main').click();
+  await expect(page).toHaveURL(/\/beatmaps\/980000\?/);
   await expect(page.locator('.back-link')).toHaveAttribute(
     'href',
     '/beatmaps?source=official&view=grid&sort=stars',
@@ -567,13 +602,10 @@ test('dense difficulty popovers open by keyboard, dismiss with focus restore and
     'data-value',
     'official',
   );
-  await page.locator('.discovery-set').first().locator('.discovery-difficulty-trigger').click();
-  await popup.getByRole('link', { name: '20 more matching difficulties' }).click();
-  await expect(page).toHaveURL(/#set-difficulties$/);
-  await expect(page.locator('.set-difficulty-selector')).toBeVisible();
-  await expect(page.locator('.set-difficulty-row')).toHaveCount(24);
 });
-test('dense difficulty popovers support touch selection on a phone', async ({ browser }) => {
+test('read-only difficulty previews open by touch, ignore row taps and close outside on a phone', async ({
+  browser,
+}) => {
   const context = await browser.newContext({
     baseURL: test.info().project.use.baseURL as string,
     viewport: { width: 390, height: 844 },
@@ -585,11 +617,19 @@ test('dense difficulty popovers support touch selection on a phone', async ({ br
     await fixture(page);
     await page.goto('/beatmaps?source=official&view=list');
     await expect(page.locator('.discovery-set')).toHaveCount(15);
-    await page.locator('.discovery-set').first().locator('.discovery-difficulty-trigger').tap();
+    const card = page.locator('.discovery-set').first();
+    await card.locator('.discovery-difficulty-trigger').tap();
     const popup = page.locator('.discovery-difficulty-popover');
-    await expect(popup.locator('.difficulty-chip')).toHaveCount(8);
-    await popup.locator('.difficulty-chip').nth(1).tap();
-    await expect(page).toHaveURL(/\/beatmaps\/980001\?/);
+    await expect(popup.locator('.difficulty-preview-row')).toHaveCount(28);
+    await expect(popup.getByRole('link')).toHaveCount(0);
+    const catalogueURL = page.url();
+    await popup.locator('.difficulty-preview-row').nth(1).tap();
+    await expect(popup).toBeVisible();
+    await expect(page).toHaveURL(catalogueURL);
+    await page.getByRole('heading', { name: 'Beatmaps', exact: true }).tap();
+    await expect(popup).toHaveCount(0);
+    await card.locator('.discovery-set-main').tap();
+    await expect(page).toHaveURL(/\/beatmaps\/980000\?/);
     await expect(page.locator('.back-link')).toHaveAttribute(
       'href',
       '/beatmaps?source=official&view=list',
@@ -598,6 +638,123 @@ test('dense difficulty popovers support touch selection on a phone', async ({ br
   } finally {
     await context.close();
   }
+});
+
+test('a partial stored set shows all 28 metadata difficulties without importing or linking rows', async ({
+  page,
+}) => {
+  const state = await fixture(page);
+  partialStoredSet(state);
+  state.holdPreview = true;
+  await page.goto('/beatmaps');
+  const card = page.locator('.discovery-set').first();
+  const trigger = card.locator('.discovery-difficulty-trigger');
+  await expect(trigger).toHaveAccessibleName(/2 stored difficulties/);
+  await expect(card.locator('.discovery-difficulty-ticks .difficulty-marker')).toHaveCount(2);
+  await trigger.click();
+  const popup = page.locator('.discovery-difficulty-popover');
+  await expect(popup.getByText('2 stored difficulties', { exact: true })).toBeVisible();
+  await expect(popup.getByRole('status')).toHaveText('Loading the complete difficulty list…');
+  await expect(popup.locator('.difficulty-preview-row')).toHaveCount(2);
+  await expect.poll(() => state.previewReleases.length).toBe(1);
+  state.holdPreview = false;
+  state.previewReleases[0]();
+  await expect(popup.getByText('28 difficulties', { exact: true })).toBeVisible();
+  await expect(popup.locator('.difficulty-preview-row')).toHaveCount(28);
+  await expect(popup.locator('.difficulty-version').last()).toHaveText('Difficulty 28');
+  await expect(popup.locator('.difficulty-mode').last()).toHaveText('mania');
+  await expect(popup.locator('.difficulty-rating').last()).toContainText('8.81');
+  await expect(popup.getByRole('link')).toHaveCount(0);
+  await expect(popup.getByRole('status')).toHaveCount(0);
+  expect(state.previewQueries).toEqual(['/beatmaps/980000/set/preview']);
+  expect(state.selectorQueries).toHaveLength(0);
+  expect(state.maps.filter((map) => map.native_set_id === 2588526)).toHaveLength(2);
+});
+
+test('preview failures label the stored fallback and retry loads the complete list', async ({
+  page,
+}) => {
+  const state = await fixture(page);
+  partialStoredSet(state);
+  state.failPreview = 503;
+  await page.goto('/beatmaps');
+  await page.locator('.discovery-set').first().locator('.discovery-difficulty-trigger').click();
+  const popup = page.locator('.discovery-difficulty-popover');
+  await expect(popup.getByRole('status')).toContainText(
+    'The complete list is unavailable. Only stored previews are shown; try again shortly.',
+  );
+  await expect(popup.getByText('2 stored difficulties', { exact: true })).toBeVisible();
+  await expect(popup.locator('.difficulty-preview-row')).toHaveCount(2);
+  await expect(popup.getByText('28 difficulties', { exact: true })).toHaveCount(0);
+  state.failPreview = 0;
+  await popup.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect(popup.getByText('28 difficulties', { exact: true })).toBeVisible();
+  await expect(popup.locator('.difficulty-preview-row')).toHaveCount(28);
+  await expect(popup.getByRole('status')).toHaveCount(0);
+  await expect(popup.getByRole('button', { name: 'Retry', exact: true })).toHaveCount(0);
+  expect(state.previewQueries).toHaveLength(2);
+});
+
+for (const status of [404, 410])
+  test(`a ${status} preview response hides every stored row after the set becomes unavailable`, async ({
+    page,
+  }) => {
+    const state = await fixture(page);
+    await page.goto('/beatmaps');
+    const trigger = page.locator('.discovery-set').first().locator('.discovery-difficulty-trigger');
+    await trigger.click();
+    const popup = page.locator('.discovery-difficulty-popover');
+    await expect(popup.locator('.difficulty-preview-row')).toHaveCount(28);
+    await trigger.press('Escape');
+    await expect(popup).toHaveCount(0);
+    state.failPreview = status;
+    state.holdPreview = true;
+    await trigger.click();
+    await expect(popup.locator('.difficulty-preview-row')).toHaveCount(8);
+    await expect.poll(() => state.previewReleases.length).toBe(1);
+    state.holdPreview = false;
+    state.previewReleases[0]();
+    await expect(popup.getByRole('status')).toHaveText('This beatmap set is no longer available.');
+    await expect(popup.locator('.difficulty-preview-row')).toHaveCount(0);
+    await expect(popup.getByRole('button', { name: 'Retry', exact: true })).toHaveCount(0);
+  });
+
+test('closing a preview aborts its request and a late response cannot replace a fresh preview', async ({
+  page,
+}) => {
+  const state = await fixture(page);
+  partialStoredSet(state);
+  state.previewMaps = state.previewMaps!.map((map) => ({
+    ...map,
+    version: `Stale ${map.version}`,
+  }));
+  state.holdPreview = true;
+  const aborted: string[] = [];
+  page.on('requestfailed', (request) => {
+    if (request.url().endsWith('/beatmaps/980000/set/preview')) aborted.push(request.url());
+  });
+  await page.goto('/beatmaps');
+  const trigger = page.locator('.discovery-set').first().locator('.discovery-difficulty-trigger');
+  await trigger.click();
+  const popup = page.locator('.discovery-difficulty-popover');
+  await expect(popup.locator('.difficulty-preview-row')).toHaveCount(2);
+  await expect.poll(() => state.previewReleases.length).toBe(1);
+  await trigger.press('Escape');
+  await expect(popup).toHaveCount(0);
+  await expect.poll(() => aborted.length).toBe(1);
+  state.previewMaps = state.previewMaps!.map((map) => ({
+    ...map,
+    version: map.version.replace('Stale ', 'Fresh '),
+  }));
+  state.holdPreview = false;
+  await trigger.click();
+  await expect(popup.locator('.difficulty-preview-row')).toHaveCount(28);
+  await expect(popup.locator('.difficulty-version').first()).toHaveText('Fresh Difficulty 1');
+  state.previewReleases[0]();
+  await expect.poll(() => state.previewSettled.includes(0)).toBe(true);
+  await expect(popup.locator('.difficulty-version').first()).toHaveText('Fresh Difficulty 1');
+  await expect(popup.getByText(/^Stale Difficulty/)).toHaveCount(0);
+  expect(state.previewQueries).toHaveLength(2);
 });
 
 test('catalogue toolbar uses one transparent material layer with readable fields in both themes', async ({
@@ -628,6 +785,20 @@ test('catalogue toolbar uses one transparent material layer with readable fields
       'background-image',
       /material-control-fixture\.png/,
     );
+    const toolbarGeometry = await page.locator('.discovery-controls').evaluate((toolbar) => {
+      const input = toolbar.querySelector('.discovery-search input')!.getBoundingClientRect();
+      const icon = toolbar.querySelector('.search-input > svg')!.getBoundingClientRect();
+      return {
+        heights: [...toolbar.querySelectorAll('input, button')].map(
+          (control) => control.getBoundingClientRect().height,
+        ),
+        iconCenterOffset: Math.abs(icon.top + icon.height / 2 - input.top - input.height / 2),
+      };
+    });
+    expect(toolbarGeometry.heights).toHaveLength(6);
+    for (const height of toolbarGeometry.heights)
+      expect(height, `${width}px toolbar control height`).toBeCloseTo(width <= 600 ? 44 : 36, 0);
+    expect(toolbarGeometry.iconCenterOffset).toBeLessThanOrEqual(1);
     for (const level of [0, 50, 100]) {
       await page
         .locator('.header-tools button')
@@ -923,8 +1094,7 @@ test('difficulty navigation retains catalogue filters and RX; native mania force
   await expect(page.locator('.discovery-set')).toHaveCount(15);
   const catalogue = new URL(page.url());
   const returnTo = `${catalogue.pathname}${catalogue.search}`;
-  await page.locator('.discovery-set').first().locator('.discovery-difficulty-trigger').click();
-  await page.locator('.discovery-difficulty-popover .difficulty-chip').first().click();
+  await page.locator('.discovery-set').first().locator('.discovery-set-main').click();
   await expect(page.locator('.back-link')).toHaveAttribute('href', returnTo);
   await page.getByRole('button', { name: 'Relax (RX)', exact: true }).click();
   const selector = page.locator('.set-difficulty-selector');
@@ -1169,7 +1339,9 @@ for (const { locale, theme, width, height, view, name, popup = false } of denseM
     await expect(page.locator('.discovery-set')).toHaveCount(4);
     if (popup) {
       await page.locator('.discovery-set').first().locator('.discovery-difficulty-trigger').click();
-      await expect(page.locator('.discovery-difficulty-popover .difficulty-chip')).toHaveCount(8);
+      await expect(
+        page.locator('.discovery-difficulty-popover .difficulty-preview-row'),
+      ).toHaveCount(28);
     }
     await capture(page, name, locale, theme, popup);
   });

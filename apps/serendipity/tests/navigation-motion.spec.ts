@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { inflateSync } from 'node:zlib';
 
 // All community data is intercepted. Tests never modify an account or send a message.
 const playerId = 989930;
@@ -88,6 +89,81 @@ async function fixture(page: Page, catalogue?: (route: Route, url: URL) => Promi
 }
 
 const progress = (page: Page) => page.locator('.navigation-progress');
+
+// Decode Chromium's 8-bit PNG capture pixels without adding an image dependency.
+// These assertions inspect the rendering, not only computed backdrop-filter.
+function imagePixels(png: Buffer) {
+  let width = 0;
+  let height = 0;
+  let channels = 0;
+  const chunks: Buffer[] = [];
+  for (let offset = 8; offset < png.length;) {
+    const length = png.readUInt32BE(offset);
+    const type = png.toString('ascii', offset + 4, offset + 8);
+    const chunk = png.subarray(offset + 8, offset + 8 + length);
+    if (type === 'IHDR') {
+      width = chunk.readUInt32BE(0);
+      height = chunk.readUInt32BE(4);
+      expect(chunk[8]).toBe(8);
+      channels = chunk[9] === 2 ? 3 : chunk[9] === 6 ? 4 : 0;
+      expect(channels).toBeGreaterThan(0);
+    } else if (type === 'IDAT') chunks.push(chunk);
+    offset += length + 12;
+  }
+  const source = inflateSync(Buffer.concat(chunks));
+  const stride = width * channels;
+  const pixels = Buffer.alloc(height * stride);
+  for (let y = 0; y < height; y++) {
+    const filter = source[y * (stride + 1)];
+    for (let x = 0; x < stride; x++) {
+      const position = y * stride + x;
+      const left = x >= channels ? pixels[position - channels] : 0;
+      const above = y > 0 ? pixels[position - stride] : 0;
+      const diagonal = y > 0 && x >= channels ? pixels[position - stride - channels] : 0;
+      const prediction = left + above - diagonal;
+      const distances = [
+        Math.abs(prediction - left),
+        Math.abs(prediction - above),
+        Math.abs(prediction - diagonal),
+      ];
+      const paeth =
+        distances[0] <= distances[1] && distances[0] <= distances[2]
+          ? left
+          : distances[1] <= distances[2]
+            ? above
+            : diagonal;
+      const adjustment =
+        filter === 1
+          ? left
+          : filter === 2
+            ? above
+            : filter === 3
+              ? Math.floor((left + above) / 2)
+              : filter === 4
+                ? paeth
+                : 0;
+      pixels[position] = (source[y * (stride + 1) + x + 1] + adjustment) & 255;
+    }
+  }
+  return { pixels, width, height, channels };
+}
+function luminanceVariance(png: Buffer) {
+  const { pixels, channels } = imagePixels(png);
+  const values: number[] = [];
+  for (let i = 0; i < pixels.length; i += channels)
+    values.push((pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3);
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  return values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
+}
+async function visibleProgressPixels(page: Page) {
+  const capture = await page.screenshot({ clip: { x: 0, y: 0, width: 300, height: 3 } });
+  const { pixels, channels } = imagePixels(capture);
+  let accentPixels = 0;
+  for (let i = 0; i < pixels.length; i += channels)
+    if (pixels[i] > 180 && pixels[i + 1] > 70 && pixels[i + 1] < 190 && pixels[i + 2] > 110)
+      accentPixels++;
+  return accentPixels;
+}
 async function shellGeometry(page: Page) {
   return page.locator('.header-inner').evaluate((element) => {
     const rect = element.getBoundingClientRect();
@@ -143,6 +219,11 @@ test('catalogue request progress follows query success, error and rapid cancella
   await expect.poll(() => requested.includes('first')).toBe(true);
   await expect(progress(page)).toHaveAttribute('data-pending', 'true');
   await expect(progress(page)).toHaveCSS('opacity', '1');
+  expect(
+    await progress(page).evaluate((element) =>
+      Number((element as HTMLElement).style.getPropertyValue('--navigation-progress')),
+    ),
+  ).toBeLessThanOrEqual(0.9);
   await page.screenshot({ path: info.outputPath('navigation-pending-query.png') });
   await input.fill('second');
   await submit.click();
@@ -175,13 +256,13 @@ test('catalogue request progress follows query success, error and rapid cancella
   await expect(progress(page)).toHaveAttribute('data-pending', 'false');
 });
 
-for (const support of ['native', 'fallback', 'reduced'] as const) {
+for (const support of ['native', 'fallback', 'reduced', 'failure'] as const) {
   test(`route navigation settles with ${support} view transitions and preserves the active indicator`, async ({
     page,
   }, info) => {
     if (support === 'reduced') await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.addInitScript(
-      ({ disable }) => {
+      ({ disable, fail }) => {
         const original = document.startViewTransition?.bind(document);
         Object.assign(window, {
           navigationViewAvailable: Boolean(original),
@@ -201,6 +282,7 @@ for (const support of ['native', 'fallback', 'reduced'] as const) {
                     navigationViewFinished: number;
                   };
                   state.navigationViewCalls++;
+                  if (fail) throw new Error('Synthetic native transition failure');
                   const transition = original(callback);
                   void transition.updateCallbackDone.then(() => {
                     state.navigationViewDone++;
@@ -212,7 +294,7 @@ for (const support of ['native', 'fallback', 'reduced'] as const) {
                 },
         });
       },
-      { disable: support === 'fallback' },
+      { disable: support === 'fallback', fail: support === 'failure' },
     );
     await fixture(page);
     const hold = deferred();
@@ -225,6 +307,9 @@ for (const support of ['native', 'fallback', 'reduced'] as const) {
     await expect(progress(page)).toHaveAttribute('data-pending', 'false');
     await page.locator('.desktop-nav').getByRole('link', { name: 'Connect', exact: true }).click();
     await expect(progress(page)).toHaveAttribute('data-pending', 'true');
+    // Native snapshots must capture an already-visible segment, including while
+    // the update callback is waiting. A computed opacity assertion cannot prove it.
+    await expect.poll(() => visibleProgressPixels(page)).toBeGreaterThan(60);
     if (support === 'reduced') {
       await expect(progress(page)).toHaveCSS('opacity', '1');
       await page.screenshot({ path: info.outputPath('navigation-pending-reduced.png') });
@@ -232,6 +317,7 @@ for (const support of ['native', 'fallback', 'reduced'] as const) {
     hold.resolve();
     await expect(page).toHaveURL(/\/connect$/);
     await expect(progress(page)).toHaveAttribute('data-pending', 'false');
+    await expect(page.locator('.main-content')).toHaveCSS('view-transition-name', 'none');
     await expect(page.locator('.desktop-nav a[aria-current="page"]')).toHaveAttribute(
       'href',
       '/connect',
@@ -264,6 +350,10 @@ for (const support of ['native', 'fallback', 'reduced'] as const) {
           }),
         )
         .toEqual([counts.calls, counts.calls]);
+    } else if (support === 'failure' && counts.available) {
+      expect(counts.calls).toBeGreaterThan(0);
+      expect(counts.done).toBe(0);
+      expect(counts.finished).toBe(0);
     } else expect(counts.calls).toBe(0);
     await page.goBack();
     await expect(page).toHaveURL(/\/beatmaps$/);
@@ -273,6 +363,150 @@ for (const support of ['native', 'fallback', 'reduced'] as const) {
     await expect(progress(page)).toHaveAttribute('data-pending', 'false');
   });
 }
+
+test('a short controlled request keeps its visible tail separate from real pending work', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(document, 'startViewTransition', {
+      configurable: true,
+      value: undefined,
+    });
+  });
+  const short = deferred();
+  await fixture(page, async (route, url) => {
+    if (url.searchParams.get('q') === 'cached') await short.promise;
+    await route.fulfill({ json: empty });
+  });
+  await page.goto('/beatmaps');
+  await expect(progress(page)).toHaveAttribute('data-pending', 'false');
+  await expect(progress(page)).toHaveAttribute('data-visible', 'false');
+  await progress(page).evaluate((element) => {
+    const events: { event: string; at: number }[] = [];
+    Object.assign(window, { navigationProgressEvents: events });
+    const observer = new MutationObserver((records) => {
+      records.forEach(({ attributeName, oldValue }) => {
+        if (attributeName === 'data-visible' && oldValue === 'false')
+          events.push({ event: 'shown', at: performance.now() });
+        if (attributeName === 'data-pending' && oldValue === 'true')
+          events.push({ event: 'settled', at: performance.now() });
+        if (attributeName === 'data-visible' && oldValue === 'true')
+          events.push({ event: 'hidden', at: performance.now() });
+      });
+    });
+    observer.observe(element, { attributes: true, attributeOldValue: true });
+  });
+  await page
+    .locator('.discovery-search')
+    .getByRole('textbox', { name: 'Search', exact: true })
+    .fill('cached');
+  await page
+    .locator('.discovery-search')
+    .getByRole('button', { name: 'Search', exact: true })
+    .click();
+  await expect(page).toHaveURL(/q=cached/);
+  // Release as soon as the actual pending render is observed. An entirely
+  // synchronous fixture can batch begin/end before React renders either state.
+  await expect(progress(page)).toHaveAttribute('data-pending', 'true');
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          window as typeof window & { navigationProgressEvents: { event: string }[] }
+        ).navigationProgressEvents.some((event) => event.event === 'shown'),
+      ),
+    )
+    .toBe(true);
+  short.resolve();
+  await expect(progress(page)).toHaveAttribute('data-pending', 'false');
+  await expect(progress(page)).toHaveAttribute('data-visible', 'false');
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          window as typeof window & { navigationProgressEvents: { event: string }[] }
+        ).navigationProgressEvents.map((event) => event.event),
+      ),
+    )
+    .toEqual(expect.arrayContaining(['shown', 'settled', 'hidden']));
+  const events = await page.evaluate(
+    () =>
+      (window as typeof window & { navigationProgressEvents: { event: string; at: number }[] })
+        .navigationProgressEvents,
+  );
+  const shown = events.find((event) => event.event === 'shown')!;
+  const settled = events.find((event) => event.event === 'settled')!;
+  const hidden = events.find((event) => event.event === 'hidden')!;
+  expect(shown).toBeDefined();
+  expect(settled).toBeDefined();
+  expect(hidden).toBeDefined();
+  expect(hidden.at - shown.at).toBeGreaterThanOrEqual(210);
+  expect(hidden.at - settled.at).toBeGreaterThanOrEqual(160);
+  expect(hidden.at - settled.at).toBeLessThan(600);
+});
+
+test('panel blur changes real backdrop pixels before and after a native navigation', async ({
+  page,
+}, info) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'illya_appearance',
+      JSON.stringify({
+        mode: 'dark',
+        accent_color: '#f28eb6',
+        background_url: null,
+        background_blur: 0,
+        background_dim: 0,
+        panel_blur: 0,
+        panel_opacity: 0.15,
+        glass_level: 100,
+        border_radius: 14,
+        locale: 'en',
+      }),
+    );
+  });
+  await fixture(page);
+  await page.goto('/beatmaps');
+  // Original high-frequency calibration pixels, restricted to this test. Their
+  // contrast measures whether glass samples the scene across its real ancestors.
+  await page.addStyleTag({
+    content: `.global-scene { background-image: repeating-linear-gradient(0deg, #fff 0 4px, #000 4px 8px) !important; filter: none !important; transform: none !important; }`,
+  });
+  const panel = page.locator('.discovery-reading-ground');
+  await expect(panel).toBeVisible();
+  await expect(panel).toHaveCSS('backdrop-filter', 'blur(0px)');
+  const rect = (await panel.boundingBox())!;
+  const strip = {
+    x: Math.floor(rect.x + rect.width - 12),
+    y: Math.floor(rect.y + 24),
+    width: 5,
+    height: 65,
+  };
+  const sharp = await page.screenshot({ clip: strip });
+  await page.getByRole('button', { name: 'Appearance', exact: true }).click();
+  const slider = page.locator('#quick-panel_blur').getByRole('slider');
+  await slider.focus();
+  await page.keyboard.press('Home');
+  for (let i = 0; i < 32; i++) await page.keyboard.press('ArrowRight');
+  await expect(slider).toHaveAttribute('aria-valuenow', '32');
+  await page.keyboard.press('Escape');
+  await expect(panel).toHaveCSS('backdrop-filter', 'blur(32px)');
+  const blurred = await page.screenshot({ clip: strip });
+  expect(luminanceVariance(sharp)).toBeGreaterThan(1000);
+  expect(luminanceVariance(blurred)).toBeLessThan(luminanceVariance(sharp) * 0.2);
+  await page.screenshot({ path: info.outputPath('navigation-real-panel-blur.png') });
+  await page.locator('.desktop-nav').getByRole('link', { name: 'Connect', exact: true }).click();
+  await expect(page).toHaveURL(/\/connect$/);
+  await expect(progress(page)).toHaveAttribute('data-pending', 'false');
+  await page.locator('.desktop-nav').getByRole('link', { name: 'Beatmaps', exact: true }).click();
+  await expect(page).toHaveURL(/\/beatmaps$/);
+  await expect(progress(page)).toHaveAttribute('data-pending', 'false');
+  await expect(page.locator('.main-content')).toHaveCSS('view-transition-name', 'none');
+  await expect(panel).toHaveCSS('backdrop-filter', 'blur(32px)');
+  expect(luminanceVariance(await page.screenshot({ clip: strip }))).toBeLessThan(
+    luminanceVariance(sharp) * 0.2,
+  );
+});
 
 test('same-page, hash, modified and external links keep ordinary anchor behavior', async ({
   page,

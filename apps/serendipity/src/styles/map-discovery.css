@@ -63,10 +63,6 @@
   font-size: 12px;
   line-height: 1.4;
 }
-.map-discovery button,
-.map-discovery [data-slot='button'],
-.map-discovery .native-select,
-.map-discovery input,
 .beatmap-detail [data-slot='button'],
 .set-difficulty-selector [data-slot='button'] {
   min-height: 44px;
@@ -103,14 +99,16 @@
 }
 .map-discovery .discovery-search input {
   width: 100%;
-  min-height: 44px;
+  height: 36px;
+  min-height: 36px;
   font-size: 13px;
   background: var(--surface);
 }
 .map-discovery .discovery-search [data-slot='button'] {
-  min-width: 72px;
-  min-height: 44px;
-  padding-inline: 12px;
+  min-width: 60px;
+  height: 36px;
+  min-height: 36px;
+  padding-inline: 10px;
   font-size: 13px;
 }
 .map-discovery .discovery-filter-row {
@@ -128,6 +126,8 @@
   width: 100%;
   min-width: 0;
   background: var(--surface);
+  height: 36px;
+  min-height: 36px;
 }
 .discovery-uploader {
   grid-column: 1 / -1;
@@ -146,6 +146,11 @@
   }
 }
 @media (max-width: 600px) {
+  .map-discovery .discovery-search :is(input, [data-slot='button']),
+  .map-discovery .discovery-filter-row .native-select {
+    height: 44px;
+    min-height: 44px;
+  }
   .map-discovery .discovery-reading-ground {
     padding: 12px;
   }
@@ -458,7 +463,7 @@
   z-index: 50;
   inline-size: min(340px, var(--radix-popover-content-available-width));
   max-inline-size: var(--radix-popover-content-available-width);
-  max-height: var(--radix-popover-content-available-height);
+  max-height: min(380px, var(--radix-popover-content-available-height));
   padding: 8px;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -522,12 +527,28 @@
 .discovery-difficulty-options {
   display: grid;
   gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 .discovery-difficulty-options .difficulty-chip {
   width: 100%;
-  min-height: 44px;
+  min-height: 36px;
   border-color: transparent;
   background: transparent;
+}
+.difficulty-preview-row {
+  cursor: default;
+  padding-block: 4px;
+}
+.difficulty-preview-feedback {
+  padding: 6px 11px;
+  color: var(--secondary-text);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.difficulty-preview-feedback [data-slot='button'] {
+  margin-top: 4px;
 }
 .discovery-difficulty-options .difficulty-chip-copy {
   flex: 1;

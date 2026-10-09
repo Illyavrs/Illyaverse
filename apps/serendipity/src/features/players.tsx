@@ -24,6 +24,7 @@ import { MapRows } from './beatmaps';
 import { RelationshipActions } from './social';
 import { ScoreVariantControl, useScoreSelection } from '@/components/score-selection';
 import { RankHistoryPanel } from './rank-history';
+import { CountryFlag } from '@/components/country-flag';
 
 function profilePresentation(player: User): CSSProperties {
   const accent =
@@ -143,7 +144,9 @@ export function RankingsPage() {
                           {player.username}
                         </Link>
                       </td>
-                      <td>{player.country}</td>
+                      <td>
+                        <CountryFlag country={player.country} />
+                      </td>
                       <td className="pp-value">
                         {f.number(player.pp, { maximumFractionDigits: 2 })} <span>pp</span>
                       </td>
@@ -394,8 +397,8 @@ export function PlayerPage({ id }: { id: number }) {
                 <div className="profile-player-name">
                   <h1>{player.username}</h1>
                   <p>
-                    {player.country} <span className="dot">·</span> {t('joined')}{' '}
-                    {f.dateTime(new Date(player.joined_at), { dateStyle: 'medium' })}
+                    <CountryFlag country={player.country} /> <span className="dot">·</span>{' '}
+                    {t('joined')} {f.dateTime(new Date(player.joined_at), { dateStyle: 'medium' })}
                   </p>
                   {player.roles.length > 0 && (
                     <div className="map-tags">

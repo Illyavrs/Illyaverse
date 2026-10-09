@@ -304,6 +304,7 @@ async function assertDenseHome(page: BrowserPage) {
     const art = document.querySelector('.home-hero-character')!;
     const image = document.querySelector<HTMLImageElement>('.home-character-image')!;
     const imageBox = image.getBoundingClientRect();
+    const heroBox = hero.getBoundingClientRect();
     const artBox = art.getBoundingClientRect();
     const head = {
       left: imageBox.left + (219 / 700) * imageBox.width,
@@ -323,6 +324,10 @@ async function assertDenseHome(page: BrowserPage) {
     context.drawImage(image, 0, 0);
     return {
       heroHeight: hero.getBoundingClientRect().height,
+      headProtrusion: heroBox.top - head.top,
+      wordmarkSize: parseFloat(
+        getComputedStyle(document.querySelector('.home-intro-copy h1')!).fontSize,
+      ),
       naturalSize: [image.naturalWidth, image.naturalHeight],
       transparentCorner: context.getImageData(0, 0, 1, 1).data[3],
       headVisible:
@@ -350,10 +355,14 @@ async function assertDenseHome(page: BrowserPage) {
   expect(facts.naturalSize).toEqual([700, 1251]);
   expect(facts.transparentCorner).toBe(0);
   expect(facts.headVisible).toBe(true);
+  expect(facts.headProtrusion).toBeGreaterThan(32);
+  expect(facts.wordmarkSize).toBeGreaterThanOrEqual(page.viewportSize()!.width <= 600 ? 32 : 52);
   expect(facts.copyOverlap).toBe(false);
   expect(facts.artBackdrop).toBe('none');
   expect(facts.interactiveArt).toBe(0);
-  expect(facts.heroHeight).toBeLessThanOrEqual(page.viewportSize()!.width <= 600 ? 330 : 290);
+  // The enlarged character and unbroken wordmark reserve a taller phone intro;
+  // localized subtitles/descriptions and two-line action labels remain readable.
+  expect(facts.heroHeight).toBeLessThanOrEqual(page.viewportSize()!.width <= 600 ? 360 : 290);
   for (const height of facts.cardHeights) {
     expect(height).toBeGreaterThanOrEqual(96);
     expect(height).toBeLessThanOrEqual(page.viewportSize()!.width <= 600 ? 132 : 110);

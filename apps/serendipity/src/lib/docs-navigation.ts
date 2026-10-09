@@ -12,6 +12,7 @@ export const documents = Object.freeze({
   'native-maps': 'native-beatmap-discovery.md',
   'map-packages': 'local-map-packages.md',
   'official-archives': 'official-beatmap-archives.md',
+  'official-search': 'official-map-search.md',
   relax: 'relax.md',
   'score-normalization': 'score-normalization.md',
   replays: 'lazer-replays.md',

@@ -1,0 +1,26 @@
+{
+  "provenance": "Synthetic intercepted profile/account/preference fixtures. Genuine self-hosted Twemoji SVGs; no live account writes or native-client verification.",
+  "kind": "language-menu",
+  "filename": "country-language-menu-1440-dark-ja.png",
+  "screenshot_sha256": "31ebf3840803b3b6ed2e8a0d4a50dd0dffc1921f5dfca217f2e9e45123fb3c0d",
+  "source_sha256": {
+    "src/components/shell.tsx": "3155f0630c52dd1da25c5b94572b81aab883a1eec37132895cd24bdaa27405fd",
+    "src/components/country-flag.tsx": "9fe28eb4d5bbe3a1fd007a59a0808b8f48aff15a3a35efa3a1b9b2af06851860",
+    "src/features/players.tsx": "841086ca8dcbd6ccf9738ab803c81de989e7c47924a451d6070f65d0433c719e",
+    "src/styles/country-language.css": "90a5d37872a506d1a77e8a0390ef0c626d5cdaeb53f0459cb2c54aee156bf26c",
+    "src/app/globals.css": "416a2191c358670080ac0321fc76423afee8820eb1d9187a45225114d97c17a7",
+    "public/flags/twemoji/provenance.json": "baaf6bd5d400bf3d89e832f927b84f15ea689f869e0e1ce5f9d6df031b5ad095",
+    "tests/country-language.spec.ts": "78b7fa6da593e02734f79b48358f8ffb849d3d396eabcfd5ac56453cf8f1872e"
+  },
+  "twemoji_version": "17.0.3",
+  "twemoji_commit": "b6b55fef1e8636b540a6d016a4729ca8cdf2e60b",
+  "width": 1440,
+  "height": 640,
+  "document_width": 1425,
+  "scroll_y": 0,
+  "locale": "ja",
+  "theme": "dark",
+  "glass_level": "100",
+  "menu_open": true,
+  "profile_country": "TW"
+}

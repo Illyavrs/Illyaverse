@@ -50,26 +50,28 @@ export function HomePage() {
 
   return (
     <div className="home-page home-community">
-      <section className="home-introduction glass" aria-labelledby="home-title">
-        <div className="home-intro-content">
-          <div className="home-intro-copy">
-            <h1 id="home-title">{t('title')}</h1>
-            <p className="home-subtitle">{t('titleEnd')}</p>
-          </div>
-          <p className="home-description">{t('description')}</p>
-          <div className="home-primary-actions">
-            <Button asChild>
-              <Link href={profileHref}>
-                {user ? n('profile') : t('join')}
-                <ArrowRight aria-hidden="true" />
-              </Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href="/connect">
-                <Play aria-hidden="true" />
-                {t('connect')}
-              </Link>
-            </Button>
+      <section className="home-hero" aria-labelledby="home-title">
+        <div className="home-introduction glass">
+          <div className="home-intro-content">
+            <div className="home-intro-copy">
+              <h1 id="home-title">{t('title')}</h1>
+              <p className="home-subtitle">{t('titleEnd')}</p>
+            </div>
+            <p className="home-description">{t('description')}</p>
+            <div className="home-primary-actions">
+              <Button asChild>
+                <Link href={profileHref}>
+                  {user ? n('profile') : t('join')}
+                  <ArrowRight aria-hidden="true" />
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/connect">
+                  <Play aria-hidden="true" />
+                  {t('connect')}
+                </Link>
+              </Button>
+            </div>
           </div>
         </div>
         <div className="home-hero-character" aria-hidden="true">
@@ -79,7 +81,7 @@ export function HomePage() {
             height={1251}
             alt=""
             className="home-character-image"
-            sizes="(max-width: 360px) 180px, (max-width: 600px) 200px, (max-width: 1000px) 280px, 320px"
+            sizes="(max-width: 360px) 220px, (max-width: 600px) 250px, (max-width: 1000px) 340px, 400px"
             loading="eager"
             fetchPriority="high"
             unoptimized
