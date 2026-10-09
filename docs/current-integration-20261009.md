@@ -1,6 +1,8 @@
 # 2026-10-09 整合 checkpoint
 
-先前 guarded deployment 與兩次 lazer 啟動失敗的修正證據已保留。最新來源改為沿用原本 `game.ini` 遊戲偏好，只分離私服帳號，並在 GUI 設定保存每次啟動使用的 HTTPS 網址；完整 managed／Rust／合成封裝檢查已通過，新的 Debug GUI 包已建成並通過內嵌介面與目錄／ZIP 完整性驗證。真人 GUI、lazer 登入／遊玩與原始社群目標仍未完成，保留部署仍停留在 migration 22。下列結果各有來源與映像邊界，不能合併宣稱真人 lazer 或完整專案驗證。先前 checkpoint 保留於 [release-readiness.md](release-readiness.md)。
+先前 guarded deployment 與兩次 lazer 啟動失敗的修正證據已保留。最新來源改為沿用原本 `game.ini` 遊戲偏好，只分離私服帳號，並在 GUI 設定保存每次啟動使用的 HTTPS 網址；完整 managed／Rust／合成封裝檢查已通過，新的 Debug GUI 包已建成並通過內嵌介面與目錄／ZIP 完整性驗證。玩家已使用新版 GUI 開啟 lazer；登入取得 OAuth token 後，客戶端產生的 `/api/v2/me/` 路徑收到 404。已對 client-test Caddy 套用限定路徑的內部改寫，實際登入重試、遊玩與原始社群目標仍待驗證。
+
+兩套保留部署均維持 migration 22；後端、網站新來源與 migration 23／24 仍 HOLD，本次例外僅為指定 client-test Caddy 的同容器設定重載。下列結果各有來源與映像邊界，不能合併宣稱真人 lazer 或完整專案驗證。先前 checkpoint 保留於 [release-readiness.md](release-readiness.md)。
 
 ## 本輪來源與功能
 
@@ -66,7 +68,17 @@ Kaleidoscope 的 GUI 可讀取、驗證與保存部署網址，預設 `https://i
 | GUI 介面 | [GUI 檢查](../.artifacts/tests/launcher-gui-endpoint-41898b4095854bc38506f686e95050e5/verification.json)：10 項 Playwright Chromium 案例，800×720／390×844 截圖、HTTPS 輸入、儲存失敗、下次啟動設定、清理與 slow-poll 競態。全部使用 synthetic native IPC，沒有真正 Tauri 視窗或玩家遊戲。原 verification 中 cleanup 欄位誤寫為 null；[另存清理收據](../.artifacts/tests/launcher-gui-endpoint-41898b4095854bc38506f686e95050e5/cleanup-receipt-20261009T132930Z-3a55a8385f84464ea903c15e6b6a43c0.json)確認自有 argv 程序與 port 3017 listener 均為零，原始 OS PID 未記錄。 |
 | 實際 Debug GUI 封裝 | [封裝收據](../.artifacts/builds/integration-20261009/gui-package-verification-20261009T141530Z-7fb00ef86a9e4f8bb43071d331e569c7.json)、[建置 log](../.artifacts/builds/integration-20261009/gui-package-20261009-141323-4ae3b865e72a4f75a7d1010d10e73040.log)及[package manifest](../.artifacts/packages/kaleidoscope-gui-test-20261009-141323-4ae3b865e72a4f75a7d1010d10e73040/package.json)：producer exit 0，內嵌 HTML／JS／CSS 檢查 exit 0，目錄／ZIP 一致性通過。共 17 個檔案、16 份 payload，包含 Nunito／Noto Sans TC 授權與獨立 GUI font notice；EXE SHA 為 `8a04abad926e5b3b083e795492ed9315f45797cfcf870bb8231ea8d5498431a4`。Debug profile 仍使用 production Next.js export 與 Tauri `custom-protocol`，檢查只執行無視窗 proof，沒有開啟真正 Tauri 視窗或遊戲。 |
 
-來源已保存至現有本機 bare origins：Kaleidoscope `b05b56df3462efb879170f1bca0cf4782d05f08a`、Transfiguration `f02f8ebfe171e964336249b4bc7af7772cd3ec7c`，沒有外部 Git 發布。以上檢查不證明原生視窗、登入、送分、Replay、聊天、多人、重連或退出清理已通過。保留服務仍 HOLD，migration 23 僅有來源與可丟棄演練證據，尚未套用至原有 migration 22 部署。
+來源已保存至現有本機 bare origins：Kaleidoscope `b05b56df3462efb879170f1bca0cf4782d05f08a`、Transfiguration `f02f8ebfe171e964336249b4bc7af7772cd3ec7c`，沒有外部 Git 發布。以上自動檢查不能替代原生登入、送分、Replay、聊天、多人、重連或退出清理的完整真人驗證。後端／網站更新、一般 dev Caddy 重載與 migration 23／24 仍 HOLD；指定 client-test Caddy 的登入路由修正為下節記錄的單次例外，沒有更新 application services 或 migration-22 資料庫。
+
+## lazer 登入路由 hotfix
+
+新版 `141323` GUI 的玩家測試在 14:37:41 UTC 收到 `POST /oauth/token` 200，隨後四次 `GET /api/v2/me/` 均為空的 404。這個尾端斜線是 pinned stock `GetMeRequest` 在未指定 ruleset 時產生的正常路徑；`GetUserRequest` 同樣會產生 `/api/v2/users/<lookup>/`。保留 gateway 當時只有對應的無尾端斜線路由。[安全診斷](../.artifacts/builds/integration-20261009/lazer-login-route-diagnostic-20261009T144907Z-e3705c4032e945a28ecc2a5d9049d07e.json)僅記錄固定路徑、UTC、method、host、status、bytes 與映像身分，沒有帳號、token、body、header 或 URL query。原始 [GetMeRequest](https://github.com/ppy/osu/blob/6cbcae7fbb764839a66c1adf564c2e1679242072/osu.Game/Online/API/Requests/GetMeRequest.cs)／[GetUserRequest](https://github.com/ppy/osu/blob/6cbcae7fbb764839a66c1adf564c2e1679242072/osu.Game/Online/API/Requests/GetUserRequest.cs) 及[協定契約](protocol-compatibility.md#nullable-ruleset-lazer-profile-paths)記錄這項路徑假設。
+
+三份 Caddy 來源設定僅對 `GET`／`HEAD` 且符合 `^/api/v2/(me|users/[^/]+)/$` 的請求移除最後一個斜線，再交由既有 authenticated handler；沒有 redirect，Authorization 與 query 保留。Explicit ruleset、成績路徑、重複尾端斜線及寫入 method 不受這條規則影響。隔離 fixture 通過三份 config adaptation、696 HTTP checks，以及使用 internal TLS、保持相同 container／StartedAt／mounts 和 `admin off` 的 `SIGUSR1` 重載；自有容器與 network 清理完成。這些是 proxy fixtures，沒有啟動真人遊戲。[fixture 收據](../.artifacts/tests/lazer-path-compat-20261009T150051Z-f1ffa6ef91e14685b1ce5ebd6b00fbd3/verification.json) SHA-256 為 `953b0c46cb38a854eae021f9913dd5b770780631251f48d82473b55c97fcab41`。實作依據為 [Caddy URI 操作](https://caddyserver.com/docs/caddyfile/directives/uri)與[signal 重載契約](https://caddyserver.com/docs/command-line#signals)。
+
+2026-10-09 **15:04:16.1312462 UTC** 僅向原有 `illyaverse-client-test` Caddy `d065387aa23f7fb8447d3effe239b7ff0d242a3a45f425a6305777face91aef4` 發送 `SIGUSR1`。所選 config SHA-256 為 `06c3c30e7e93e98cabc584f9df6a2c35f0b9ee815257e9473332cfc5f0beffd6`；all-ten-container 保留檢查通過，IDs、images、StartedAt、mounts、health 與 restart state 維持原樣，兩份資料庫重載前後均為 22 migrations。沒有重建後端、網站或 Caddy，沒有套用 migration 23／24；一般 dev Caddy 仍使用先前的 active config。
+
+重載後的實際 HTTPS unauthenticated probes 確認 aliases 與 canonical paths 均取得既有 401、65-byte 錯誤回覆，沒有 `Location`，採預設 .NET hostname／chain 驗證，沒有自訂 TLS callback 或信任庫變更。[本次重載收據](../.artifacts/builds/integration-20261009/lazer-route-hotfix-20261009T145619Z-ab56370b579e45d385e2f587e12ae597/verification.json) SHA-256 為 `8080ae4511d0f490c29aa2103c401760aa1f10b53c102aa42ee78b83d395dd9e`。這證明請求已到達認證 handler；hotfix 後的真人登入、完整 profile DTO 讀取、聊天與遊玩仍待玩家重試。未重新封裝 GUI；後續 gateway direct aliases 已準備於來源，但未隨此次 proxy 修正部署。
 
 ## 部署狀態
 

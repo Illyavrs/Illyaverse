@@ -3,6 +3,17 @@
 	skip_install_trust
 }
 
+(lazer_user_alias) {
+	# Preserve Authorization and query parameters; this is an internal path rewrite.
+	@lazer_user_alias {
+		method GET HEAD
+		path_regexp lazer_user_alias ^/api/v2/(me|users/[^/]+)/$
+		# path_regexp cleans repeated slashes; require the original path to match too.
+		expression {http.request.uri.path}.matches('^/api/v2/(me|users/[^/]+)/$')
+	}
+	uri @lazer_user_alias strip_suffix /
+}
+
 # Local diagnostics intentionally omit headers, query strings and bodies.
 # Stable authentication may place password hashes in legacy URL queries.
 (client_test_diagnostics) {
@@ -29,6 +40,7 @@
 (client_test_website) {
 	import client_test_diagnostics
 	tls internal
+	import lazer_user_alias
 	encode zstd gzip
 	request_body {
 		max_size 71303168
@@ -53,6 +65,7 @@ illya.test, osu.illya.test {
 c.illya.test, ce.illya.test, c4.illya.test, api.illya.test, spectator.illya.test, bss.illya.test, a.illya.test, b.illya.test {
 	import client_test_diagnostics
 	tls internal
+	import lazer_user_alias
 	encode zstd gzip
 	request_body {
 		max_size 71303168

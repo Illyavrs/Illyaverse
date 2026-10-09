@@ -2,7 +2,7 @@
   "version": 1,
   "checkpoint": "integration-20261009",
   "recorded_at_utc": "2026-10-09T11:19:13Z",
-  "status": "guarded_deployment_passed_auth_only_endpoint_gui_debug_package_ready_native_client_validation_pending",
+  "status": "client_test_lazer_nullable_ruleset_hotfix_applied_native_login_retest_pending",
   "git_topology": {
     "projects": [
       "Serendipity",
@@ -404,6 +404,18 @@
     "launcher_gui_debug_package_archive": {
       "path": ".artifacts/packages/kaleidoscope-gui-test-20261009-141323-4ae3b865e72a4f75a7d1010d10e73040.zip",
       "sha256": "4dc11a2f7a87fddcc0b50d945b2610504d5643d422a6637f588845f60881bdec"
+    },
+    "lazer_login_route_diagnostic": {
+      "path": ".artifacts/builds/integration-20261009/lazer-login-route-diagnostic-20261009T144907Z-e3705c4032e945a28ecc2a5d9049d07e.json",
+      "sha256": "fde7701410a1267365ba9da91283bbaa204dc581fa4e8eea0232de71b0f6f537"
+    },
+    "lazer_user_alias_proxy_fixture": {
+      "path": ".artifacts/tests/lazer-path-compat-20261009T150051Z-f1ffa6ef91e14685b1ce5ebd6b00fbd3/verification.json",
+      "sha256": "953b0c46cb38a854eae021f9913dd5b770780631251f48d82473b55c97fcab41"
+    },
+    "lazer_user_alias_retained_reload": {
+      "path": ".artifacts/builds/integration-20261009/lazer-route-hotfix-20261009T145619Z-ab56370b579e45d385e2f587e12ae597/verification.json",
+      "sha256": "8080ae4511d0f490c29aa2103c401760aa1f10b53c102aa42ee78b83d395dd9e"
     }
   },
   "limitations": [
@@ -502,7 +514,7 @@
     "native_gameplay_verified": false,
     "retained_services_redeployed": false
   },
-  "updated_at_utc": "2026-10-09T14:18:59.7804132Z",
+  "updated_at_utc": "2026-10-09T15:10:47.448Z",
   "post_deployment_source_fixes": {
     "retained_services_redeployed": false,
     "serendipity": "1179315",
@@ -886,5 +898,57 @@
       "exit_cleanup": false,
       "disposition": "pending human native testing"
     }
+  },
+  "lazer_login_route_hotfix": {
+    "diagnostic": {
+      "path": ".artifacts/builds/integration-20261009/lazer-login-route-diagnostic-20261009T144907Z-e3705c4032e945a28ecc2a5d9049d07e.json",
+      "sha256": "fde7701410a1267365ba9da91283bbaa204dc581fa4e8eea0232de71b0f6f537"
+    },
+    "fixture": {
+      "path": ".artifacts/tests/lazer-path-compat-20261009T150051Z-f1ffa6ef91e14685b1ce5ebd6b00fbd3/verification.json",
+      "sha256": "953b0c46cb38a854eae021f9913dd5b770780631251f48d82473b55c97fcab41"
+    },
+    "retained_reload": {
+      "path": ".artifacts/builds/integration-20261009/lazer-route-hotfix-20261009T145619Z-ab56370b579e45d385e2f587e12ae597/verification.json",
+      "sha256": "8080ae4511d0f490c29aa2103c401760aa1f10b53c102aa42ee78b83d395dd9e"
+    },
+    "observed": {
+      "oauth_token": 200,
+      "nullable_ruleset_me": 404,
+      "empty_body": true
+    },
+    "proxy_fixture": {
+      "http_checks": 696,
+      "configs_validated": 3,
+      "internal_tls_signal_reload": true,
+      "authorization_and_query_preserved": true,
+      "redirect": false,
+      "admin_disabled": true,
+      "owned_resources_cleaned": true
+    },
+    "retained": {
+      "applied_at_utc": "2026-10-09T15:04:16.1312462Z",
+      "scope": "designated client-test Caddy SIGUSR1 only",
+      "config_sha256": "06c3c30e7e93e98cabc584f9df6a2c35f0b9ee815257e9473332cfc5f0beffd6",
+      "ten_container_id_image_started_at_mount_health_restart_states_preserved": true,
+      "migrations": 22,
+      "backend_recreated": false,
+      "website_recreated": false,
+      "dev_caddy_reloaded": false,
+      "unauthenticated_nullable_and_canonical_routes": {
+        "status": 401,
+        "body_bytes": 65,
+        "no_redirect": true,
+        "default_dotnet_tls": true
+      },
+      "future_migrations_23_24_applied": false
+    },
+    "human_native": {
+      "gui_and_login_attempt_reported": true,
+      "initial_login": "disconnected",
+      "retest": "pending",
+      "authenticated_login_verified": false
+    },
+    "limits": "401 probes establish routing parity, not authenticated native login; other services and future source remain HOLD."
   }
 }

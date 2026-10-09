@@ -8,6 +8,14 @@
 	request_body {
 		max_size 71303168
 	}
+	# Stock lazer omits the ruleset by requesting these endpoints with a trailing slash.
+	@lazer_user_alias {
+		method GET HEAD
+		path_regexp lazer_user_alias ^/api/v2/(me|users/[^/]+)/$
+		# path_regexp cleans repeated slashes; require the original path to match too.
+		expression {http.request.uri.path}.matches('^/api/v2/(me|users/[^/]+)/$')
+	}
+	uri @lazer_user_alias strip_suffix /
 	handle /healthz {
 		respond "ok" 200
 	}
