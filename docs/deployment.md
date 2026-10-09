@@ -244,4 +244,4 @@ Schema 比對先在演練來源 PostgreSQL 內建立新的 schema-only reference
 
 若既有部署出現 mismatch，停止更新並保留資料庫／媒體備份、原部署來源與 image；不要修改歷史 SQL 或 `_sqlx_migrations` checksum 來繞過驗證。先在隔離環境比對原 SQL bytes 與目前 migration、驗證備份可還原，再由營運者明確制定並驗證遷移方案。尚未完成方案前，保持 migration 驗證失敗時停止啟動。
 
-Docker 建置保留依賴快取，但每次執行 Rust 建置步驟前，以 [package-scoped `cargo clean`](https://doc.rust-lang.org/cargo/commands/cargo-clean.html) 刷新該服務的 release 產物，重新嵌入目前 migration。這避免從較舊 commit／archive 還原來源時，Cargo 的 [mtime 變更檢查](https://doc.rust-lang.org/cargo/reference/build-scripts.html#rerun-if-changed) 沿用快取中的舊 migration 定義。更新後先對新 image 執行 disposable HTTP／瀏覽器測試，通過後再替換既有服務；不需要清空資料庫或整份依賴快取。
+Docker 建置保留依賴快取，但每次執行 Rust 建置步驟前會更新該服務 `main.rs` 的修改時間，觸發重新編譯並嵌入目前 migration。這避免從較舊 commit／archive 還原來源時，Cargo 的 [mtime 變更檢查](https://doc.rust-lang.org/cargo/reference/build-scripts.html#rerun-if-changed) 沿用快取中的舊 migration 定義。更新後先對新 image 執行 disposable HTTP／瀏覽器測試，通過後再替換既有服務；不需要清空資料庫或整份依賴快取。

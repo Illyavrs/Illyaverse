@@ -344,6 +344,22 @@
     "rbac_wildcard": {
       "path": ".artifacts/rbac-wildcard-20261009-e4f86a1c/verification.json",
       "sha256": "b061620d8d5a4514bd28c4b4419282130d5bf2a3d06286f5daa4c785f8594cd6"
+    },
+    "locale_shared_pending": {
+      "path": ".artifacts/tests/locale-shared-20261009T130626Z-ffd8ace5b5584475b278067178bbe557/verification.json",
+      "sha256": "b50b4db2b84920f74441a5abe0c7a4557b86a366b962cb856b7c47d1262c7e1e"
+    },
+    "stable_durable_private_delivery": {
+      "path": ".artifacts/tests/stable-chat-7f30be2e2d1f493b96e6e6ae44d5dc7d/verification.json",
+      "sha256": "dae8feb82aae358a6652e3069e8dcca201f6543b3ca63e4c23cf27c9ef53c70b"
+    },
+    "recovery_23_image_build": {
+      "path": ".artifacts/recovery-build-23-20261009-f54edb2a4be74cc1ae7787a17a1f1340/build-summary.json",
+      "sha256": "4cd1beb13985ae070cd308e13c49213d5ab15b9fdf5daab1e8f0d39be027af61"
+    },
+    "recovery_23_drill": {
+      "path": ".artifacts/recovery-drill-23-20261009-ba6df5a590f84ebc8c0b900971cdfd1f/verification.json",
+      "sha256": "06b2087f4e8481b2dce2f35f51298212d36483a11da7d7b981aa89ff19c84013"
     }
   },
   "limitations": [
@@ -456,6 +472,39 @@
     "native_client_pass_claim": false,
     "native_chat_unit_tests": 5,
     "native_chat_http_websocket_fixtures": 2
+  },
+  "additional_source_checkpoint": {
+    "serendipity": "ac828bf929e3e443323e9ba867574c94ec7d44b0",
+    "resonance": "8b83e3b83af79239f5a42bc6dd1aa4aec20b1d55",
+    "locale_shared_pending_browser_cases": 18,
+    "stable_private_delivery_tcp_postgresql_cases": 5,
+    "stable_chat_regression_integration_cases": 10,
+    "resonance_nonignored_tests": 61,
+    "resonance_ignored_tests": 83,
+    "source_migrations": 23,
+    "migration_checkout_archive_cases": 6,
+    "retained_services_redeployed": false,
+    "retained_schema": 22,
+    "actual_website_http_pm_writer_tested": false,
+    "website_shared_row_pm_bridge_tested": true,
+    "native_client_tested": false
+  },
+  "recovery_23_checkpoint": {
+    "offline_cases": 91,
+    "sanctuary_image": "sha256:7370a94b71a287b8c56e46785188db39ef60d54f2a7de51a2b01994b9ef102a6",
+    "postgres_image": "sha256:1bea307dfb3ee30541a7acf7de14b58bcd6948da98e5d31a04c627c4d35ec64b",
+    "source_migrations": 23,
+    "tables": 40,
+    "rows": 39,
+    "sequences": 18,
+    "files": 3,
+    "actual_backup_helper": "backupDeployment",
+    "restored_readiness": true,
+    "normalized_schema_and_all_rows_match": true,
+    "file_hashes_and_ownership_match": true,
+    "owned_projects_and_resources_removed": true,
+    "historical_migrations_1_to_22_unchanged": true,
+    "retained_services_redeployed": false
   },
   "lazer_cli_native_resource_repair": {
     "version": 1,

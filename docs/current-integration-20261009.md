@@ -47,6 +47,10 @@ Serendipity、Sanctuary、Resonance、Kaleidoscope 與 Transfiguration 已各有
 
 完整 GUI release 建置仍因 Windows error 5 失敗，原因未確認。CLI 的存在不等於 GUI 包已建成，包雜湊／核心與 headless 測試也不證明遊戲視窗、登入、聊天、遊玩、Score／Replay、多人、重新連線或退出清理已通過真人操作。正式 remote、公開 domain、完整 native checklist 和原始社群功能目標也尚未完成。
 
+追加來源 checkpoint：網站共用語言儲存鎖通過 18 項瀏覽器案例；stable 離線／跨客戶端私訊通過五項新增與十項回歸 PostgreSQL/TCP 整合案例，另有 61 項 nonignored tests、83 ignored。Website 私訊互通在此驗證的是正式共用資料列 bridge，沒有呼叫 Sanctuary 的網站 HTTP writer。Migration 23 的六項來源／checkout／archive 檢查通過，versions 1–22 保持原始 bytes。這些來源變更尚未部署到保留服務。
+
+使用新隔離 Sanctuary image `sha256:7370a94b71a287b8c56e46785188db39ef60d54f2a7de51a2b01994b9ef102a6` 的 recovery 演練通過 91 項離線案例及實際 backup／restore：23 exact migration checksums、40 tables、39 rows、18 sequences、normalized schema 和三個檔案的 bytes／ownership 相符，還原 readiness 通過，兩個自有 projects 及其資源均清理完成。[新演練證據](../.artifacts/recovery-drill-23-20261009-ba6df5a590f84ebc8c0b900971cdfd1f/verification.json)保留新 image 和來源檢查點；原來 22-migration 演練、保留部署和 image alias 保持原樣。
+
 ## 部署狀態
 
 2026-10-09 19:14:49（UTC+08:00；11:14:49 UTC）的 guarded deployment 已通過。兩套部署各重建 Sanctuary、Resonance、Serendipity，共六個 application services，十個容器均 running／healthy。部署使用前述兩個 backend 映像，以及通過最後 10 項 account-session 確認的 Web `sha256:36f52e19775bfc4825dcde1a82d5aa145cbff97943188cdd651ec983fe4114aa`。原資料與 stored bytes、schema 22、環境值、排名觀察，以及四個 PostgreSQL／Caddy 的容器身分、image、時間、health 和 mounts 的保留 guard 全部通過；沒有以健康狀態推論原生遊戲成功。
