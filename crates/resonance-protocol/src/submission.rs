@@ -11,6 +11,9 @@ use std::io::{self, Write};
 
 pub const MAX_ENVELOPE_BYTES: usize = 16_384;
 pub const MAX_FRAME_TEXT: usize = 32 * 1024 * 1024;
+/// Reserve room for stable's metadata and online score ID inside the shared
+/// 16 MiB stored/downloadable replay bound. Use the same cap at upload time.
+pub const MAX_STABLE_COMPRESSED_REPLAY_BYTES: usize = crate::replay::MAX_REPLAY_BYTES - 1024;
 
 pub fn decrypt_score_field(encoded: &str, iv_encoded: &str, version: &str) -> Result<String> {
     if encoded.len() > MAX_ENVELOPE_BYTES * 2 {
@@ -212,7 +215,7 @@ impl StableSubmission {
         Ok(())
     }
     pub fn replay_container(&self, version: i32, frames: &[u8], score_id: i64) -> Result<Vec<u8>> {
-        if frames.len() > crate::replay::MAX_REPLAY_BYTES - 1024 {
+        if frames.len() > MAX_STABLE_COMPRESSED_REPLAY_BYTES {
             return Err(ProtocolError::Limit("replay frames"));
         }
         let mut writer = Writer::new();
@@ -242,6 +245,11 @@ impl StableSubmission {
             .i64(ticks)
             .i32(frames.len() as i32);
         let mut output = writer.into_bytes();
+        if output.len().saturating_add(frames.len()).saturating_add(8)
+            > crate::replay::MAX_REPLAY_BYTES
+        {
+            return Err(ProtocolError::Limit("replay size"));
+        }
         output.extend(frames);
         output.extend(score_id.to_le_bytes());
         Ok(output)
@@ -264,7 +272,7 @@ impl Write for BoundedOutput {
 /// Structural validation only. Authentic cursor timing and judgement agreement
 /// still require deterministic gameplay re-simulation before automatic ranking.
 pub fn validate_compressed_frames(compressed: &[u8]) -> Result<usize> {
-    if compressed.len() < 13 || compressed.len() > crate::replay::MAX_REPLAY_BYTES {
+    if compressed.len() < 13 || compressed.len() > MAX_STABLE_COMPRESSED_REPLAY_BYTES {
         return Err(ProtocolError::Invalid("compressed replay size"));
     }
     let mut output = BoundedOutput(Vec::new());
@@ -523,6 +531,44 @@ mod tests {
         assert_eq!(replay.timestamp_ticks, 639269712000000000);
         assert!(StableSubmission::parse(&input.replace(":10:0:0", ":-1:0:0")).is_err());
     }
+
+    #[test]
+    fn stable_frame_capacity_fits_the_stored_container_bound() {
+        let mut score = StableSubmission::parse(&envelope_with_version("20261007")).unwrap();
+        score.username = "x".repeat(64);
+        // Opaque bytes test serialization capacity only, not valid LZMA frames.
+        let frames = vec![0x81; MAX_STABLE_COMPRESSED_REPLAY_BYTES];
+        let bytes = score.replay_container(20261007, &frames, 42).unwrap();
+        assert!(bytes.len() <= crate::replay::MAX_REPLAY_BYTES);
+        let parsed = crate::replay::LegacyReplay::parse(&bytes).unwrap();
+        assert_eq!(parsed.compressed_frames, frames);
+        assert_eq!(parsed.online_score_id, Some(42));
+        let mut too_large = frames;
+        too_large.push(0x81);
+        assert_eq!(
+            score
+                .replay_container(20261007, &too_large, 42)
+                .unwrap_err(),
+            ProtocolError::Limit("replay frames"),
+        );
+        assert_eq!(
+            validate_compressed_frames(&too_large).unwrap_err(),
+            ProtocolError::Invalid("compressed replay size"),
+        );
+    }
+
+    #[test]
+    fn stable_serializer_checks_the_complete_container_bound() {
+        let mut score = StableSubmission::parse(&envelope_with_version("20261007")).unwrap();
+        // Public structs can be constructed without parse's username limit.
+        score.username = "x".repeat(2048);
+        let frames = vec![0x81; MAX_STABLE_COMPRESSED_REPLAY_BYTES];
+        assert_eq!(
+            score.replay_container(20261007, &frames, 42).unwrap_err(),
+            ProtocolError::Limit("replay size"),
+        );
+    }
+
     #[test]
     fn lzma_frames_have_bounded_and_finite_contents() {
         let mut compressed = Vec::new();
