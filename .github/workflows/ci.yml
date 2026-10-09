@@ -195,7 +195,11 @@ jobs:
       - run: node infra/validate-compose.mjs
       - run: node --test infra/protocol-smoke.test.mjs
       - run: node --test infra/tests/disposable-web-smoke.test.mjs
+      - run: node --test infra/tests/recovery.test.mjs
       - run: docker compose build
+      - run: node infra/disposable-recovery-drill.mjs
+        env:
+          ILLYA_ALLOW_DISPOSABLE_TEST: '1'
       - run: docker compose up -d --wait --wait-timeout 120
       - run: curl --fail --retry 5 --retry-delay 2 http://localhost:3000/api/v1/status
       - run: npm ci

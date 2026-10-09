@@ -100,16 +100,139 @@ Compose [以 `service_healthy` 等待依賴](https://docs.docker.com/compose/how
 
 `docker compose down` 停止並移除容器，但保留 named volumes。`docker compose down -v` 會刪掉資料 volumes，請只在明確要重置資料時使用。更新來源與 lockfiles 後，以相同 Compose 配置 `up -d --build --wait`；對 production 每次都帶上兩個 `-f`，避免退回本機設定。
 
-升級前先備份 DB 與 shared data，並在隔離環境驗證可還原。以下 Linux／macOS 例子使用 PostgreSQL custom-format dump 與 tar，backup 目錄應私有：
+### 建立可還原的備份
+
+升級前先備份資料庫、整個 `shared_data` volume 與部署密鑰，並在隔離環境驗證可還原。`/data/media`、`/data/maps`、`/data/replays` 必須屬於同一個停止寫入的時間點；只保存資料庫或只保存上傳圖片不足以還原部署。
+
+1. 先切到維護狀態，阻止新的網站、遊戲與背景工作請求。使用來源部署原有的 project name、`.env` 與 Compose files，停止 Sanctuary／Resonance；production 每次都帶上兩個 `-f`。其他直接連到資料庫或 `/data` 的自訂 writer 也必須停止。保留 PostgreSQL 啟動，讓 `pg_dump` 可以讀取它。
+2. 記錄來源 commit、image IDs、PostgreSQL major、成功套用的 migration versions／checksums、各資料表 row counts，以及 `/data` 檔案的相對路徑、SHA-256 與 UID／GID。這些私有基準必須在停止寫入後取得，供還原時比對。目前來源 migration 到 `0022_rank_history.sql`；應有 versions 1–22 且 `success=true`，不可因為新資料庫能啟動就省略核對。
+3. 執行 backup helper，指定正確來源 project 與一個**尚不存在**的私有輸出目錄。以下 project name 是範例，必須改成來源部署的實際名稱；每次備份使用新的目錄。
+
+本機 Compose：
 
 ```sh
-mkdir -p backups
-chmod 700 backups
-docker compose exec -T postgres pg_dump -U illya -d illyaverse -Fc > backups/illyaverse.dump
-docker compose run --rm --no-deps --user root --entrypoint tar sanctuary -czf - -C /data . > backups/shared-data.tar.gz
+docker compose -p illyaverse -f compose.yaml stop sanctuary resonance
+node infra/recovery-backup.mjs --project illyaverse --output /private-backups/illyaverse-20261009-01 --writers-stopped
 ```
 
-需要 DB／檔案時間點一致時，先進入維護狀態、停止會寫入的 Sanctuary／Resonance，再完成備份，最後啟動服務。PowerShell 7.4 以上可使用 native stdout binary redirection；舊版 Windows PowerShell 可能轉換二進位輸出，請改用容器內檔案加 `docker cp` 保存 dump。Caddy 的 volume 也應納入主機備份，避免不必要的重複發證。
+production：
+
+```sh
+docker compose -p illyaverse -f compose.yaml -f compose.production.yaml stop sanctuary resonance
+node infra/recovery-backup.mjs --project illyaverse --output /private-backups/illyaverse-20261009-01 --writers-stopped
+```
+
+Windows 的 `--output` 可換成例如 `D:\PrivateBackups\illyaverse-20261009-01`。父目錄也要是只有備份營運者可讀取的目錄；Linux／macOS 使用 `0700` 目錄與 `0600` 檔案，Windows 用受限 ACL。備份包含帳號、郵件佇列及玩家檔案，請加密保存並限制存取。
+
+`--writers-stopped` 是營運者對維護狀態的確認。helper 依 Docker Compose labels 找到選定 project 的來源容器及預設 named volumes，不依賴目前 checkout 的 `.env` 或 Compose 配置，也沒有 `--production` 選項。它還會檢查來源 Sanctuary／Resonance 已停止，並在備份過程重新確認；它不會自動停止、啟動或刪除來源服務與 volumes。helper 在 PostgreSQL 容器的 `/tmp` 寫出 custom-format dump，再透過 `docker cp` 保存；shared data 由獨立 helper 以唯讀掛載封裝，使用來源 Sanctuary 的本機 immutable image ID，保留整個 `/data` 和數字 ownership。這避免 shell 重新導向二進位 stdout 的相容性問題，也不會覆寫上一份備份。
+
+成功備份包含 `illyaverse.dump`、`shared-data.tar.gz` 和 `manifest.json`。manifest 的 `format` 必須為 `illyaverse-recovery-v1`、`complete` 必須為 `true`，兩份 artifacts 的 `bytes`／`sha256` 必須通過 helper 的驗證。它另記錄來源 project、PostgreSQL major 17、`sanctuaryImage` 和備份包含／排除項目，供還原檢查。若 dump、複製、tar 或最後驗證失敗，保留當次目錄與 partial artifacts 供診斷；不要把部分檔案當成成功備份，也不要在同一目錄重跑來掩蓋失敗。改用新目錄重試，確認完整 manifest 和所有 artifact 雜湊後，才依來源原配置恢復 writer 服務。來源 migration／rows／檔案清單等基準需另行私有保存，manifest 不會自動替營運者建立這些內容。
+
+另外將來源 `.env` 與其他部署 secrets 以私有方式保存在同一個備份組中；helper 的核心 dump／tar 不代替密鑰備份。至少保留 `POSTGRES_PASSWORD`、`SESSION_SECRET`、`INTERNAL_SERVICE_KEY`、`MAIL_ENCRYPTION_KEY` 和已使用的 SMTP／OAuth credentials。還原郵件佇列必須使用原 `MAIL_ENCRYPTION_KEY`，重新執行 setup 產生新密鑰無法解密既有佇列。不要把 secrets 放進 Git、公開 log 或演練報告。
+
+Caddy 的 `caddy_data`（憑證、私鑰、ACME 狀態）及 `caddy_config` 可另做受限的主機／volume snapshot：先停止 Caddy，完成這兩個 volume 的一致快照再啟動它。保存 `/etc/caddy` 的來源設定和 `.env`，並按原 domain／Caddy 配置還原。這屬於獨立的 TLS 狀態備份，不包含在核心 recovery helper 或 disposable drill；不要以執行 drill 代表憑證已備份或還原。
+
+### 只還原到全新 project 與 volumes
+
+還原先在隔離 Docker 主機或獨立 daemon 執行，使用備份對應的來源 commit／images。預設 Compose 使用固定 subnet 與 proxy IP；同一 daemon 上直接啟動第二組原配置可能和來源網路衝突。保持 DNS、公開 ingress 和 Caddy 關閉，先完成資料驗證。還原目的地必須是全新 project、空白 PostgreSQL 17 與全新 `shared_data` volume；若發現已有容器、volume 或業務資料，立即停止，不使用 `--clean`、`down -v` 或覆寫檔案來強行還原。
+
+以下 PowerShell 範例在隔離主機、備份對應的 checkout 內執行。先私有還原 `.env`，清空 `BOOTSTRAP_ADMIN_*`，並讓 SMTP 暫時停用以避免驗證期間寄出舊佇列；保留原 `MAIL_ENCRYPTION_KEY`。`$backupPath` 必須是完整備份的絕對路徑，`$restoreProject` 每次更換。先核對 manifest 的完成狀態、兩份 artifact 的 SHA-256 及來源基準。
+
+```powershell
+$restoreProject = 'illyaverse-restore-20261009-01'
+$backupPath = (Resolve-Path -LiteralPath 'D:\PrivateBackups\illyaverse-20261009-01').Path
+node --input-type=module -e "import { verifyBackup } from './infra/recovery-lib.mjs'; await verifyBackup(process.argv[1]);" $backupPath
+if ($LASTEXITCODE -ne 0) { throw 'Incomplete backup or artifact hash mismatch.' }
+$manifest = Get-Content -LiteralPath (Join-Path $backupPath 'manifest.json') -Raw | ConvertFrom-Json
+$restoreTarImage = $manifest.sanctuaryImage
+if ($restoreTarImage -notmatch '^sha256:[a-f0-9]{64}$') { throw 'Manifest must identify the exact source Sanctuary image.' }
+$existingContainers = @(docker ps -a --filter "label=com.docker.compose.project=$restoreProject" --format '{{.ID}}')
+if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect Docker; stop recovery.' }
+$existingVolumes = @(docker volume ls --filter "label=com.docker.compose.project=$restoreProject" --format '{{.Name}}')
+if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect Docker volumes; stop recovery.' }
+$allVolumeNames = @(docker volume ls --format '{{.Name}}')
+if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect all volume names; stop recovery.' }
+$plannedVolumes = @('postgres_data', 'shared_data', 'caddy_data', 'caddy_config') | ForEach-Object { "${restoreProject}_$_" }
+$nameConflicts = @($plannedVolumes | Where-Object { $allVolumeNames -contains $_ })
+$existingNetworks = @(docker network ls --filter "label=com.docker.compose.project=$restoreProject" --format '{{.ID}}')
+if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect Docker networks; stop recovery.' }
+if ($existingContainers.Count -ne 0 -or $existingVolumes.Count -ne 0 -or $nameConflicts.Count -ne 0 -or $existingNetworks.Count -ne 0) {
+    throw 'Restore project already exists; choose a new project and empty volumes.'
+}
+docker compose -p $restoreProject -f compose.yaml config --quiet
+if ($LASTEXITCODE -ne 0) { throw 'Invalid restore configuration.' }
+$sharedVolume = "${restoreProject}_shared_data"
+docker volume create --label "com.docker.compose.project=$restoreProject" --label 'com.docker.compose.volume=shared_data' $sharedVolume
+if ($LASTEXITCODE -ne 0) { throw 'Could not create a fresh shared_data volume.' }
+docker compose -p $restoreProject -f compose.yaml up -d --no-deps --no-build --pull never --wait postgres
+if ($LASTEXITCODE -ne 0) { throw 'Fresh PostgreSQL failed to start.' }
+```
+
+啟動 PostgreSQL 後、啟動任何 Sanctuary 容器前，檢查 `illyaverse` 的 public schema 沒有業務表；此時 PostgreSQL 的 image 已建立空白 DB，不應有 `_sqlx_migrations`。若有表，停止並調查目的地，另選全新 project。再將 dump 複製到這個 PostgreSQL 容器：
+
+```powershell
+$publicTableCount = docker compose -p $restoreProject -f compose.yaml exec -T postgres psql -U illya -d illyaverse --no-psqlrc --set ON_ERROR_STOP=1 -At -c "SELECT count(*) FROM pg_tables WHERE schemaname = 'public';"
+if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect the fresh database.' }
+if ($publicTableCount.Trim() -ne '0') { throw 'Database already contains tables; refuse restoration.' }
+$postgresContainer = docker compose -p $restoreProject -f compose.yaml ps -q postgres
+if ($LASTEXITCODE -ne 0 -or -not $postgresContainer) { throw 'Fresh PostgreSQL container is missing.' }
+docker cp (Join-Path $backupPath 'illyaverse.dump') "${postgresContainer}:/tmp/illyaverse-recovery.dump"
+if ($LASTEXITCODE -ne 0) { throw 'Dump copy failed.' }
+docker compose -p $restoreProject -f compose.yaml exec -T postgres pg_restore --list /tmp/illyaverse-recovery.dump
+if ($LASTEXITCODE -ne 0) { throw 'Dump archive cannot be read.' }
+docker compose -p $restoreProject -f compose.yaml exec -T postgres pg_restore -U illya -d illyaverse --exit-on-error --no-owner --no-acl /tmp/illyaverse-recovery.dump
+if ($LASTEXITCODE -ne 0) { throw 'Restore failed; retain this project for diagnosis and retry in a new one.' }
+```
+
+先讀取 `pg_restore --list` 的 archive 目錄，確認它包含來源 schema／table data／migration 記錄，再進行還原。[PostgreSQL 17 的 `pg_restore` 文件](https://www.postgresql.org/docs/17/app-pgrestore.html) 說明這些選項；`--exit-on-error` 遇錯即停止，`--no-owner --no-acl` 讓新 DB 使用目的地 `illya` 角色管理物件。這個流程刻意不使用 `--clean`，也不在 Sanctuary 已 migration 的 DB 上灌入 dump。
+
+接著使用上面明確建立的**新** `shared_data` volume，先列出 archive 再解開。將 manifest 記錄的來源 Sanctuary image 以相同 immutable ID 預先載入目的地；`--pull never` 不會改用較新 tag，`--entrypoint tar` 不會啟動 Sanctuary／migration。這個 helper 以 root 保留數字 UID／GID、mode 與目錄結構，備份目錄唯讀，只有新 volume 可寫：
+
+```powershell
+docker image inspect $restoreTarImage --format '{{.Id}}'
+if ($LASTEXITCODE -ne 0) { throw 'Load the exact source Sanctuary image before restoring files.' }
+docker run --rm --pull never --network none --read-only --user 0:0 --security-opt no-new-privileges --mount "type=bind,source=$backupPath,target=/backup,readonly" --entrypoint tar $restoreTarImage -tzf /backup/shared-data.tar.gz
+if ($LASTEXITCODE -ne 0) { throw 'Shared data archive cannot be read.' }
+docker run --rm --pull never --network none --read-only --user 0:0 --security-opt no-new-privileges --mount "type=bind,source=$backupPath,target=/backup,readonly" --mount "type=volume,source=$sharedVolume,target=/data" --entrypoint tar $restoreTarImage --numeric-owner -xzf /backup/shared-data.tar.gz -C /data
+if ($LASTEXITCODE -ne 0) { throw 'Shared data restore failed; retain this project and retry in a new one.' }
+```
+
+Sanctuary／Resonance 使用 `10001:10001`，必須確認 `/data/media`、`/data/maps`、`/data/replays` 和其中的檔案具有來源 ownership，且服務使用者能讀寫它們；不要只把三個子目錄的檔案重新上傳。
+
+還原後、Sanctuary 啟動前，比對來源成功 migration versions／checksums、全部資料表的 row counts 與代表資料內容，並核對 `/data` 的完整檔案列表、SHA-256 與 ownership。這些結果應和停止 writer 後保存的來源基準一致。若來源是目前版本，`_sqlx_migrations` 應保留 versions 1–22 全部成功；不能把空白 DB 上重新跑完 22 個 migration 當成資料還原通過。
+
+只有上述比對通過後才啟動 Sanctuary，讓 SQLx 正常驗證已還原的 migration。先將 Compose 的三個 app image 指向來源記錄的 immutable images，或確認本機 tags 的 image IDs 完全相符，再用 `--no-build --pull never` 啟動備份對應版本；要升級到較新 commit，另依正常 migration 流程在這份可丟棄的還原副本驗證。接著啟動 Resonance／Serendipity，檢查 readiness 與實際資料存取：
+
+```powershell
+docker compose -p $restoreProject -f compose.yaml up -d --no-build --pull never --wait sanctuary resonance serendipity
+if ($LASTEXITCODE -ne 0) { throw 'Restored services did not become healthy.' }
+docker compose -p $restoreProject -f compose.yaml exec -T sanctuary curl --fail http://127.0.0.1:8080/health/ready
+if ($LASTEXITCODE -ne 0) { throw 'Sanctuary is not ready.' }
+docker compose -p $restoreProject -f compose.yaml exec -T resonance curl --fail http://127.0.0.1:8081/health
+if ($LASTEXITCODE -ne 0) { throw 'Resonance is not healthy.' }
+```
+
+確認使用原帳號登入、權限、譜面檔案、媒體與 replay 讀取，再恢復 SMTP 和對外流量。正式目的地仍需使用 production override，確認其 domain／origin／TLS 配置及 Caddy 憑證狀態，全部通過後才切換 ingress／DNS。readiness 成功是服務已就緒的證據，不能代替 DB row counts、檔案雜湊或真實客戶端相容性驗證。
+
+### 可丟棄的 recovery 演練
+
+`node infra/disposable-recovery-drill.mjs --dry-run` 可先檢視隔離演練計畫，不啟動 Docker。live 演練需明確設定允許旗標：
+
+```sh
+ILLYA_ALLOW_DISPOSABLE_TEST=1 node infra/disposable-recovery-drill.mjs
+```
+
+PowerShell：
+
+```powershell
+$env:ILLYA_ALLOW_DISPOSABLE_TEST = '1'
+node infra/disposable-recovery-drill.mjs
+Remove-Item Env:ILLYA_ALLOW_DISPOSABLE_TEST
+```
+
+演練使用獨立可丟棄的來源／還原 projects，在停止自建 writer 後呼叫同一個 `backupDeployment` 營運 helper，實際驗證來源 guard、唯讀封裝、binary-safe `docker cp`、完成 manifest，再還原 dump 與完整 `/data`，比對 migration／全部 rows／sequences／schema／檔案 hashes／ownership 和 readiness；它不會使用營運 project 的資料。成功結果只證明當次程式版本與演練資料的流程，正式備份仍需私有密鑰、來源基準及實際還原驗收。
+
+Schema 比對先在演練來源 PostgreSQL 內建立新的 schema-only reference DB，透過 PostgreSQL 17 parser 正規化來源定義，再比對還原後的完整 schema。這涵蓋 `pg_restore` 對 CHECK 內相同邏輯 AND 括號的正規化；原始 schema dump 雜湊也會保留。reference DB 隨演練來源 volume 清除，migration checksums 仍直接比對全部 22 份來源 SQL bytes。
 
 現在的媒體 volume 是單機儲存。如果之後要水平擴充，需先加入共用 object storage 與多實例一致的節流／chat event transport；不能只增加 replica 而沿用每個容器各自的本機檔案或記憶體狀態。
 
