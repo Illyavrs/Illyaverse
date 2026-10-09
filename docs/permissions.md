@@ -14,8 +14,10 @@
 | `roles.manage`                        | 建立、編輯、指派或移除自己有權限管理的角色         |
 | `users.moderate`                      | 查看帳號 email，限制或解除限制其他帳號             |
 | `users.sessions.revoke`               | 撤銷自己有權限管理的帳號之網站、stable、lazer 登入 |
-| `chat.moderate`                       | 查看最小玩家目錄、設定或解除限時聊天禁言         |
+| `chat.moderate`                       | 查看最小玩家目錄、設定或解除限時聊天禁言           |
 | `beatmaps.moderate`                   | 審核圖譜狀態                                       |
+| `beatmaps.rank.request`               | 提交圖譜排名申請                                   |
+| `beatmaps.rank.review`                | 查看排名申請佇列、拒絕申請；核准另須圖譜審核權限   |
 | `scores.moderate`                     | 審核成績，以及透過 API 進行有上限的 RX pp 重算     |
 | `announcements.manage`                | 建立公告草稿、編輯、發布、撤下與查看非公開公告     |
 | `audit.read`                          | 查看管理操作紀錄                                   |
@@ -24,6 +26,9 @@
 
 自訂工作人員角色只需授予其負責功能的權限。migration 0024 為內建
 `moderator` 加入 `chat.moderate`；自訂角色須明確指派此權限。
+Migration 0025 為內建 `player` 加入 `beatmaps.rank.request`，為內建
+`moderator` 加入 `beatmaps.rank.request` 與 `beatmaps.rank.review`。
+自訂角色的現有權限不會被替換或自動擴充。
 內建 `player`、`moderator`、`administrator` 保留原名稱且不能刪除；
 `administrator` 必須保留 `*`。自訂角色刪除前必須先從所有帳號解除指派，
 系統不會默默移除玩家角色。每次角色或限制變更後，仍須保留至少一個
@@ -34,6 +39,42 @@
 `users.moderate`；限制持有 `*` 的帳號另外需要 `*`，且不能限制自己。
 上述規則由 API 執行，網頁上的唯讀或停用控制只是協助操作。
 
+## 圖譜提名與排名申請
+
+`beatmap_nominator` 是圖譜提名角色，預設權限只有 `chat.send`、
+`beatmaps.upload`、`beatmaps.import`、`beatmaps.moderate`、
+`beatmaps.rank.request` 與 `beatmaps.rank.review`。它沒有 `*`、帳號限制、
+成績審核或角色管理權限；角色名稱不形成權限階級。若升級前已有同名自訂
+角色，migration 0025 保留其原有權限，由管理員明確配置所需功能。
+
+公開註冊的 `player` 已有 `beatmaps.upload`，新上傳的伺服器圖譜以
+Graveyard 開始；升級不會重寫既有圖譜狀態。狀態屬於每一個難度，支援
+Graveyard、WIP、Pending、Unranked、Ranked 與 Loved，同一圖譜組中的其他
+難度不會因一個難度獲得 Ranked 而一起變更。
+
+玩家可提出排名申請，目標包含自己上傳的有效、未排名本服圖譜，以及官方
+Pending／Graveyard 圖譜。每個圖譜組最多有一筆待審申請；申請保存提交時的難度清單與身分
+快照，審核只可核准其中明確選取的難度。未選取的難度保留原狀態。
+申請者可查看自己的申請並撤回待審申請，之後失去提交權限也仍能管理已提交
+申請。審核者以 `beatmaps.rank.review` 取得佇列和拒絕權限；核准申請還須
+`beatmaps.moderate`。直接變更難度狀態由 `beatmaps.moderate` 授權，無須
+`admin.view`。一般帳號最多保留 5 筆待審申請，每 24 小時最多提交 10 筆。
+
+`beatmaps.status_revision`、伺服器難度狀態決策的 `revision`，以及申請的
+`revision` 由資料庫維護。有效狀態變更會累加版本；直接重設版本不會
+繞過檢查，即使狀態曾改走又改回也能辨識舊決策。申請的理由、審核內容
+或核准難度清單變更也會增加申請版本。伺服器決策依公開難度 ID 與圖譜組
+身分保存，官方難度稍後匯入或中繼資料更新時仍會保留該難度的伺服器狀態。
+審核理由與操作者資料保留在管理用資料表與稽核紀錄，不混入公開圖譜欄位。
+
+核准申請須帶入申請的 `expected_revision`，並為每個選取難度提供目前的
+伺服器決策版本 `expected_revision` 和已匯入圖譜版本
+`expected_status_revision`。後者必須明確為整數或 null；null 表示該官方
+難度尚未匯入。直接修改難度狀態也使用相同的兩個版本，防止官方圖譜在
+決策排隊期間匯入或其他工作人員先修改狀態時覆寫舊資料。版本衝突回傳 409，
+不會自動重新送出決策。申請與審核理由去除首尾空白後須為 1–1000 字元，
+最多 4000 bytes，且不得包含控制字元。
+
 帳號清單依 ID 排序並分頁，可搜尋完整正整數 ID 或不分大小寫的名稱片段。
 搜尋接受最多 64 個字元，不接受控制字元，`%` 和 `_` 作為一般字元處理。
 僅持有角色管理或登入撤銷權限時，回應不包含 email、密碼雜湊或其他帳號的
@@ -43,20 +84,36 @@
 
 所有路由都位於 `/api/v1`，使用網站登入 cookie 與既有 Origin 檢查。
 
-| 路由                                          | 方法與內容                                                          |
-| --------------------------------------------- | ------------------------------------------------------------------- |
-| `/admin/users?page=1&page_size=20&search=...` | GET 分頁帳號與角色摘要                                              |
-| `/admin/roles`                                | GET 角色、權限與持有人數；POST 建立角色                             |
-| `/admin/roles/{id}`                           | PATCH 更新；DELETE 刪除未指派的自訂角色                             |
-| `/admin/users/{id}`                           | PATCH `roles` 與／或 `is_restricted`                                |
-| `/admin/users/{id}/sessions/revoke`           | POST 無需 request body，回傳 `revoked.web/stable/lazer` 筆數        |
-| `/admin/chat-silences?page=1&page_size=24&search=...` | GET 最小玩家目錄、有效禁言期限、`chat_silence_revision` 與操作旗標 |
-| `/admin/users/{id}/chat-silence`              | PUT `expires_at`、`reason`、`expected_revision`；DELETE `reason`、`expected_revision` |
-| `/admin/beatmaps/{id}`                        | PATCH `status`                                                      |
-| `/admin/scores/{id}`                          | PATCH `verification` 與 `expected_revision`                          |
-| `/admin/scores/recalculate-relax`             | POST `score_ids`，1–16 個不重複正整數 ID                            |
-| `/admin/announcements`                        | GET 依狀態分頁公告；POST 建立草稿                                   |
-| `/admin/announcements/{id}`                   | GET 指定公告的最新版本；PATCH 完整標題、內文、狀態與預期 `revision` |
+| 路由                                                              | 方法與內容                                                                                           |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `/admin/users?page=1&page_size=20&search=...`                     | GET 分頁帳號與角色摘要                                                                               |
+| `/admin/roles`                                                    | GET 角色、權限與持有人數；POST 建立角色                                                              |
+| `/admin/roles/{id}`                                               | PATCH 更新；DELETE 刪除未指派的自訂角色                                                              |
+| `/admin/users/{id}`                                               | PATCH `roles` 與／或 `is_restricted`                                                                 |
+| `/admin/users/{id}/sessions/revoke`                               | POST 無需 request body，回傳 `revoked.web/stable/lazer` 筆數                                         |
+| `/admin/chat-silences?page=1&page_size=24&search=...`             | GET 最小玩家目錄、有效禁言期限、`chat_silence_revision` 與操作旗標                                   |
+| `/admin/users/{id}/chat-silence`                                  | PUT `expires_at`、`reason`、`expected_revision`；DELETE `reason`、`expected_revision`                |
+| `/admin/beatmaps/{id}`                                            | PATCH `status`                                                                                       |
+| `/admin/beatmapsets?page=1&page_size=24&q=...&availability=all`   | GET 本服上傳圖譜組，包含已撤下的圖譜；需 `beatmaps.moderate`                                         |
+| `/admin/beatmapsets/{native_set_id}`                              | GET 驗證後的官方或本服圖譜組與逐難度狀態、版本                                                       |
+| `/admin/beatmapsets/{native_set_id}/difficulties/{native_id}`     | PATCH `status`、`reason`、`expected_revision` 與 `expected_status_revision`                          |
+| `/me/beatmap-rank-requests?page=1&page_size=24&status=all`        | GET 自己的申請，登入後可讀                                                                           |
+| `/beatmap-rank-requests`                                          | POST `native_set_id` 或 `official_set_id` 擇一、`reason`，可選 `difficulty_ids`                      |
+| `/beatmap-rank-requests/{id}`                                     | GET 自己的申請或具審核權限的申請                                                                     |
+| `/beatmap-rank-requests/{id}/withdraw`                            | POST `expected_revision`，只可撤回自己的待審申請                                                     |
+| `/admin/beatmap-rank-requests?page=1&page_size=24&status=pending` | GET 審核佇列，需 `beatmaps.rank.review`                                                              |
+| `/admin/beatmap-rank-requests/{id}`                               | PATCH `decision`、`expected_revision`、`reason`；核准另須 `difficulty_ids` 與 `difficulty_revisions` |
+| `/admin/scores/{id}`                                              | PATCH `verification` 與 `expected_revision`                                                          |
+| `/admin/scores/recalculate-relax`                                 | POST `score_ids`，1–16 個不重複正整數 ID                                                             |
+| `/admin/announcements`                                            | GET 依狀態分頁公告；POST 建立草稿                                                                    |
+| `/admin/announcements/{id}`                                       | GET 指定公告的最新版本；PATCH 完整標題、內文、狀態與預期 `revision`                                  |
+
+排名申請核准的 `difficulty_revisions` 是逐難度物件陣列，每個物件包含
+`native_id`、`expected_revision` 與 `expected_status_revision`，須與
+`difficulty_ids` 完全對應。`decision` 只接受 `approved` 或 `rejected`；
+拒絕時不得提供核准難度欄位。舊 `/admin/beatmaps/{id}` 使用內部圖譜 ID，
+保留無版本欄位的相容契約，但仍只變更該難度並保存私服狀態決策；新的
+逐難度管理介面使用上述具版本檢查的路由。
 
 登入撤銷不會限制帳號，玩家可重新登入。lazer 筆數代表登入紀錄，同一筆
 紀錄的 access 與 refresh token 會一起失效。已開啟的長連線會在既有驗證
@@ -98,6 +155,9 @@
 2026-10-09 的新禁言與成績版本 API 已通過隔離 PostgreSQL 測試；網站分區與
 操作介面已有獨立瀏覽器與 source build 驗證。migration 0023／0024 與這次變更尚未套用至保留的本機
 部署，其資料庫仍為 0022。上述為目前原始碼契約，不是已部署或原生視窗實測宣告。
+Migration 0025 的圖譜提名、難度狀態版本與排名申請同樣尚未套用至保留部署；
+各項隔離測試結果以整合驗證紀錄為準。lazer 登入已由玩家確認，這不代表
+搜尋、圖譜審核或新 schema 已完成原生客戶端驗證。
 
 相關限制與驗證請參考 [RX](relax.md)、[部署](deployment.md) 與
 [驗證紀錄](verification.md)。本機隔離測試不代表原生遊戲視窗已完成實測。

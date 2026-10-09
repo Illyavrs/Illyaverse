@@ -14,6 +14,8 @@ pub const PERMISSIONS: &[&str] = &[
     "beatmaps.upload",
     "beatmaps.import",
     "beatmaps.moderate",
+    "beatmaps.rank.request",
+    "beatmaps.rank.review",
     "users.moderate",
     "users.sessions.revoke",
     "roles.manage",
@@ -159,6 +161,20 @@ mod tests {
         assert!(has_permission(&["chat.moderate".into()], "chat.moderate"));
         assert!(!has_permission(&["users.moderate".into()], "chat.moderate"));
         assert!(!has_permission(&["chat.moderate".into()], "chat.send"));
+        assert!(PERMISSIONS.contains(&"beatmaps.rank.request"));
+        assert!(PERMISSIONS.contains(&"beatmaps.rank.review"));
+        assert!(has_permission(
+            &["beatmaps.rank.request".into()],
+            "beatmaps.rank.request"
+        ));
+        assert!(!has_permission(
+            &["beatmaps.rank.request".into()],
+            "beatmaps.rank.review"
+        ));
+        assert!(!has_permission(
+            &["beatmaps.moderate".into()],
+            "beatmaps.rank.review"
+        ));
     }
     #[test]
     fn rejects_unsafe_theme_urls_and_nan() {
