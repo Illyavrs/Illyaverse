@@ -8,9 +8,9 @@ GUI release 建置 checkpoint（2026-10-09）：沿用圖譜庫版本已通過�
 
 ## 目前的 lazer CLI 測試包
 
-2026-10-09 的首次玩家啟動在進入遊戲前失敗，錯誤為 `transfiguration_client_assembly_location_mismatch`；Windows 的普通與 extended drive 路徑被誤判為不同 DLL 位置。修正版已統一路徑比對、保留版本／雜湊檢查，並加入可安全顯示的啟動診斷。這是包含 production 啟動與監護邏輯的 debug CLI 包，沒有圖形啟動器介面；真正的 lazer 視窗、登入與送分仍待用修正版重試。[最新整合 checkpoint](current-integration-20261009.md)保留首次失敗與修正的驗證範圍。
+2026-10-09 的首次玩家啟動遇到 DLL 路徑比對問題，已修正。第二次通過 Guard 後仍沒有視窗：dump 確認 AuthNative 讀取目前 EXE 的 Windows 版本資源，但原 CLI 沒有這項資源。最新包已加入 Kaleidoscope 自己的 VERSIONINFO，保留 Auth loader，並將 running 確認延後到原始 draw 成功完成。這是包含 production 啟動與監護邏輯的 debug CLI 包，沒有圖形啟動器介面；真正的視窗、登入與送分仍需重試。[最新整合 checkpoint](current-integration-20261009.md)保留兩次失敗與各修正的驗證範圍。
 
-修正版本機 ZIP：[kaleidoscope-cli-test-20261009-115044-bf5c60e932ed48ceab31612559fdc290.zip](../.artifacts/packages/kaleidoscope-cli-test-20261009-115044-bf5c60e932ed48ceab31612559fdc290.zip)。SHA-256：`29b723f202e7981da8f2cf41fe4f3bb8af49268db135b1f01aff6bf53f66facb`。完整解壓新包並使用其中的 EXE 與 DLL；先前 `105203` 包只保留為歷史證據，不能替代修正版。
+修正版本機 ZIP：[kaleidoscope-cli-test-20261009-124928-1abdafafcf364a248a47000d6531d907.zip](../.artifacts/packages/kaleidoscope-cli-test-20261009-124928-1abdafafcf364a248a47000d6531d907.zip)。SHA-256：`98b5a6c20ce0705cc83a3f0b6bbeae4759c852ce6822ba053cc68f13cf0bad07`。完整解壓新包並使用其中的 EXE 與 DLL；先前 `105203`、`115044` 包只保留為歷史證據，不能替代修正版。
 
 取得並完整解壓測試包後，在該資料夾開啟 PowerShell。先確認已有 Illyaverse 網站帳號、本機 `illya.test` DNS／CA 設定，以及相容的 stock lazer，然後執行：
 
@@ -20,13 +20,13 @@ GUI release 建置 checkpoint（2026-10-09）：沿用圖譜庫版本已通過�
 
 若安裝位置不同，只替換最後的 `osu!.exe` 路徑。這次測試僅接受 `osu!.dll`／`osu.Game.dll` 版本 `2026.1005.1.0`、`osu.Framework.dll` 版本 `2026.1005.0.0`、runtime `10.0.12`，且所有必要 assembly 的位元組必須符合包內 `compatibility.json`；版本字串相同仍可能因雜湊不同而拒絕啟動。更新成其他版本時會停止，不會回到官方伺服器。登入使用 Illyaverse 帳號。
 
-CLI 會等待最多 40 秒，直到本次工作階段安全啟動，或失敗與清理有明確結果。`phase: running` 表示啟動保護已完成且遊戲程序存在，仍不代表登入成功。失敗會回傳非零 exit code，並保留固定的 `stage`／`code`／exception 類別和數字狀態；不輸出遊戲的原始 stderr、exception message 或帳號內容。若等待逾時，執行 `launcher status` 查看後續結果，工具不會因逾時自動終止遊戲。
+CLI 會等待最多 40 秒，直到本次工作階段完成首幀，或失敗與清理有明確結果。Guard ready 後仍保持 `phase: preparing`；`phase: running` 需要 Guard 驗證、原始 draw 成功完成，以及自有遊戲程序仍存活。Draw 會排程顯示視窗，因此此訊號不獨立證明 OS 視窗可見，也不代表登入成功。失敗會回傳非零 exit code，並保留最後固定啟動階段、`stage`／`code`／exception 類別和數字退出狀態；不輸出遊戲的原始 stderr、exception message 或帳號內容。若等待逾時，執行 `launcher status` 查看後續結果，工具不會因逾時自動終止遊戲。
 
 啟動會沿用這份 lazer 的 default／custom／portable 圖譜庫，不需要重新匯入。私服登入與遊戲設定使用 `game.illyaverse.ini`；官方 `game.ini` 不會被讀取、複製或覆寫。端點固定為 `https://illya.test`，CLI 不修改 hosts、不安裝 CA，也不略過 TLS。遊戲與監護程序執行期間保留整個解壓資料夾。
 
 正常關閉 lazer 後，監護程序確認退出，再刪除此次放入且未被變更的自有 DLL。可用 `.\Kaleidoscope.exe launcher status` 查看狀態，或用 `.\Kaleidoscope.exe launcher stop` 請求正常關閉。若中斷後有殘留，先確認沒有其他 lazer 執行個體使用該圖譜庫，再執行 `.\Kaleidoscope.exe launcher recover`；檔案或目錄身分異常時工具會保留並報錯，請不要自行刪除其他 ruleset。退出清理成功後才正常開啟官方 lazer。
 
-修正版通過 31 項實際 CLI package 完整性案例、70 項 Rust 核心／CLI／生命週期測試與 Clippy、70 項隔離 managed diagnostic checks，以及 8 項實際 synthetic hostfxr boundaries。stock assembly、固定網路與帳號隔離 proof 的各自結果另列於[修正版驗證檔](../.artifacts/packages/kaleidoscope-cli-test-20261009-115044-bf5c60e932ed48ceab31612559fdc290.verification-final.json)，不能加總為真人測試。這些檢查未啟動玩家遊戲，也沒有存取玩家圖譜庫。玩家仍須依序確認登入、聊天、下載、遊玩、Score／Replay、重連，以及退出後的 DLL 清理結果。
+最新包通過 42 項實際 CLI package 完整性案例（包含 Win32 VERSIONINFO 查詢）、80 項 Rust 核心／CLI／生命週期測試與 Clippy、135 項隔離 managed diagnostic/progress checks、九項 pinned stock startup metadata contracts，以及八項 synthetic hostfxr boundaries。stock assembly、固定網路與帳號隔離 proof 的各自結果另列於[修正版驗證檔](../.artifacts/packages/kaleidoscope-cli-test-20261009-124928-1abdafafcf364a248a47000d6531d907.verification-final.json)，不能加總為真人測試。這些檢查未執行 AuthNative 或玩家遊戲，也沒有存取玩家圖譜庫。玩家仍須依序確認視窗、登入、聊天、下載、遊玩、Score／Replay、重連，以及退出後的 DLL 清理結果。
 
 ## 完整 GUI 包的使用方式
 

@@ -2,7 +2,7 @@
   "version": 1,
   "checkpoint": "integration-20261009",
   "recorded_at_utc": "2026-10-09T11:19:13Z",
-  "status": "guarded_deployment_passed_first_native_launch_failed_fixed_cli_retry_pending",
+  "status": "guarded_deployment_passed_native_version_resource_repair_ready_player_retry_pending",
   "git_topology": {
     "projects": [
       "Serendipity",
@@ -292,6 +292,58 @@
     "synthetic_host_startup_fix": {
       "sha256": "c1f92d430b9bd90a2ec82085e9d59e962d103e50fdc099cc4bd4846158aae464",
       "path": ".artifacts/builds/integration-20261009/launcher-launch-diagnostics-20261009T114741Z-5bf2fe68d6f04717aa4e4c33ce994a44.log"
+    },
+    "native_launch_window_failure": {
+      "path": ".artifacts/builds/integration-20261009/native-launch-window-failure-20261009.json",
+      "sha256": "c6db669283e4e5fca048e46913dab90be9349aaec365dc719e3757addb768f9f"
+    },
+    "stable_resilience": {
+      "path": ".artifacts/tests/stable-60aca110d6004b28a64c79082bde1b8a/verification.json",
+      "sha256": "8545179ef8f0707d807540b349f4b5296a7c436a756512c250f82e6e350f3aa2"
+    },
+    "solo_completion": {
+      "path": ".artifacts/tests/lazer-solo-971d6885/verification.json",
+      "sha256": "a676c0b5aebb64fed9a9abcb9d2d72b3e1a68e24792ecaf427080be142a930e8"
+    },
+    "recovery_drill": {
+      "path": ".artifacts/recovery-drill-20261009-65d55851192844db89cbed35016b8bf7/verification.json",
+      "sha256": "1c6bf04b3c2f67f4954260156d6a1d48325a5a31fd19587aaebbd819d64b04f7"
+    },
+    "native_version_resource_diagnosis": {
+      "path": ".artifacts/builds/integration-20261009/native-version-resource-diagnosis-20261009.json",
+      "sha256": "880d8c3ae1a601c61e67c4ebe1432491bf04484fd5424286f24d13b3c53f0509"
+    },
+    "cli_native_resource_repair_final": {
+      "path": ".artifacts/packages/kaleidoscope-cli-test-20261009-124928-1abdafafcf364a248a47000d6531d907.verification-final.json",
+      "sha256": "4bb154ce8405c79b97ca8ecdc074e42589f0326dab0a39d67afcef1c3b1ddfa6"
+    },
+    "cli_native_resource_repair_archive": {
+      "path": ".artifacts/packages/kaleidoscope-cli-test-20261009-124928-1abdafafcf364a248a47000d6531d907.zip",
+      "sha256": "98b5a6c20ce0705cc83a3f0b6bbeae4759c852ce6822ba053cc68f13cf0bad07"
+    },
+    "cli_native_resource_repair_integrity": {
+      "path": ".artifacts/packages/kaleidoscope-cli-test-20261009-124928-1abdafafcf364a248a47000d6531d907.integrity.log",
+      "sha256": "1054831f45118b4204f920fec414af52229c288fbaca4781d5897d60a2f70fe1"
+    },
+    "rust_first_frame_resource": {
+      "path": ".artifacts/builds/integration-20261009/launcher-first-frame-resource-20261009T124712Z-24154b0f590449c4a2e081c352236f89.log",
+      "sha256": "fced470a356cb73256bdca180724f9e6cbb92d93678fd85823c379acce0e654e"
+    },
+    "managed_first_frame": {
+      "path": ".artifacts/builds/integration-20261009/transfiguration-first-frame-20261009T124455Z-1eadb0a288ea4f3592a0c5c96b4373fe.log",
+      "sha256": "b88bc6cbdc4acbab71360890476a07237cebf5449b076422b6593eddcb604eea"
+    },
+    "native_chat_reconnect": {
+      "path": ".artifacts/tests/native-chat-470d357cd42f4f30ade25f85dc166514/completion.json",
+      "sha256": "97ba3a38964124accc42f41e291f728b0ffc7bf3cc918d741c1afc7fc6b9ea79"
+    },
+    "website_chat_recovery": {
+      "path": ".artifacts/tests/website-chat-20261009-123655-75f7eb0c/verification.json",
+      "sha256": "2df324746faa7804cbeb11deb9cd75c7c47fa71c54eeb8460ce82a973daff4fa"
+    },
+    "rbac_wildcard": {
+      "path": ".artifacts/rbac-wildcard-20261009-e4f86a1c/verification.json",
+      "sha256": "b061620d8d5a4514bd28c4b4419282130d5bf2a3d06286f5daa4c785f8594cd6"
     }
   },
   "limitations": [
@@ -328,14 +380,20 @@
   },
   "latest_native_launch": {
     "first_attempt": "failed_before_Main",
-    "fixed_native_retry": "pending",
+    "fixed_native_retry": "guard_passed_then_native_crash_before_visible_window",
     "initial_code": "transfiguration_client_assembly_location_mismatch",
-    "fixed_package": "cli_startup_fix_final",
+    "fixed_package": "cli_native_resource_repair_final",
     "native_login_verified": false,
-    "retained_services_redeployed": false
+    "retained_services_redeployed": false,
+    "native_window_verified": false,
+    "exception_code": "0xc0000005",
+    "child_exit": -1073741819,
+    "first_frame_diagnostics": "implemented_headless_verified",
+    "cause": "missing_main_executable_VERSIONINFO",
+    "targeted_repair": "implemented_and_package_verified_player_retry_pending"
   },
   "lazer_cli_startup_fix": {
-    "status": "ready_for_manual_connection_test",
+    "status": "player_retry_failed_native_access_violation",
     "archive": {
       "path": ".artifacts/packages/kaleidoscope-cli-test-20261009-115044-bf5c60e932ed48ceab31612559fdc290.zip",
       "sha256": "29b723f202e7981da8f2cf41fe4f3bb8af49268db135b1f01aff6bf53f66facb"
@@ -383,5 +441,137 @@
     "native_login_verified": false,
     "native_gameplay_verified": false,
     "retained_services_redeployed": false
+  },
+  "updated_at_utc": "2026-10-09T12:54:15.794773+00:00",
+  "post_deployment_source_fixes": {
+    "retained_services_redeployed": false,
+    "serendipity": "1179315",
+    "resonance": "05108bdf7301735bf631ec01afc19ad557ad8c50",
+    "website_chat_cases": 17,
+    "rbac_cases": 16,
+    "stable_postgresql_fixtures": 4,
+    "solo_room_http_websocket_fixtures": 3,
+    "recovery_offline_tests": 83,
+    "recovery_live_drill": "passed",
+    "native_client_pass_claim": false,
+    "native_chat_unit_tests": 5,
+    "native_chat_http_websocket_fixtures": 2
+  },
+  "lazer_cli_native_resource_repair": {
+    "version": 1,
+    "recorded_at_utc": "2026-10-09T12:51:22.947760+00:00",
+    "status": "targeted_native_version_resource_repair_ready_for_player_test",
+    "artifact_kind": "cli_connection_test",
+    "build_profile": "ordinary_debug",
+    "directory": ".artifacts/packages/kaleidoscope-cli-test-20261009-124928-1abdafafcf364a248a47000d6531d907",
+    "archive": {
+      "path": ".artifacts/packages/kaleidoscope-cli-test-20261009-124928-1abdafafcf364a248a47000d6531d907.zip",
+      "sha256": "98b5a6c20ce0705cc83a3f0b6bbeae4759c852ce6822ba053cc68f13cf0bad07"
+    },
+    "source": {
+      "parent_at_package": "f3caf2778e6e6c17dd5ac29a715e274b9043ede0",
+      "kaleidoscope": "00630be81d5c975500a1ae2d2701cca6470b839d",
+      "transfiguration": "f8d9d11273b7494c63b7f000f8e736cdf74c7b10"
+    },
+    "launcher_sha256": "2b9bf79c4904b9759ecd97702780132d87b6fc8f96d80bb350dde0b4197dc172",
+    "bridge_sha256": "952fff6deb673f5d8d8adc13705e6aaabc05b4993320d1b0b1bd26c71d9ff4a2",
+    "compatibility_sha256": "d48afa7c94e64cbc6bc536eadf1728ec6a70d0aa3c9b98934f25931c77b4e600",
+    "files_sha256": {
+      "artifact.json": "57ad9ad3cc93c0a44ca92f04801c8891f0257473afbd12ad450f02f911ca9976",
+      "compatibility.json": "d48afa7c94e64cbc6bc536eadf1728ec6a70d0aa3c9b98934f25931c77b4e600",
+      "Kaleidoscope.exe": "2b9bf79c4904b9759ecd97702780132d87b6fc8f96d80bb350dde0b4197dc172",
+      "LICENSE": "b1b6ba1ac2c11f5b24415e58edeba52b8b5966b38197477c5df720ce0e16a8af",
+      "osu.Game.Rulesets.Transfiguration.dll": "952fff6deb673f5d8d8adc13705e6aaabc05b4993320d1b0b1bd26c71d9ff4a2",
+      "package.json": "8c83aa6094fd5fe537ec79900ebd8fafbbdb91438af32ba52cc098bac2b4b21f",
+      "README.txt": "53d0c153a6d9c2f287d19fabd38c33551ad9be001803c2bc9f149bf9614eb837",
+      "THIRD-PARTY-NOTICES.md": "d17d9533bc8de15a4a1fd0d44799bf8461dd0260b94b1574b8d88d0f23c28b95",
+      "Transfiguration-README.md": "851c715bf741b162a94b89e48e04676666aa351e512a97c595a2ab3d14fcef7b",
+      "licenses/DotNet.txt": "cfc21f5e8bd655ae997eec916138b707b1d290b83272c02a95c9f821b8c87310",
+      "licenses/Harmony.txt": "407ddd98200c9f17f49942b5a7791e288a2bd553b59bf2f462db87dbb21c50bc",
+      "licenses/Iced.txt": "93a47598376fd3f276b631e75149340087153c6ff1635a53c5790249e9124e2d",
+      "licenses/Mono.Cecil.txt": "13d58ecbed676511c0c4c4009bff107025e50007ff5e7901dc562700ec62509e",
+      "licenses/MonoMod.txt": "0b64833222e3c6a426ad29362d26334619fe02eaf2b89ea9c37805521896c920"
+    },
+    "windows_version_resource": {
+      "win32_query_passed": true,
+      "product_name": "Kaleidoscope",
+      "original_filename": "Kaleidoscope.exe",
+      "file_version": "0.1.0.0",
+      "product_version": "0.1.0.0",
+      "auth_loader_removed": false
+    },
+    "first_frame_gate": {
+      "requires_guard_ready": true,
+      "requires_successful_original_draw": true,
+      "requires_live_owned_child": true,
+      "os_visibility_proven": false
+    },
+    "checks": {
+      "rust": {
+        "passed": 80,
+        "failed": 0,
+        "library": 60,
+        "cli_unit": 3,
+        "cli_integration": 6,
+        "lifecycle": 11,
+        "clippy_all_targets": true,
+        "rustfmt": true,
+        "log": {
+          "path": ".artifacts/builds/integration-20261009/launcher-first-frame-resource-20261009T124712Z-24154b0f590449c4a2e081c352236f89.log",
+          "sha256": "fced470a356cb73256bdca180724f9e6cbb92d93678fd85823c379acce0e654e"
+        }
+      },
+      "managed_bridge": {
+        "diagnostic_progress_checks": 135,
+        "stock_progress_metadata_contracts": 9,
+        "production_policy": 36,
+        "direct_stock_contracts": 110,
+        "rejection_cases": 6,
+        "mandatory_native_fixture": 111,
+        "log": {
+          "path": ".artifacts/builds/integration-20261009/transfiguration-first-frame-20261009T124455Z-1eadb0a288ea4f3592a0c5c96b4373fe.log",
+          "sha256": "b88bc6cbdc4acbab71360890476a07237cebf5449b076422b6593eddcb604eea"
+        },
+        "scope_note": "Separate headless scopes, not an aggregate native-player result"
+      },
+      "synthetic_host": {
+        "boundaries": 8,
+        "log_reference": "checks.rust.log",
+        "game_main_invoked": false
+      },
+      "package_integrity": {
+        "passed": 42,
+        "failed": 0,
+        "log": {
+          "path": ".artifacts/packages/kaleidoscope-cli-test-20261009-124928-1abdafafcf364a248a47000d6531d907.integrity.log",
+          "sha256": "1054831f45118b4204f920fec414af52229c288fbaca4781d5897d60a2f70fe1"
+        }
+      },
+      "package_assembly": {
+        "log": {
+          "path": ".artifacts/builds/integration-20261009/cli-first-frame-package-20261009T124928Z-0ec947f967c042c8a326b072504f77de.log",
+          "sha256": "196f9a3d0f478632765c6e9cbd154ee681c5f15b0cb94a843dcab39698f9c4dd"
+        }
+      },
+      "payload_and_zip_bytes": {
+        "passed": true,
+        "files": 14,
+        "manifest_payloads": 13
+      }
+    },
+    "failure_diagnosis": {
+      "path": ".artifacts/builds/integration-20261009/native-version-resource-diagnosis-20261009.json",
+      "sha256": "880d8c3ae1a601c61e67c4ebe1432491bf04484fd5424286f24d13b3c53f0509"
+    },
+    "native_window_verified": false,
+    "native_login_verified": false,
+    "native_gameplay_verified": false,
+    "actual_auth_native_invoked_by_checks": false,
+    "retained_services_redeployed": false,
+    "player_library_config_or_realm_accessed": false,
+    "hosts_ca_or_security_changed": false,
+    "official_fallback": false,
+    "shared_existing_library": true,
+    "private_config_filename": "game.illyaverse.ini"
   }
 }
