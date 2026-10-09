@@ -2,7 +2,7 @@
   "version": 1,
   "checkpoint": "integration-20261009",
   "recorded_at_utc": "2026-10-09T11:19:13Z",
-  "status": "guarded_deployment_passed_cli_ready_native_testing_pending",
+  "status": "guarded_deployment_passed_first_native_launch_failed_fixed_cli_retry_pending",
   "git_topology": {
     "projects": [
       "Serendipity",
@@ -264,6 +264,34 @@
     "local_https_read_only": {
       "path": ".artifacts/builds/integration-20261009/local-https-check.json",
       "sha256": "23bb451ba7cb35a8e47d898abd2659d190577bf0da77113d0bc5231ea9cde603"
+    },
+    "native_launch_failure": {
+      "sha256": "13d471db6614c13d94e0e3b384b2c9bb907a5ef65a90b3177d2ef598b7326e7a",
+      "path": ".artifacts/builds/integration-20261009/native-launch-failure-20261009.json"
+    },
+    "cli_startup_fix_final": {
+      "sha256": "e5d3a3afe5152c41f69dcbf35a4fbb09974646a35417a9767af2867b913a8553",
+      "path": ".artifacts/packages/kaleidoscope-cli-test-20261009-115044-bf5c60e932ed48ceab31612559fdc290.verification-final.json"
+    },
+    "cli_startup_fix_archive": {
+      "path": ".artifacts/packages/kaleidoscope-cli-test-20261009-115044-bf5c60e932ed48ceab31612559fdc290.zip",
+      "sha256": "29b723f202e7981da8f2cf41fe4f3bb8af49268db135b1f01aff6bf53f66facb"
+    },
+    "cli_startup_fix_integrity": {
+      "sha256": "a257fe9317f564c1bf1c63a55afb9e24674ccb8ff1c0b82f4bdc304cc1ab131d",
+      "path": ".artifacts/packages/kaleidoscope-cli-test-20261009-115044-bf5c60e932ed48ceab31612559fdc290.integrity-retry.log"
+    },
+    "rust_startup_fix": {
+      "sha256": "58cdc873b8cfd7dc2877ce1279de13b3f53ec0f04bf84146a2785813eb5baade",
+      "path": ".artifacts/builds/integration-20261009/launcher-launch-diagnostics-final-20261009T114914Z-8a8807c9a29c45e6ad343ad1ecacc1e7.log"
+    },
+    "transfiguration_startup_fix": {
+      "sha256": "c2d61071e4fd201549058ac7e604050f351b42c5d3c798afcff85bc6e54732bb",
+      "path": ".artifacts/builds/integration-20261009/transfiguration-startup-fix-20261009T114307Z-9eb91feaa0e14275be36d213ab3e51a4.log"
+    },
+    "synthetic_host_startup_fix": {
+      "sha256": "c1f92d430b9bd90a2ec82085e9d59e962d103e50fdc099cc4bd4846158aae464",
+      "path": ".artifacts/builds/integration-20261009/launcher-launch-diagnostics-20261009T114741Z-5bf2fe68d6f04717aa4e4c33ce994a44.log"
     }
   },
   "limitations": [
@@ -297,5 +325,63 @@
     },
     "scope": "Read-only homepage HTTP probes; no native game launch, login, host or certificate configuration changes",
     "native_client_verified": false
+  },
+  "latest_native_launch": {
+    "first_attempt": "failed_before_Main",
+    "fixed_native_retry": "pending",
+    "initial_code": "transfiguration_client_assembly_location_mismatch",
+    "fixed_package": "cli_startup_fix_final",
+    "native_login_verified": false,
+    "retained_services_redeployed": false
+  },
+  "lazer_cli_startup_fix": {
+    "status": "ready_for_manual_connection_test",
+    "archive": {
+      "path": ".artifacts/packages/kaleidoscope-cli-test-20261009-115044-bf5c60e932ed48ceab31612559fdc290.zip",
+      "sha256": "29b723f202e7981da8f2cf41fe4f3bb8af49268db135b1f01aff6bf53f66facb"
+    },
+    "source": {
+      "parent_at_build": "a27ce8e131666ce5b6988354e9970b7f8f294374",
+      "kaleidoscope_code": "68f79bfd60d0bdc81dc16a4909c468cc7252c169",
+      "kaleidoscope_tests": "e1b068b9d821969f5bb0541e6da300ee3e40d80a",
+      "transfiguration": "ef81767bb88b2fab3863938e5ea0edc3f67ec2ee"
+    },
+    "bridge_sha256": "56fdd7cf5841dd38dfd3a368795b740bae2bf324a6a9eb6a90841821395dba6b",
+    "checks": {
+      "rust": {
+        "passed": 70,
+        "failed": 0,
+        "clippy_all_targets": true,
+        "rustfmt": true,
+        "log": ".artifacts/builds/integration-20261009/launcher-launch-diagnostics-final-20261009T114914Z-8a8807c9a29c45e6ad343ad1ecacc1e7.log",
+        "sha256": "58cdc873b8cfd7dc2877ce1279de13b3f53ec0f04bf84146a2785813eb5baade"
+      },
+      "managed_bridge": {
+        "diagnostic_checks": 70,
+        "production_policy_checks": 36,
+        "direct_stock_contract_checks": 110,
+        "rejection_cases": 6,
+        "mandatory_native_fixture_checks": 111,
+        "log": ".artifacts/builds/integration-20261009/transfiguration-startup-fix-20261009T114307Z-9eb91feaa0e14275be36d213ab3e51a4.log",
+        "sha256": "c2d61071e4fd201549058ac7e604050f351b42c5d3c798afcff85bc6e54732bb",
+        "note": "Separate scopes; neither sum nor native player validation"
+      },
+      "synthetic_host": {
+        "boundaries": 8,
+        "log": ".artifacts/builds/integration-20261009/launcher-launch-diagnostics-20261009T114741Z-5bf2fe68d6f04717aa4e4c33ce994a44.log",
+        "sha256": "c1f92d430b9bd90a2ec82085e9d59e962d103e50fdc099cc4bd4846158aae464"
+      },
+      "package_integrity": {
+        "passed": 31,
+        "failed": 0,
+        "log": ".artifacts/packages/kaleidoscope-cli-test-20261009-115044-bf5c60e932ed48ceab31612559fdc290.integrity-retry.log",
+        "sha256": "a257fe9317f564c1bf1c63a55afb9e24674ccb8ff1c0b82f4bdc304cc1ab131d",
+        "initial_log": ".artifacts/packages/kaleidoscope-cli-test-20261009-115044-bf5c60e932ed48ceab31612559fdc290.integrity.log",
+        "initial_failure": "PowerShell fixture JSON round trip trimmed a trailing UTC fractional zero; source test helper corrected, package bytes unchanged"
+      }
+    },
+    "native_login_verified": false,
+    "native_gameplay_verified": false,
+    "retained_services_redeployed": false
   }
 }

@@ -1,6 +1,6 @@
 # 2026-10-09 整合 checkpoint
 
-CLI 獨立來源審查、最後網站針對性確認與 guarded deployment 已完成。真人 lazer 流程與原始社群目標仍未完成。下列已通過證據各自有來源與映像邊界，不能合併宣稱為真人 lazer 或完整專案驗證。先前 checkpoint 保留於 [release-readiness.md](release-readiness.md)。
+CLI 獨立來源審查、最後網站針對性確認與 guarded deployment 已完成。其後首次玩家 lazer 啟動在 Main 前失敗；路徑比對修正與啟動診斷已通過隔離測試，新包等待玩家重試。真人 lazer 流程與原始社群目標仍未完成。下列已通過證據各自有來源與映像邊界，不能合併宣稱為真人 lazer 或完整專案驗證。先前 checkpoint 保留於 [release-readiness.md](release-readiness.md)。
 
 ## 本輪來源與功能
 
@@ -31,7 +31,11 @@ Serendipity、Sanctuary、Resonance、Kaleidoscope 與 Transfiguration 已各有
 
 ## 玩家可以測試的產物與未驗證範圍
 
-CLI ZIP 為 `kaleidoscope-cli-test-20261009-105203-46ed5f615ec7444cb0ed693ce3714969.zip`，SHA-256 `e276fd015c577b5dd2267e635397398d4d4ef040150777d75ba3440856739418`。它固定 `illya.test`、重用既有 lazer 圖譜庫、獨立 `game.illyaverse.ini`，且沒有官方 fallback；取得完整包及相容版本後依 [CLI 操作步驟](kaleidoscope-launcher.md#目前的-lazer-cli-測試包)啟動。CLI 的獨立來源審查與 package gate 已完成，可開始玩家手動測試；相容版本與原生流程仍依上述範圍確認。
+目前修正版 CLI ZIP 為 [kaleidoscope-cli-test-20261009-115044-bf5c60e932ed48ceab31612559fdc290.zip](../.artifacts/packages/kaleidoscope-cli-test-20261009-115044-bf5c60e932ed48ceab31612559fdc290.zip)，SHA-256 `29b723f202e7981da8f2cf41fe4f3bb8af49268db135b1f01aff6bf53f66facb`。它固定 `illya.test`、重用既有 lazer 圖譜庫、獨立 `game.illyaverse.ini`，且沒有官方 fallback；完整解壓新包後依 [CLI 操作步驟](kaleidoscope-launcher.md#目前的-lazer-cli-測試包)重試。首次 `105203` 包與其驗證仍保留，不能當作修正版的玩家連線結果。
+
+首次玩家啟動的 bounded Windows Application event 在 11:26:43 UTC 記錄 `transfiguration_client_assembly_location_mismatch` 與必要 startup hook 的呼叫。啟動器後續狀態為 error，外掛已清理；[安全失敗證據](../.artifacts/builds/integration-20261009/native-launch-failure-20261009.json)只保留固定錯誤碼與事件 metadata。原因是 Guard 只正規化預期路徑，已載入 assembly 的 `\\?\C:\…` 路徑未使用相同規則。修正後同一位置可接受兩種表示法，不同目錄、UNC、device 與 relative path 仍拒絕，原版本與 SHA-256 gate 保留。
+
+修正版另完成 70 Rust tests／Clippy／rustfmt、70 managed diagnostic checks、8 synthetic hostfxr boundaries、31 項新 package integrity。production policy 36、stock contracts 110、六種拒絕案例與 mandatory native fixture 111 為各自 proof 範圍，不相加宣稱真人測試。[修正版驗證檔](../.artifacts/packages/kaleidoscope-cli-test-20261009-115044-bf5c60e932ed48ceab31612559fdc290.verification-final.json)記錄新 EXE／DLL 與所有 payload hashes、來源及 logs。CLI 等待安全啟動或 finalized cleanup/error，失敗固定分類會在退出和清理後保留；本次沒有自動啟動玩家遊戲或重新部署保留服務。
 
 完整 GUI release 建置仍因 Windows error 5 失敗，原因未確認。CLI 的存在不等於 GUI 包已建成，包雜湊／核心與 headless 測試也不證明遊戲視窗、登入、聊天、遊玩、Score／Replay、多人、重新連線或退出清理已通過真人操作。正式 remote、公開 domain、完整 native checklist 和原始社群功能目標也尚未完成。
 
