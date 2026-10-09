@@ -7,6 +7,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { redact, requireDisposable, runCommand, workspace } from './protocol-smoke.mjs';
+import { pinExistingSmokeImages, smokeImageReferences } from './existing-smoke-images.mjs';
 
 const services = ['caddy', 'postgres', 'resonance', 'sanctuary', 'serendipity'];
 const volumes = ['caddy_config', 'caddy_data', 'postgres_data', 'shared_data'];
@@ -123,8 +124,9 @@ async function requireAbsent(target) {
   throw new Error('Owned temporary website environment remains after cleanup.');
 }
 
-export async function disposableWebSmoke(environment = process.env) {
+export async function disposableWebSmoke(environment = process.env, { runner = runCommand, browserRunner = playwright } = {}) {
   requireDisposable(environment);
+  const references = smokeImageReferences(environment, 'ILLYA_WEB_SMOKE', imageTags);
   const files = webSmokeTestFiles(environment.ILLYA_WEB_SMOKE_TEST_FILES);
   const port = webSmokePort(environment.ILLYA_WEB_SMOKE_PORT);
   await requireFreePort(port);
@@ -149,7 +151,7 @@ export async function disposableWebSmoke(environment = process.env) {
   let started = false;
   let success = false;
   async function checked(args, signal = controller.signal) {
-    const result = await runCommand('docker', args, { env, signal: signal ?? undefined });
+    const result = await runner('docker', args, { env, signal: signal ?? undefined });
     if (result.code !== 0) {
       process.stderr.write(redact(result.stderr, secrets));
       throw new Error(`Disposable website Docker operation failed with exit code ${result.code}.`);
@@ -157,12 +159,10 @@ export async function disposableWebSmoke(environment = process.env) {
     return result.stdout;
   }
   try {
-    const images = {};
-    for (const [name, tag] of Object.entries(imageTags)) {
-      const image = (await checked(['image', 'inspect', tag, '--format', '{{.Id}}'])).trim();
-      if (!/^sha256:[a-f0-9]{64}$/.test(image)) throw new Error('Could not pin a required existing website image.');
-      images[name] = image;
-      env[`ILLYA_WEB_SMOKE_${name.toUpperCase()}_IMAGE`] = values[`ILLYA_WEB_SMOKE_${name.toUpperCase()}_IMAGE`] = image;
+    const images = await pinExistingSmokeImages(references, reference =>
+      checked(['image', 'inspect', reference, '--format', '{{.Id}}']));
+    for (const { name, key } of references) {
+      env[key] = values[key] = images[name];
     }
     await writeFile(envFile, Object.entries(values).map(([key, value]) => `${key}=${value}`).join('\n') + '\n', { mode: 0o600, flag: 'wx' });
     // Rendered JSON contains generated secrets. Never print it or load the actual .env.
@@ -179,7 +179,7 @@ export async function disposableWebSmoke(environment = process.env) {
     const capture = environment.ILLYA_WEB_SMOKE_CAPTURE === '1' ? Object.fromEntries(
       ['RBAC', 'RECOVERY', 'RELAX', 'SCORE', 'WORKFLOW'].map(name => [`ILLYA_CAPTURE_${name}_REVIEW`, '1']),
     ) : {};
-    const result = await playwright({
+    const result = await browserRunner({
       ...env, ...capture, ILLYA_WEB_URL: `http://localhost:${port}`, ILLYA_TEST_ENV_FILE: envFile, ILLYA_ALLOW_DISPOSABLE_TEST: '1',
     }, controller.signal, files);
     process.stdout.write(redact(result.stdout, secrets));

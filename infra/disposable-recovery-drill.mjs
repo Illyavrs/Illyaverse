@@ -148,12 +148,78 @@ const fixtureBytes = {
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const fixtureSql = `BEGIN;
 INSERT INTO users(username,email,password_hash,password_md5_hash,avatar_url,joined_at) VALUES ('recovery_fixture','recovery@example.test','synthetic-not-a-login','synthetic-not-a-login','/media/recovery.bin','2026-01-01T00:00:00Z');
+INSERT INTO users(username,email,password_hash,password_md5_hash,joined_at) VALUES ('recovery_moderator','moderator@example.test','synthetic-not-a-login','synthetic-not-a-login','2026-01-01T00:00:00Z');
 INSERT INTO user_roles SELECT u.id,r.id FROM users u CROSS JOIN roles r WHERE u.username='recovery_fixture' AND r.name='player';
+INSERT INTO user_roles SELECT u.id,r.id FROM users u CROSS JOIN roles r WHERE u.username='recovery_moderator' AND r.name='moderator';
 INSERT INTO sessions(id,user_id,expires_at,created_at) SELECT '11111111-1111-4111-8111-111111111111',id,'2099-01-01T00:00:00Z','2026-01-01T00:00:00Z' FROM users WHERE username='recovery_fixture';
+UPDATE users SET chat_silenced_until=clock_timestamp()+interval '1 hour' WHERE username='recovery_fixture';
+UPDATE users SET chat_silenced_until=chat_silenced_until+interval '1 hour' WHERE username='recovery_fixture';
+INSERT INTO bancho_sessions(id,token_hash,user_id,expires_at,last_chat_silence_until,created_at) SELECT '22222222-2222-4222-8222-222222222222','${sha256('synthetic recovery native token')}',id,'2099-01-01T00:00:00Z',chat_silenced_until,'2026-01-01T00:00:00Z' FROM users WHERE username='recovery_fixture';
 INSERT INTO beatmaps(uploaded_by,title,artist,creator,version,mode,status,source,stars,md5,osu_path,created_at) SELECT id,'Recovery fixture','Synthetic','Operator','Fixture',0,'ranked','local',1,'0123456789abcdef0123456789abcdef','recovery.osu','2026-01-01T00:00:00Z' FROM users WHERE username='recovery_fixture';
-INSERT INTO scores(user_id,beatmap_id,mode,score,accuracy,max_combo,pp,verification,replay_path,replay_sha256,replay_format,replay_complete,created_at) SELECT u.id,b.id,0,123456,98.5,42,12.3,'verified','recovery.osr','${sha256(fixtureBytes['replays/recovery.osr'])}','legacy',true,'2026-01-01T00:00:00Z' FROM users u CROSS JOIN beatmaps b WHERE u.username='recovery_fixture' AND b.md5='0123456789abcdef0123456789abcdef';
+INSERT INTO scores(user_id,beatmap_id,mode,score,accuracy,max_combo,pp,verification,replay_path,replay_sha256,replay_format,replay_complete,created_at) SELECT u.id,b.id,0,123456,98.5,42,12.3,'pending','recovery.osr','${sha256(fixtureBytes['replays/recovery.osr'])}','legacy',true,'2026-01-01T00:00:00Z' FROM users u CROSS JOIN beatmaps b WHERE u.username='recovery_fixture' AND b.md5='0123456789abcdef0123456789abcdef';
+UPDATE scores SET verification='rejected' WHERE user_id=(SELECT id FROM users WHERE username='recovery_fixture');
+UPDATE scores SET verification='verified' WHERE user_id=(SELECT id FROM users WHERE username='recovery_fixture');
+INSERT INTO audit_events(actor_id,action,target_type,target_id,details,created_at) SELECT a.id,'chat.silence','user',u.id::text,jsonb_build_object('previous',jsonb_build_object('chat_silenced_until',u.chat_silenced_until-interval '1 hour','chat_silence_revision',1),'new',jsonb_build_object('chat_silenced_until',u.chat_silenced_until,'chat_silence_revision',u.chat_silence_revision),'reason','Private synthetic recovery reason'),'2026-01-01T00:00:00Z' FROM users a CROSS JOIN users u WHERE a.username='recovery_moderator' AND u.username='recovery_fixture';
+INSERT INTO audit_events(actor_id,action,target_type,target_id,details,created_at) SELECT a.id,'scores.verify','score',s.id::text,'{"previous":{"verification":"rejected","moderation_revision":1},"new":{"verification":"verified","moderation_revision":2}}'::jsonb,'2026-01-01T00:00:00Z' FROM users a CROSS JOIN scores s JOIN users u ON s.user_id=u.id WHERE a.username='recovery_moderator' AND u.username='recovery_fixture';
 INSERT INTO chat_messages(channel_id,user_id,content,created_at) SELECT c.id,u.id,'Synthetic recovery fixture','2026-01-01T00:00:00Z' FROM users u CROSS JOIN channels c WHERE u.username='recovery_fixture' AND c.name='general';
 COMMIT;`;
+
+// Exercise the restored trigger behavior in one connection and always roll the
+// successful probe back. A failed DO block closes its psql connection with an
+// aborted transaction, which PostgreSQL also rolls back. No fixture changes or
+// sequence allocations may escape this probe.
+const moderationProbeSql = `BEGIN;
+DO $$
+DECLARE
+    player_id bigint;
+    score_id bigint;
+    original_until timestamptz;
+    revision bigint;
+    current_until timestamptz;
+    current_verification text;
+BEGIN
+    SELECT id,chat_silenced_until INTO STRICT player_id,original_until FROM users WHERE username='recovery_fixture';
+    SELECT s.id INTO STRICT score_id FROM scores s JOIN beatmaps b ON b.id=s.beatmap_id WHERE s.user_id=player_id AND b.md5='0123456789abcdef0123456789abcdef';
+    IF original_until IS NULL OR original_until<=clock_timestamp()
+        OR (SELECT chat_silence_revision FROM users WHERE id=player_id) IS DISTINCT FROM 2::bigint
+        OR NOT EXISTS(SELECT 1 FROM bancho_sessions WHERE user_id=player_id AND last_chat_silence_until=original_until)
+        OR NOT EXISTS(SELECT 1 FROM scores WHERE id=score_id AND verification='verified' AND moderation_revision=2)
+        OR NOT EXISTS(SELECT 1 FROM roles WHERE name='moderator' AND 'chat.moderate'=ANY(permissions)) THEN
+        RAISE EXCEPTION 'Restored moderation fixture or native silence cursor is incomplete';
+    END IF;
+    IF NOT EXISTS(SELECT 1 FROM audit_events e JOIN users a ON a.id=e.actor_id WHERE a.username='recovery_moderator' AND e.action='chat.silence' AND e.target_type='user' AND e.target_id=player_id::text AND e.details->>'reason'='Private synthetic recovery reason' AND e.details->'new'->>'chat_silence_revision'='2')
+        OR NOT EXISTS(SELECT 1 FROM audit_events e JOIN users a ON a.id=e.actor_id WHERE a.username='recovery_moderator' AND e.action='scores.verify' AND e.target_type='score' AND e.target_id=score_id::text AND e.details->'new'->>'moderation_revision'='2') THEN
+        RAISE EXCEPTION 'Restored private moderation audit is incomplete';
+    END IF;
+    UPDATE users SET chat_silence_revision=0 WHERE id=player_id RETURNING chat_silence_revision,chat_silenced_until INTO revision,current_until;
+    IF revision<>2 OR current_until IS DISTINCT FROM original_until THEN RAISE EXCEPTION 'Unchanged silence accepted a direct revision reset'; END IF;
+    UPDATE users SET chat_silenced_until=original_until+interval '10 minutes',chat_silence_revision=99 WHERE id=player_id RETURNING chat_silence_revision INTO revision;
+    IF revision<>3 THEN RAISE EXCEPTION 'Changed silence did not advance its durable revision'; END IF;
+    UPDATE users SET chat_silenced_until=original_until,chat_silence_revision=0 WHERE id=player_id RETURNING chat_silence_revision INTO revision;
+    IF revision<>4 THEN RAISE EXCEPTION 'Silence ABA did not advance its durable revision'; END IF;
+    UPDATE users SET chat_silence_revision=99 WHERE id=player_id RETURNING chat_silence_revision INTO revision;
+    IF revision<>4 THEN RAISE EXCEPTION 'Unchanged silence accepted a forged revision'; END IF;
+    UPDATE scores SET moderation_revision=0 WHERE id=score_id RETURNING moderation_revision,verification INTO revision,current_verification;
+    IF revision<>2 OR current_verification IS DISTINCT FROM 'verified' THEN RAISE EXCEPTION 'Unchanged score accepted a direct revision reset'; END IF;
+    UPDATE scores SET verification='rejected',moderation_revision=99 WHERE id=score_id RETURNING moderation_revision INTO revision;
+    IF revision<>3 THEN RAISE EXCEPTION 'Changed score did not advance its durable revision'; END IF;
+    UPDATE scores SET verification='verified',moderation_revision=0 WHERE id=score_id RETURNING moderation_revision INTO revision;
+    IF revision<>4 THEN RAISE EXCEPTION 'Score ABA did not advance its durable revision'; END IF;
+    UPDATE scores SET moderation_revision=99 WHERE id=score_id RETURNING moderation_revision INTO revision;
+    IF revision<>4 THEN RAISE EXCEPTION 'Unchanged score accepted a forged revision'; END IF;
+END;
+$$;
+ROLLBACK;
+SELECT 'recovery-moderation-probe-passed';`;
+
+export async function verifyRestoredModeration(docker, base, { owner } = {}) {
+  const project = ownedProject(base[base.indexOf('--project-name') + 1], owner);
+  if (!project.endsWith('-restore')) throw new Error('Moderation behavior may be probed only in this owned restore project.');
+  const result = await docker([...base, 'exec', '-T', 'postgres', 'psql', '-X', '-q', '-At', '--set', 'ON_ERROR_STOP=1', '-U', 'illya', '-d', 'illyaverse', '-c', moderationProbeSql]);
+  if (result.trim() !== 'recovery-moderation-probe-passed') throw new Error('Restored moderation behavior probe did not complete its rollback.');
+  return { activeSilence: true, nativeSilenceCursor: true, privateAudit: true, durableUserRevision: 2, durableScoreRevision: 2,
+    unchangedRevisionWritesIgnored: true, changesAdvanceRevisions: true, abaAdvancesRevisions: true };
+}
 
 export async function databaseSnapshot(docker, base, { canonicalizeSchema = false, owner } = {}) {
   if (canonicalizeSchema) {
@@ -227,7 +293,7 @@ async function fileSnapshot(docker, base) {
 
 export async function recoveryDrill({ dryRun = false, environment = process.env, runner, sanctuaryImage } = {}) {
   if (dryRun) {
-    console.log('Recovery drill dry run: no Docker calls or files created. Live mode generates two nonce-owned fresh Compose projects/volumes, pins existing postgres:17-alpine and illyaverse/sanctuary:local image IDs, derives every expected migration version and exact SHA-384 checksum from current SQL files, creates synthetic DB/media/maps/replays, invokes the guarded deployment backup helper with all owned writers stopped, checks binary backup + SHA manifest, restores into fresh volumes, compares schema/all rows/sequences/file hashes/UID:GID, verifies readiness, then audits ownership and removes only its two projects and exact temporary files.');
+    console.log('Recovery drill dry run: no Docker calls or files created. Live mode generates two nonce-owned fresh Compose projects/volumes, pins existing postgres:17-alpine and illyaverse/sanctuary:local image IDs, derives every expected migration version and exact SHA-384 checksum from current SQL files, creates synthetic DB/media/maps/replays and durable moderation state, invokes the guarded deployment backup helper with all owned writers stopped, checks binary backup + SHA manifest, restores into fresh volumes, compares schema/all rows/sequences/file hashes/UID:GID, probes restored moderation triggers in a rollback-only transaction and verifies unchanged snapshots, verifies readiness, then audits ownership and removes only its two projects and exact temporary files.');
     return;
   }
   requireDisposable(environment);
@@ -312,6 +378,14 @@ export async function recoveryDrill({ dryRun = false, environment = process.env,
     if (!sameDatabase(sourceDb, restoredDb) || JSON.stringify(restoredFiles) !== JSON.stringify(sourceFiles))
       throw new Error('Restored schema/all table rows/sequences/migrations/file hashes/ownership differ from source.');
     report.checks = { migrationCount: sourceMigrations.length, schema: true, allTableRows: true, sequences: true, fileHashes: true, ownership: true };
+    report.moderation = await verifyRestoredModeration(docker, restore, { owner });
+    const afterModerationProbe = await databaseSnapshot(docker, restore);
+    if (!sameDatabase(restoredDb, afterModerationProbe)) throw new Error('Rollback-only moderation probe changed restored schema/rows/sequences/migrations.');
+    report.moderation.rollbackUnchanged = true;
+    report.moderation.afterProbe = afterModerationProbe;
+    report.checks.moderationState = true;
+    report.checks.moderationTriggers = true;
+    report.checks.moderationRollback = true;
     await docker([...restore, 'up', '-d', '--no-build', '--pull', 'never', '--wait', '--wait-timeout', '120', 'sanctuary']);
     await docker([...restore, 'exec', '-T', 'sanctuary', 'curl', '--fail', '--silent', 'http://127.0.0.1:8080/health/ready']);
     await docker([...restore, 'stop', '--timeout', '10', 'sanctuary']);

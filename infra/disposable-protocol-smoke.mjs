@@ -5,6 +5,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pythonRuntime, redact, requireDisposable, runCommand, workspace } from './protocol-smoke.mjs';
+import { pinExistingSmokeImages, smokeImageReferences } from './existing-smoke-images.mjs';
+
+const imageTags = {
+  postgres: 'postgres:17-alpine', sanctuary: 'illyaverse/sanctuary:local', resonance: 'illyaverse/resonance:local',
+};
 
 function testPort(value, fallback) {
   const port = value === undefined ? fallback : Number(value);
@@ -19,15 +24,16 @@ async function requireFreePort(port) {
   });
 }
 
-export async function disposableSmoke(environment = process.env) {
+export async function disposableSmoke(environment = process.env, { runner = runCommand } = {}) {
   requireDisposable(environment);
+  const references = smokeImageReferences(environment, 'ILLYA_SMOKE', imageTags);
   const sanctuaryPort = testPort(environment.ILLYA_SMOKE_SANCTUARY_PORT, 18082);
   const resonancePort = testPort(environment.ILLYA_SMOKE_RESONANCE_PORT, 18083);
   if (sanctuaryPort === resonancePort) throw new Error('Disposable service ports must differ.');
   await requireFreePort(sanctuaryPort);
   await requireFreePort(resonancePort);
   const runtime = pythonRuntime(environment);
-  if ((await runCommand(runtime.python, ['-c', 'import py3rijndael'], { env: runtime.env })).code !== 0) throw new Error('Install the protocol test requirements before starting the disposable helper.');
+  if ((await runner(runtime.python, ['-c', 'import py3rijndael'], { env: runtime.env })).code !== 0) throw new Error('Install the protocol test requirements before starting the disposable helper.');
   const values = {
     POSTGRES_PASSWORD: randomBytes(32).toString('hex'), SESSION_SECRET: randomBytes(32).toString('hex'),
     INTERNAL_SERVICE_KEY: randomBytes(32).toString('hex'),
@@ -49,7 +55,7 @@ export async function disposableSmoke(environment = process.env) {
   let started = false;
   let success = false;
   async function checked(command, args, signal = controller.signal) {
-    const result = await runCommand(command, args, { env, signal: signal ?? undefined });
+    const result = await runner(command, args, { env, signal: signal ?? undefined });
     if (result.code !== 0) {
       process.stderr.write(redact(result.stderr, secrets));
       throw new Error(`${command} test operation failed with exit code ${result.code}.`);
@@ -57,29 +63,26 @@ export async function disposableSmoke(environment = process.env) {
     return result.stdout;
   }
   try {
-    for (const [key, tag] of [
-      ['ILLYA_SMOKE_POSTGRES_IMAGE', 'postgres:17-alpine'],
-      ['ILLYA_SMOKE_SANCTUARY_IMAGE', 'illyaverse/sanctuary:local'],
-      ['ILLYA_SMOKE_RESONANCE_IMAGE', 'illyaverse/resonance:local'],
-    ]) {
-      const image = (await checked('docker', ['image', 'inspect', tag, '--format', '{{.Id}}'])).trim();
-      if (!/^sha256:[a-f0-9]{64}$/.test(image)) throw new Error('Could not pin a required existing Docker image.');
-      values[key] = image;
-      env[key] = image;
+    const images = await pinExistingSmokeImages(references, reference =>
+      checked('docker', ['image', 'inspect', reference, '--format', '{{.Id}}']));
+    for (const { name, key } of references) {
+      values[key] = images[name];
+      env[key] = images[name];
     }
     await writeFile(envFile, Object.entries(values).map(([key, value]) => `${key}=${value}`).join('\n') + '\n', { mode: 0o600, flag: 'wx' });
     // Render into memory only: this JSON includes credentials and must never be printed.
     const config = JSON.parse(await checked('docker', [...base, 'config', '--format', 'json']));
     if (config.name !== project || Object.keys(config.services).sort().join() !== 'postgres,resonance,sanctuary') throw new Error('Unexpected disposable Compose services.');
     if (Object.values(config.volumes).some(volume => volume.external || !volume.name.startsWith(`${project}_`)) || Object.values(config.networks).some(network => network.external || !network.name.startsWith(`${project}_`))) throw new Error('Disposable resources must belong exclusively to this random project.');
-    for (const service of Object.values(config.services)) {
+    for (const [name, service] of Object.entries(config.services)) {
+      if (service.image !== images[name] || service.pull_policy !== 'never') throw new Error('Disposable services must use the pinned existing images without pulls.');
       if (service.build || service.volumes?.some(volume => volume.type !== 'volume') || service.ports?.some(port => port.host_ip !== '127.0.0.1')) throw new Error('Disposable Compose may only use its own volumes and loopback ports.');
     }
     console.log(`Starting isolated PostgreSQL 17 protocol smoke: ${project}, ports ${sanctuaryPort}/${resonancePort}.`);
     console.log(`Application images: Sanctuary ${values.ILLYA_SMOKE_SANCTUARY_IMAGE}; Resonance ${values.ILLYA_SMOKE_RESONANCE_IMAGE}.`);
     started = true;
     await checked('docker', [...base, 'up', '-d', '--no-build', '--wait', '--wait-timeout', '120']);
-    const result = await runCommand(process.execPath, [path.join(workspace, 'infra/protocol-smoke.mjs')], {
+    const result = await runner(process.execPath, [path.join(workspace, 'infra/protocol-smoke.mjs')], {
       env: { ...runtime.env, ...env, ILLYA_TEST_ENV_FILE: envFile, TEST_SANCTUARY_URL: `http://127.0.0.1:${sanctuaryPort}`, TEST_RESONANCE_URL: `http://127.0.0.1:${resonancePort}` }, signal: controller.signal,
     });
     process.stdout.write(redact(result.stdout, secrets));
@@ -88,7 +91,7 @@ export async function disposableSmoke(environment = process.env) {
     success = true;
   } catch (error) {
     if (started) {
-      const diagnostics = await runCommand('docker', [...base, 'logs', '--no-color', '--tail', '20', 'sanctuary', 'resonance'], { env });
+      const diagnostics = await runner('docker', [...base, 'logs', '--no-color', '--tail', '20', 'sanctuary', 'resonance'], { env });
       process.stderr.write(redact(diagnostics.stdout + diagnostics.stderr, secrets));
     }
     throw error;

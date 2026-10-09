@@ -11,7 +11,7 @@ import {
 } from '../recovery-lib.mjs';
 import { backupArguments, backupDeployment, validateBackupSource } from '../recovery-backup.mjs';
 import {
-  checkMigrations, cleanupProject, databaseSnapshot, drillArguments, recoveryConfig, recoveryDrill, requireFreshProject, sameDatabase, sanctuaryImageReference, validateRecoveryConfig,
+  checkMigrations, cleanupProject, databaseSnapshot, drillArguments, recoveryConfig, recoveryDrill, requireFreshProject, sameDatabase, sanctuaryImageReference, validateRecoveryConfig, verifyRestoredModeration,
 } from '../disposable-recovery-drill.mjs';
 import { workspace } from '../protocol-smoke.mjs';
 
@@ -378,6 +378,40 @@ test('database equality gates schema, all rows, sequences, migration checksums a
   ]) assert.equal(sameDatabase(source, { ...structuredClone(restored), [key]: changed }), false, key);
 });
 
+test('restored moderation probe accepts only the exact owned restore project before calling Docker', async () => {
+  for (const [selectedProject, selectedOwner] of [
+    ['illyaverse', owner], [project, owner], [`illya-recovery-${owner}-restore`, 'f'.repeat(16)],
+  ]) {
+    const fixture = recordingDocker(() => assert.fail('Moderation ownership guard ran after Docker'));
+    await assert.rejects(() => verifyRestoredModeration(fixture.docker, ['compose', '--project-name', selectedProject], { owner: selectedOwner }), /nonce|owned restore/);
+    assert.deepEqual(fixture.calls, []);
+  }
+});
+
+test('restored moderation probe uses one quiet fail-fast connection and requires the post-rollback completion marker', async () => {
+  const base = ['compose', '--project-name', `illya-recovery-${owner}-restore`, '--file', 'fixture.json'];
+  const fixture = recordingDocker(() => 'recovery-moderation-probe-passed\n');
+  const result = await verifyRestoredModeration(fixture.docker, base, { owner });
+  assert.equal(fixture.calls.length, 1);
+  assert.deepEqual(fixture.calls[0].args.slice(0, -1), [...base, 'exec', '-T', 'postgres', 'psql', '-X', '-q', '-At', '--set', 'ON_ERROR_STOP=1', '-U', 'illya', '-d', 'illyaverse', '-c']);
+  assert.equal(result.durableUserRevision, 2);
+  assert.equal(result.durableScoreRevision, 2);
+  assert.equal(result.abaAdvancesRevisions, true);
+  for (const output of ['', 'BEGIN\nDO\n', 'recovery-moderation-probe-passed\nunexpected output\n']) {
+    const incomplete = recordingDocker(() => output);
+    await assert.rejects(() => verifyRestoredModeration(incomplete.docker, base, { owner }), /did not complete its rollback/);
+    assert.equal(incomplete.calls.length, 1);
+  }
+});
+
+test('failed restored moderation assertions propagate without a second connection or fallback', async () => {
+  const base = ['compose', '--project-name', `illya-recovery-${owner}-restore`];
+  const failure = new Error('Restored score ABA assertion failed');
+  const fixture = recordingDocker(() => { throw failure; });
+  await assert.rejects(() => verifyRestoredModeration(fixture.docker, base, { owner }), error => error === failure);
+  assert.equal(fixture.calls.length, 1);
+});
+
 const migrationFilename = version => `${String(version).padStart(4, '0')}_fixture.sql`;
 const migrationBytes = version => Buffer.from(`-- exact bytes café migration ${version}\r\nSELECT ${version};\r\n`, 'utf8');
 const migrationChecksum = bytes => createHash('sha384').update(bytes).digest('hex');
@@ -392,7 +426,7 @@ async function migrationFixture(directory, count) {
   }));
 }
 
-test('migration discovery hashes exact bytes in numeric order and an appended 23rd migration preserves the first 22 records', async t => {
+test('migration discovery hashes exact bytes in numeric order and appended migrations 23 and 24 preserve earlier records', async t => {
   const root = await temporaryRoot(t);
   const directory = path.join(root, 'migrations');
   const expected22 = await migrationFixture(directory, 22);
@@ -410,21 +444,29 @@ test('migration discovery hashes exact bytes in numeric order and an appended 23
   assert.equal(await checkMigrations({ migrations: migrationLedger(captured22) }, captured22), 22);
   assert.equal(await checkMigrations({ migrations: migrationLedger(captured23) }, captured23), 23);
   await assert.rejects(async () => checkMigrations({ migrations: migrationLedger(captured22) }, captured23), /migration|checksum/i);
+  await writeFile(path.join(directory, migrationFilename(24)), migrationBytes(24));
+  const captured24 = await readSourceMigrations(directory);
+  assert.equal(captured24.length, 24);
+  assert.deepEqual(captured24.slice(0, 23), captured23);
+  assert.deepEqual(captured24.at(-1), { filename: migrationFilename(24), version: 24, checksum: migrationChecksum(migrationBytes(24)) });
+  assert.equal(await checkMigrations({ migrations: migrationLedger(captured23) }, captured23), 23);
+  assert.equal(await checkMigrations({ migrations: migrationLedger(captured24) }, captured24), 24);
+  await assert.rejects(async () => checkMigrations({ migrations: migrationLedger(captured23) }, captured24), /migration|checksum/i);
 });
 
 test('migration validation refuses failed, extra, missing, duplicate, reordered and changed ledger entries', async t => {
   const root = await temporaryRoot(t);
   const directory = path.join(root, 'migrations');
-  const expected = await migrationFixture(directory, 23);
+  const expected = await migrationFixture(directory, 24);
   const records = await readSourceMigrations(directory);
   assert.deepEqual(records, expected);
   const lines = migrationLedger(records).split('\n');
   for (const [name, change] of [
     ['failed migration', value => { value[4] = value[4].replace('|t|', '|f|'); }],
-    ['extra migration', value => { value.push(`24|t|${migrationChecksum(migrationBytes(24))}`); }],
+    ['extra migration', value => { value.push(`25|t|${migrationChecksum(migrationBytes(25))}`); }],
     ['missing migration', value => { value.splice(4, 1); }],
     ['duplicate migration', value => { value.push(value[4]); }],
-    ['changed version', value => { value[4] = value[4].replace(/^5\|/, '25|'); }],
+    ['changed version', value => { value[4] = value[4].replace(/^5\|/, '26|'); }],
     ['changed checksum', value => { value[4] = `5|t|${'0'.repeat(96)}`; }],
     ['reordered migration', value => { value.reverse(); }],
   ]) {
