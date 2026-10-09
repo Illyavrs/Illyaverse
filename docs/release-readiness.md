@@ -22,7 +22,7 @@
 
 ## 目前版本
 
-網站／圖譜檢查對應 `1e49045`。最後一輪有 75 項圖譜／首頁／個人頁操作及 17 項外觀／排名回歸通過；十張桌面、手機、三語系截圖經獨立審查。兩套部署另有 38 項唯讀 HTTP 檢查通過，schema 22 與原有資料保持一致。精確 image、來源與截圖 hash、範圍和跳過項目記錄於 [證據](../.impeccable/review/map-discovery-evidence.json)。
+2026-10-09 的網站 checkpoint 對應 HEAD `9d6e097`，詳見[密集介面驗證](dense-interface-verification.md)。原始完整 Web image `31e6cc4c…` 的 87 項瀏覽器測試與最終相容性修正 Web image `d1309dd7d4e405afa0a09ade2955fca5146152f34a13ab0e78ae96f559ddd4be` 的 26 項測試均分別通過；後者是相容性修正後的 final Web image，並非宣稱在其上重跑 87 項。最終 guarded Web-only deployment 只更新 Serendipity，保留後端八個服務、storage、schema 22 與原有資料；同一份證據也記錄來源、截圖、部署與實際瀏覽器核對。這是網站 checkpoint，不代表 stable／lazer 或 Kaleidoscope 的手動原生驗證已完成；那些檢查仍待玩家執行。
 
 圖譜改版部署時，兩套保留資料庫各有兩個帳號、十四筆當日排名觀察；主站有零張圖譜，客戶端測試站有四十四個難度。兩者當時都沒有實際保存的成績或 Replay。這些數量是該 checkpoint 的資料，不是演示活動。
 

@@ -2,7 +2,7 @@
 
 Illyaverse 將 RX 視為獨立的成績分區。遊戲仍使用 osu!、taiko、catch、mania 的原始 ruleset 編號 `0..3`；伺服器從已驗證的 mods 判定 `score_variant=vanilla|relax`，不接受玩家自行指定提交分區。
 
-RX 支援 osu!、taiko 與 catch。mania RX 提交會遭拒絕，網站也停用此組合。AP、AT 與 DA 維持不計入排名 pp 的政策。所有新成績仍需通過原有管理員審核，才會進入榜單。
+RX 支援 osu!、taiko 與 catch。mania RX 提交會遭拒絕，網站也停用此組合。AP、AT 與 DA 維持不計入排名 pp 的政策。通過原生驗證的成績會依提交類型自動公開：passed stable 需綁定 replay，failed stable 只保留歷史且不進入 passed 排名或最佳 pp，passed lazer 需完整、未中斷且綁定 capture；API 上傳、未完成 capture，以及管理員標記 pending 或 rejected 的成績仍留在 staging。
 
 ## 計算與顯示
 
@@ -29,8 +29,8 @@ stable 依目前 action 的 RX mod 讀取對應統計；lazer API 保留原始 r
 
 使用 [Kaleidoscope 測試包](kaleidoscope-launcher.md)與網站建立的 Illyaverse 帳號：
 
-1. 先在 osu! 模式完成一筆 Normal 成績，再開 RX 完成同一張譜面，確認都能提交。新成績會等待管理員審核，審核前不會進榜。
-2. 審核後，在網站玩家頁、排行榜與譜面榜切換 Normal／RX；核對成績、pp、準確率與遊玩次數分區，RX 譜面榜按 pp 排序。
+1. 先在 osu! 模式完成一筆 Normal 成績，再開 RX 完成同一張譜面，確認都能提交。通過必要 replay／capture 檢查的 native 成績會自動公開；API、未完成 capture 或明確管理決定的成績仍留在 staging。
+2. 公開後，在網站玩家頁、排行榜與譜面榜切換 Normal／RX；核對成績、pp、準確率與遊玩次數分區，RX 譜面榜按 pp 排序。
 3. 在 stable 切換 RX，或在 lazer 選擇／取消 RX，確認個人統計對應分區。lazer 已經開啟的玩家頁／排名視窗是否即時刷新，仍是需要回報的項目。
 4. 開啟兩筆 replay，確認保留原來的模式與 RX mod；再分別測試 taiko、catch。mania 的 RX 應無法提交。
 5. 正常關閉 lazer，確認私服資料目錄的 `rulesets` 中，本次放入的 Transfiguration DLL 已移除。若未完成，重新開啟 Kaleidoscope 檢查錯誤並重試清理。
