@@ -1,74 +1,64 @@
 # 使用 Kaleidoscope 啟動遊戲
 
-Kaleidoscope 是 Illyaverse 專用的 Windows 啟動器。先在網站註冊，再選擇已安裝的 stable 或 lazer，按「啟動」。遊戲已執行時，按鈕會改為「關閉並重新啟動」。沒有其他伺服器選單。
+Kaleidoscope 是 Illyaverse 的 Windows 圖形啟動器，負責啟動 stable／lazer、顯示狀態及清理暫存外掛。Transfiguration 是實際修改 lazer 連線與帳號載入方式的原創橋接外掛，會由啟動器管理。
 
-目前測試版固定連到 `https://illya.test`。lazer 使用已安裝的客戶端和現有圖譜庫，不需要另外匯入或複製圖譜。啟動器與原創 Transfiguration 外掛的測試範圍見[驗證記錄](verification.md)；真正的遊戲視窗、登入、遊玩與退出流程仍待玩家驗證。營運者尚未發布公開下載，請先取得營運者提供的完整測試包。
+## 目前測試包狀態
 
-GUI release 建置 checkpoint（2026-10-09）：沿用圖譜庫版本已通過核心、橋接與介面檢查，但完整桌面測試包仍未建成。三次 release 建置均在執行 Rust dependency build script 時遭 Windows 拒絕存取（error 5），原因尚未確認。較早的 GUI ZIP 不包含本次變更，不能用來驗證沿用圖譜庫流程。其後已另產出下列 CLI 測試包，兩種產物與驗證範圍分開記錄。
+新版 [GUI 測試 ZIP](../.artifacts/packages/kaleidoscope-gui-test-20261009-141323-4ae3b865e72a4f75a7d1010d10e73040.zip) 已建置，含伺服器網址設定、沿用遊戲偏好及私服帳號隔離。SHA-256：`4dc11a2f7a87fddcc0b50d945b2610504d5643d422a6637f588845f60881bdec`。此包是 Debug 原生建置，內嵌 production 網頁介面；完整目錄、ZIP 及內嵌介面檢查通過。先前使用整份獨立遊戲設定的 CLI 包只保留為[歷史整合證據](current-integration-20261009.md)，不適用下面的新流程。原生視窗、登入、遊玩與退出清理仍待實測。
 
-## 目前的 lazer CLI 測試包
+## 開始使用
 
-2026-10-09 的首次玩家啟動遇到 DLL 路徑比對問題，已修正。第二次通過 Guard 後仍沒有視窗：dump 確認 AuthNative 讀取目前 EXE 的 Windows 版本資源，但原 CLI 沒有這項資源。最新包已加入 Kaleidoscope 自己的 VERSIONINFO，保留 Auth loader，並將 running 確認延後到原始 draw 成功完成。這是包含 production 啟動與監護邏輯的 debug CLI 包，沒有圖形啟動器介面；真正的視窗、登入與送分仍需重試。[最新整合 checkpoint](current-integration-20261009.md)保留兩次失敗與各修正的驗證範圍。
+1. 在營運者提供的 Illyaverse 網站註冊帳號；預設本機測試網站是 `https://illya.test/register`。遊戲內註冊會引導至網站。
+2. 完整解壓營運者提供的新版 GUI 包，保留整個資料夾及其中的 EXE、DLL、相容性資料與授權文件。
+3. 開啟 `Kaleidoscope.exe`，選擇已安裝的 stable／lazer 的 `osu!.exe`。
+4. 如需指定部署網址，在「設定」填入伺服器網址並按「儲存」。確認網址後按對應遊戲的「啟動」，再用該伺服器的網站帳號登入。
 
-修正版本機 ZIP：[kaleidoscope-cli-test-20261009-124928-1abdafafcf364a248a47000d6531d907.zip](../.artifacts/packages/kaleidoscope-cli-test-20261009-124928-1abdafafcf364a248a47000d6531d907.zip)。SHA-256：`98b5a6c20ce0705cc83a3f0b6bbeae4759c852ce6822ba053cc68f13cf0bad07`。完整解壓新包並使用其中的 EXE 與 DLL；先前 `105203`、`115044` 包只保留為歷史證據，不能替代修正版。
+遊戲已執行時，按鈕會改為「關閉並重新啟動」。工具先請求所選安裝正常關閉；沒有結束時會顯示錯誤，不強制終止。
 
-取得並完整解壓測試包後，在該資料夾開啟 PowerShell。先確認已有 Illyaverse 網站帳號、本機 `illya.test` DNS／CA 設定，以及相容的 stock lazer，然後執行：
+## 伺服器網址
 
-```powershell
-.\Kaleidoscope.exe launcher start lazer "$env:LOCALAPPDATA\osulazer\current\osu!.exe"
-```
+預設為 `https://illya.test`。請填 HTTPS 基底網址，例如 `https://your-illyaverse.example`，不要加登入資訊、路徑、查詢參數或 `#`。只接受完整 ASCII DNS 名稱，不接受 IP、單段主機名稱、尾端句點或官方 `ppy.sh` 及其子網域。lazer 可使用自訂 HTTPS 連接埠；stable 使用 443，自訂其他連接埠時介面會停用 stable 啟動並說明原因。
 
-若安裝位置不同，只替換最後的 `osu!.exe` 路徑。這次測試僅接受 `osu!.dll`／`osu.Game.dll` 版本 `2026.1005.1.0`、`osu.Framework.dll` 版本 `2026.1005.0.0`、runtime `10.0.12`，且所有必要 assembly 的位元組必須符合包內 `compatibility.json`；版本字串相同仍可能因雜湊不同而拒絕啟動。更新成其他版本時會停止，不會回到官方伺服器。登入使用 Illyaverse 帳號。
+儲存只影響下一次啟動。目前執行的遊戲保留啟動時的網址，設定面板會分別顯示已保存網址與本次連線網址。連線失敗、外掛缺少或相容性不符時會停止，不會切回官方伺服器。
 
-CLI 會等待最多 40 秒，直到本次工作階段完成首幀，或失敗與清理有明確結果。Guard ready 後仍保持 `phase: preparing`；`phase: running` 需要 Guard 驗證、原始 draw 成功完成，以及自有遊戲程序仍存活。Draw 會排程顯示視窗，因此此訊號不獨立證明 OS 視窗可見，也不代表登入成功。失敗會回傳非零 exit code，並保留最後固定啟動階段、`stage`／`code`／exception 類別和數字退出狀態；不輸出遊戲的原始 stderr、exception message 或帳號內容。若等待逾時，執行 `launcher status` 查看後續結果，工具不會因逾時自動終止遊戲。
+公開網域需要營運者設定 DNS 與受信任 HTTPS。`illya.test` 是本機開發網域，仍需先完成[本機 DNS／CA 設定](local-client-testing.md)。啟動器不修改 hosts、不安裝 CA，也不略過 TLS 驗證。stable 由啟動器加上 `-devserver <設定的網域>`；lazer 由 Transfiguration 套用本次網址。
 
-啟動會沿用這份 lazer 的 default／custom／portable 圖譜庫，不需要重新匯入。私服登入與遊戲設定使用 `game.illyaverse.ini`；官方 `game.ini` 不會被讀取、複製或覆寫。端點固定為 `https://illya.test`，CLI 不修改 hosts、不安裝 CA，也不略過 TLS。遊戲與監護程序執行期間保留整個解壓資料夾。
+## lazer 的圖譜、偏好與帳號
 
-正常關閉 lazer 後，監護程序確認退出，再刪除此次放入且未被變更的自有 DLL。可用 `.\Kaleidoscope.exe launcher status` 查看狀態，或用 `.\Kaleidoscope.exe launcher stop` 請求正常關閉。若中斷後有殘留，先確認沒有其他 lazer 執行個體使用該圖譜庫，再執行 `.\Kaleidoscope.exe launcher recover`；檔案或目錄身分異常時工具會保留並報錯，請不要自行刪除其他 ruleset。退出清理成功後才正常開啟官方 lazer。
+lazer 使用現有安裝、`client.realm` 和 `files` 圖譜資源，不需要重新匯入。啟動器辨識一般、portable 或 `storage.ini` 指定的既有資料位置；不能安全確認時會停止，不建立另一個空白圖譜庫。音訊、輸入、顯示、遊戲與介面偏好沿用原本的 `game.ini`，修改後正常保存至同一份檔案。
 
-最新包通過 42 項實際 CLI package 完整性案例（包含 Win32 VERSIONINFO 查詢）、80 項 Rust 核心／CLI／生命週期測試與 Clippy、135 項隔離 managed diagnostic/progress checks、九項 pinned stock startup metadata contracts，以及八項 synthetic hostfxr boundaries。stock assembly、固定網路與帳號隔離 proof 的各自結果另列於[修正版驗證檔](../.artifacts/packages/kaleidoscope-cli-test-20261009-124928-1abdafafcf364a248a47000d6531d907.verification-final.json)，不能加總為真人測試。這些檢查未執行 AuthNative 或玩家遊戲，也沒有存取玩家圖譜庫。玩家仍須依序確認視窗、登入、聊天、下載、遊玩、Score／Replay、重連，以及退出後的 DLL 清理結果。
+只有登入與伺服器相關帳號快取另外保存到同一資料目錄的 `auth.illyaverse.json`，按正規化後的 HTTPS 網址分開：`Username`、`Token`、`SaveUsername`、`SavePassword`、`WasSupporter`、`UserOnlineStatus`、`PMFriendsOnly`。切換網域或連接埠不會沿用另一部署的 token。官方帳號值不會載入私服 API，保存遊戲偏好時會保留原有官方帳號行。舊的 `game.illyaverse.ini` 不會載入或遷移。
 
-## 完整 GUI 包的使用方式
+同一份 lazer 資料目錄同時只支援一個遊戲。啟動器會關閉所選安裝的既有程序，並拒絕已偵測到的其他標準名稱 lazer 程序；這不能阻止之後從外部手動開啟遊戲。不要同時用其他程式替換設定檔；保存只提供樂觀衝突檢查，無法保證比較後才發生的外部寫入。更換圖譜資料位置前，先退出私服遊戲並完成清理，再由正常 lazer 調整。
 
-1. 在 `https://illya.test/register` 建立 Illyaverse 帳號。遊戲內註冊會提供網站網址。
-2. 解壓縮完整測試包，保留 `Kaleidoscope.exe` 和同一資料夾的 `osu.Game.Rulesets.Transfiguration.dll`。
-3. 開啟 `Kaleidoscope.exe`，分別選擇 stable／lazer 安裝資料夾中的 `osu!.exe`。
-4. 按對應的「啟動」，再使用 Illyaverse 帳號登入遊戲。
+目前相容性限定為包內 `compatibility.json` 所列的精確 stock 檔案與執行環境（目前為 `2026.1005.1-tachyon`、runtime `10.0.12`）。版本字串相同仍可能因檔案雜湊不同而拒絕啟動。lazer 更新後可能需要新版 Kaleidoscope／Transfiguration 配套；不必重新編譯整套 lazer。請更新完整包，不要單獨替換 DLL。
 
-正式公開網域使用正常 DNS 與受信任 HTTPS 後，玩家不需要改 hosts。`illya.test` 是本機開發網域，仍需先完成[本機 DNS／CA 設定](local-client-testing.md)。啟動器不修改 hosts、不安裝 CA，也不跳過 TLS 驗證。
+## 關閉、清理與 lock 檔
 
-## stable
+正常關閉遊戲後，獨立監護程序確認退出，再刪除本次放入且未被更換的 Transfiguration DLL。只關閉啟動器視窗時，監護程序仍會等待遊戲。遊戲與監護程序執行期間請保留整個測試包資料夾。
 
-啟動器以固定 `-devserver illya.test` 參數啟動所選 stable。相同安裝已開啟時會先收到正常關閉要求；遊戲沒有結束時顯示錯誤，不強制終止或啟動另一份。
+若斷電或監護程序被結束，下一次開啟啟動器會檢查復原紀錄；有殘留時按「重試清理」。遊戲仍在執行、檔案被修改或目錄身分異常時會保留檔案並報錯，不刪除其他 ruleset。回到官方 lazer 前，先關閉此次私服遊戲並確認清理完成。
 
-## lazer
+`rulesets` 中的 `.kaleidoscope.lock` 是 Kaleidoscope 的互斥鎖；舊的 `.illyaverse-launcher.lock` 也會一起取得，以避免新舊啟動器同時安裝外掛。這兩個空檔案會刻意保留，存在本身不表示遊戲正在執行，也不是另一個 ruleset。檔案名稱來自啟動器，實際連線外掛仍叫 Transfiguration。
 
-啟動器沿用官方 lazer 的既有安裝檔，在遊戲入口執行前強制載入原創 Transfiguration 外掛。外掛設定固定網站、API 與即時服務，阻擋其他 HTTP／WebSocket 目的地，停用這次私服執行的官方更新與錯誤上報。外掛不存在、相容性不符或必要修補失敗時，遊戲入口不會執行。
+## CLI 與營運者建置
 
-不需要重新編譯整套 lazer，但啟動器與外掛仍需相容性維護。目前只允許已測試的 stock `2026.1005.1-tachyon` 檔案與執行環境。更新後不相容時，等待新版 Kaleidoscope／Transfiguration 配套測試包；啟動器會停止，沒有官方伺服器 fallback。啟動器綁定遊戲檔案與外掛的雜湊，請一起更新完整測試包，不要單獨替換 DLL。
-
-啟動器找出這份 lazer 實際使用的資料目錄，直接沿用原有 `client.realm` 和 `files` 圖譜資源。一般安裝從 `%APPDATA%\osu` 開始查找；安裝資料夾存在 `framework.ini` 時依 portable 模式查找，再讀取 `storage.ini` 的 `FullPath` 自訂路徑。找不到或無法安全確認既有路徑時會停止，不會建立另一個空白圖譜庫。沒有複製、搬移、重新匯入或建立 junction 的步驟。這項路徑判定以固定 [osu-framework 版本](https://github.com/ppy/osu-framework/tree/ab102608f363f24e0e33ec629a9bf613e72c9950)和原創[路徑解析器](../tools/kaleidoscope/src/launcher/storage.rs)為依據。
-
-官方的 `game.ini` 不會被讀取、複製或覆寫。私服登入資訊與遊戲設定存於同一資料目錄的 `game.illyaverse.ini`；外掛在設定載入和 API 背景執行緒啟動前確認這份獨立設定，不把官方帳號或 token 送到 Illyaverse。遊戲資料庫和圖譜資源仍是現有那份，只有這次執行的 IPC 與帳號設定分開。[設定隔離程式](../tools/transfiguration/src/AccountConfigIsolation.cs)記錄此邊界。
-
-外掛暫放在上述現有資料目錄的 `rulesets` 子資料夾。復原紀錄與就緒訊號存於 `%LOCALAPPDATA%\Illyaverse\Kaleidoscope`，不作為圖譜庫。啟動器記錄本次圖譜目錄與目錄身分，清理時不重新依另一份 `storage.ini` 選擇路徑。此次私服執行停用自動匯入 stable 和資料目錄切換；要更改 lazer 的資料位置，先結束遊戲並完成外掛清理，再由正常 lazer 調整，下一次啟動器會重新確認既有位置。不要手動放置或替換 Transfiguration DLL。
-
-## 關閉與清理
-
-遊戲結束後，獨立監護程序會確認程序身分與實際退出，再刪除本次放入的外掛。只關閉啟動器視窗時，監護程序繼續等待遊戲。
-
-強制結束監護程序或斷電時，當下無法執行刪除。下次開啟啟動器會檢查復原紀錄；有殘留時按「重試清理」。遊戲仍在執行，或檔案被更換、修改、連結到其他位置時，工具保留檔案並顯示錯誤。清理失敗不會顯示完成，也不刪除其他 ruleset。
-
-要回到官方伺服器，先關閉此次私服遊戲並確認清理完成，再正常開啟 lazer。舊版曾在 `%LOCALAPPDATA%\Illyaverse\lazer` 留下的啟動紀錄只供復原原本自有外掛，不會被選作新版圖譜庫，也不會刪除其中的圖譜或設定。
-
-## 營運者建置測試包
-
-在 Illyaverse 根目錄執行：
+另行提供的新版 CLI 測試包也可讀取、保存下次啟動網址與查看狀態。以下指令適用 CLI 包的 EXE；GUI 包使用前述介面操作：
 
 ```powershell
-.\tools\kaleidoscope\scripts\package-launcher.ps1
+.\Kaleidoscope.exe launcher settings
+.\Kaleidoscope.exe launcher set-endpoint "https://your-illyaverse.example"
+.\Kaleidoscope.exe launcher status
+.\Kaleidoscope.exe launcher stop
+.\Kaleidoscope.exe launcher recover
 ```
 
-需要 Windows Rust/MSVC 工具鏈、.NET 10 SDK、Node.js 22，以及已安裝且相容的 lazer。腳本只讀取安裝檔作為編譯參考，編譯自製外掛與 Tauri／Next.js 啟動器，將外掛 SHA-256 綁入啟動器；不重新編譯、修改或散布官方 client。腳本以 production 模式嵌入網站介面，並執行不開視窗的 HTML／JS／CSS 完整性檢查。必要 metadata、授權及每份 payload 的雜湊通過目錄／ZIP 一致性檢查後，才輸出測試包。預設產物是 Git 忽略的 `data-kaleidoscope-package-<時間>-<nonce>/` 目錄與同名 `.zip`；既有輸出不會被覆寫。腳本使用 repository 的 `target/` 並停用 Rust 增量編譯，不啟動遊戲。
+如使用新版 CLI 包，可執行 `launcher start lazer <osu!.exe 路徑>`。CLI 最多等待 40 秒；`running` 需確認首幀完成及程序仍存活，不能單靠它證明 OS 視窗可見或登入成功。逾時後用 `launcher status` 查詢，工具不因逾時自動結束遊戲。
 
-測試包尚未經過真正原生 GUI／遊玩驗證。請依序回報登入、聊天、譜面下載、遊玩、成績／replay、多人與重連，以及退出後外掛是否移除。[驗證記錄](verification.md)區分 source、隔離整合與原生驗證。
+營運者在 Illyaverse 根目錄建置 GUI 測試包：
+
+```powershell
+.\tools\kaleidoscope\scripts\package-launcher.ps1 -BuildProfile Debug
+```
+
+Debug 使用現有 `target/debug`，仍以 production 模式嵌入 Next.js 介面並啟用 Tauri `custom-protocol`。腳本驗證內嵌介面、配套外掛與目錄／ZIP 雜湊，不開啟遊戲；需要 Windows Rust/MSVC、.NET 10 SDK、Node.js 22 以上及相容 lazer。省略 `-BuildProfile` 時使用 Release；先前三次 Release 建置遇到 Windows error 5，原因尚未確認。建置選項或隔離測試通過都不能替代真正的 GUI、登入、Score／Replay、聊天、多人、重連與退出清理驗證，詳見[驗證記錄](verification.md)。

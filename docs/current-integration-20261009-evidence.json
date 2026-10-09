@@ -2,7 +2,7 @@
   "version": 1,
   "checkpoint": "integration-20261009",
   "recorded_at_utc": "2026-10-09T11:19:13Z",
-  "status": "guarded_deployment_passed_native_version_resource_repair_ready_player_retry_pending",
+  "status": "guarded_deployment_passed_auth_only_endpoint_gui_debug_package_ready_native_client_validation_pending",
   "git_topology": {
     "projects": [
       "Serendipity",
@@ -177,7 +177,7 @@
       "path": "data-current-integration-20261009/integration-deploy-20261009T110622Z-6dcebea122f949e6942b2915b00c5c9b/deployment-manifest.json",
       "sha256": "5dc274e2fcb7c2000dfcaf351627fb9e3143efe590d0057e869b55e7ea3ce73e"
     },
-    "finished_at_source_utc": "2026-10-09T11:14:49.9209291+00:00",
+    "finished_at_source_utc": "2026-10-09T19:14:49.9209291+08:00",
     "finished_at_utc_to_seconds": "2026-10-09T11:14:49Z",
     "finished_at_taipei_to_seconds": "2026-10-09T19:14:49+08:00",
     "schema": 22,
@@ -360,6 +360,50 @@
     "recovery_23_drill": {
       "path": ".artifacts/recovery-drill-23-20261009-ba6df5a590f84ebc8c0b900971cdfd1f/verification.json",
       "sha256": "06b2087f4e8481b2dce2f35f51298212d36483a11da7d7b981aa89ff19c84013"
+    },
+    "managed_auth_endpoint_final": {
+      "path": ".artifacts/builds/integration-20261009/managed-auth-endpoint-20261009T140216Z-0a6dff0043bd4d1f8df9bad3ab235203.log",
+      "sha256": "d2556a65570249c87312e98886a9e4ee3c772cb81cffacf1ea77063e8b1ae9cd"
+    },
+    "transfiguration_auth_source_final": {
+      "path": ".artifacts/builds/integration-20261009/transfiguration-auth-source-final-20261009T140627Z-73a615453f4c4fefaf01dd390a7b3cdb.json",
+      "sha256": "7d9293d0cb1b3b9a1afd7bf388f7e8e904ad4d2378c253f13708950f5a28035c"
+    },
+    "launcher_endpoint_auth_final": {
+      "path": ".artifacts/builds/integration-20261009/launcher-endpoint-auth-final-20261009T140737Z-4cfe2b18032e4fefab76c6342b8bb581.log",
+      "sha256": "f8ed342c286d8e1fe369ca4dfa4365c97caefbc75470c304b3f49f40c283a414"
+    },
+    "launcher_endpoint_auth_font_package": {
+      "path": ".artifacts/builds/integration-20261009/launcher-endpoint-auth-font-package-20261009T140606Z-7b18db0c52b34b5a9f1ed88569a1884e.log",
+      "sha256": "7c5c99706b5c0333813829e6293d6c98554593ec3636db86c4c784e3848de381"
+    },
+    "launcher_gui_endpoint_browser": {
+      "path": ".artifacts/tests/launcher-gui-endpoint-41898b4095854bc38506f686e95050e5/verification.json",
+      "sha256": "dc081fcccd223097f9644b84244a2017fd961c19c8bf93b9105704716b3db587"
+    },
+    "launcher_gui_endpoint_cleanup": {
+      "path": ".artifacts/tests/launcher-gui-endpoint-41898b4095854bc38506f686e95050e5/cleanup-receipt-20261009T132930Z-3a55a8385f84464ea903c15e6b6a43c0.json",
+      "sha256": "db359e4d1663be55a85fe8da5af1fd2931a9c84429a254fdbeb03236c2811849"
+    },
+    "launcher_gui_endpoint_browser_log": {
+      "path": ".artifacts/tests/launcher-gui-endpoint-41898b4095854bc38506f686e95050e5/playwright-confirmed.log",
+      "sha256": "5146700b7d8f3b657fc47c8aacd30865fc87b4757492bcc05a06adb14d8515da"
+    },
+    "launcher_gui_debug_package_verified": {
+      "path": ".artifacts/builds/integration-20261009/gui-package-verification-20261009T141530Z-7fb00ef86a9e4f8bb43071d331e569c7.json",
+      "sha256": "61b75ca4d5402e382905301d59465636b67609bb5a432dd9715238844859fd22"
+    },
+    "launcher_gui_debug_package_build": {
+      "path": ".artifacts/builds/integration-20261009/gui-package-20261009-141323-4ae3b865e72a4f75a7d1010d10e73040.log",
+      "sha256": "a16a0093eb37581ff2c9a9a570c14b291c57a6e41a090162c2055d56eb38da1d"
+    },
+    "launcher_gui_debug_package_manifest": {
+      "path": ".artifacts/packages/kaleidoscope-gui-test-20261009-141323-4ae3b865e72a4f75a7d1010d10e73040/package.json",
+      "sha256": "833bc0f6d6fa49372e3e3f93d83b54b6a38ae34525d0e93059cb550ad518d3b3"
+    },
+    "launcher_gui_debug_package_archive": {
+      "path": ".artifacts/packages/kaleidoscope-gui-test-20261009-141323-4ae3b865e72a4f75a7d1010d10e73040.zip",
+      "sha256": "4dc11a2f7a87fddcc0b50d945b2610504d5643d422a6637f588845f60881bdec"
     }
   },
   "limitations": [
@@ -370,7 +414,7 @@
   ],
   "local_https_read_only": {
     "version": 1,
-    "observed_at_utc": "2026-10-09T11:16:44.7265058+00:00",
+    "observed_at_utc": "2026-10-09T19:16:44.7265058+08:00",
     "url": "https://illya.test/",
     "curl_default": {
       "exit_code": 35,
@@ -458,7 +502,7 @@
     "native_gameplay_verified": false,
     "retained_services_redeployed": false
   },
-  "updated_at_utc": "2026-10-09T12:54:15.794773+00:00",
+  "updated_at_utc": "2026-10-09T14:18:59.7804132Z",
   "post_deployment_source_fixes": {
     "retained_services_redeployed": false,
     "serendipity": "1179315",
@@ -508,7 +552,7 @@
   },
   "lazer_cli_native_resource_repair": {
     "version": 1,
-    "recorded_at_utc": "2026-10-09T12:51:22.947760+00:00",
+    "recorded_at_utc": "2026-10-09T20:51:22.94776+08:00",
     "status": "targeted_native_version_resource_repair_ready_for_player_test",
     "artifact_kind": "cli_connection_test",
     "build_profile": "ordinary_debug",
@@ -622,5 +666,225 @@
     "official_fallback": false,
     "shared_existing_library": true,
     "private_config_filename": "game.illyaverse.ini"
+  },
+  "latest_player_test_artifact": {
+    "checkpoint": "launcher_gui_auth_endpoint_checkpoint",
+    "raw_evidence": "launcher_gui_debug_package_verified",
+    "artifact_kind": "gui_local_test_package",
+    "archive": {
+      "sha256": "4dc11a2f7a87fddcc0b50d945b2610504d5643d422a6637f588845f60881bdec",
+      "path": ".artifacts/packages/kaleidoscope-gui-test-20261009-141323-4ae3b865e72a4f75a7d1010d10e73040.zip"
+    },
+    "supersedes_current_test_recommendation_for": [
+      "lazer_cli",
+      "lazer_cli_startup_fix",
+      "lazer_cli_native_resource_repair"
+    ],
+    "supersession_reason": "Earlier CLI packages used a separate whole game.illyaverse.ini; the new GUI package shares original game.ini preferences and isolates only account/cache fields per origin.",
+    "native_gui_verified": false,
+    "native_login_verified": false,
+    "native_gameplay_verified": false
+  },
+  "launcher_gui_auth_endpoint_checkpoint": {
+    "status": "source_checks_and_actual_debug_gui_package_verified_native_player_validation_pending",
+    "source_commits": {
+      "kaleidoscope": "b05b56df3462efb879170f1bca0cf4782d05f08a",
+      "transfiguration": "f02f8ebfe171e964336249b4bc7af7772cd3ec7c",
+      "origins": "existing local bare repositories only",
+      "external_publication": false,
+      "source_manifest": {
+        "sha256": "7d9293d0cb1b3b9a1afd7bf388f7e8e904ad4d2378c253f13708950f5a28035c",
+        "path": ".artifacts/builds/integration-20261009/transfiguration-auth-source-final-20261009T140627Z-73a615453f4c4fefaf01dd390a7b3cdb.json"
+      }
+    },
+    "package": {
+      "directory": ".artifacts/packages/kaleidoscope-gui-test-20261009-141323-4ae3b865e72a4f75a7d1010d10e73040",
+      "archive": {
+        "path": ".artifacts/packages/kaleidoscope-gui-test-20261009-141323-4ae3b865e72a4f75a7d1010d10e73040.zip",
+        "length": 16556863,
+        "sha256": "4dc11a2f7a87fddcc0b50d945b2610504d5643d422a6637f588845f60881bdec"
+      },
+      "build_profile": "debug",
+      "frontend": "production Next.js export with Tauri custom-protocol",
+      "producer_exit_code": 0,
+      "embedded_interface_exit_code": 0,
+      "directory_integrity": "passed",
+      "archive_integrity": "passed",
+      "file_count": 17,
+      "payload_count": 16,
+      "launcher_sha256": "8a04abad926e5b3b083e795492ed9315f45797cfcf870bb8231ea8d5498431a4",
+      "bridge_sha256": "e29618115a8d083bacadeafc5b99b7adb42059ed8fe1c9c639ce109280899956",
+      "compatibility_sha256": "7ab9a8d99119b21d737b4af27b2ff1f6457c226fd275bc8e762364ea3153a01f",
+      "files_sha256": {
+        "Kaleidoscope.exe": "8a04abad926e5b3b083e795492ed9315f45797cfcf870bb8231ea8d5498431a4",
+        "osu.Game.Rulesets.Transfiguration.dll": "e29618115a8d083bacadeafc5b99b7adb42059ed8fe1c9c639ce109280899956",
+        "artifact.json": "776b0a65c88bef5fedf66d2fcd02f451b7006bbb0310afec12d7804c42bc2469",
+        "compatibility.json": "7ab9a8d99119b21d737b4af27b2ff1f6457c226fd275bc8e762364ea3153a01f",
+        "THIRD-PARTY-NOTICES.md": "d17d9533bc8de15a4a1fd0d44799bf8461dd0260b94b1574b8d88d0f23c28b95",
+        "LICENSE": "b1b6ba1ac2c11f5b24415e58edeba52b8b5966b38197477c5df720ce0e16a8af",
+        "README.txt": "44c96cc61c6d52cb0aec94faf61829b58ef99914e8014c593479abd65e369aa9",
+        "Transfiguration-README.md": "678565f6899d10a4a8cda280b4aa0bf648e27ae732a95f943113935698d00042",
+        "licenses/DotNet.txt": "cfc21f5e8bd655ae997eec916138b707b1d290b83272c02a95c9f821b8c87310",
+        "licenses/Harmony.txt": "407ddd98200c9f17f49942b5a7791e288a2bd553b59bf2f462db87dbb21c50bc",
+        "licenses/Iced.txt": "93a47598376fd3f276b631e75149340087153c6ff1635a53c5790249e9124e2d",
+        "licenses/Mono.Cecil.txt": "13d58ecbed676511c0c4c4009bff107025e50007ff5e7901dc562700ec62509e",
+        "licenses/MonoMod.txt": "0b64833222e3c6a426ad29362d26334619fe02eaf2b89ea9c37805521896c920",
+        "Kaleidoscope-THIRD-PARTY-NOTICES.md": "7ab3615bd81530751e318ab26f8b718c85b6df24e528e99689bbb1ea2b17d95e",
+        "licenses/Nunito.txt": "40991bfa02ac620aae16dc527f3c47765a25e43f270d4c301ee6ab663a8d9015",
+        "licenses/NotoSansTC.txt": "18aabf190848725e2576eefb5c29ba06aac1029d02132252a7f312eac2e50cf3"
+      },
+      "manifest": {
+        "sha256": "833bc0f6d6fa49372e3e3f93d83b54b6a38ae34525d0e93059cb550ad518d3b3",
+        "path": ".artifacts/packages/kaleidoscope-gui-test-20261009-141323-4ae3b865e72a4f75a7d1010d10e73040/package.json"
+      },
+      "receipt": {
+        "sha256": "61b75ca4d5402e382905301d59465636b67609bb5a432dd9715238844859fd22",
+        "path": ".artifacts/builds/integration-20261009/gui-package-verification-20261009T141530Z-7fb00ef86a9e4f8bb43071d331e569c7.json"
+      },
+      "build_log": {
+        "sha256": "a16a0093eb37581ff2c9a9a570c14b291c57a6e41a090162c2055d56eb38da1d",
+        "path": ".artifacts/builds/integration-20261009/gui-package-20261009-141323-4ae3b865e72a4f75a7d1010d10e73040.log"
+      },
+      "native_gui_verified": false,
+      "native_game_or_login_verified": false
+    },
+    "endpoint": {
+      "default": "https://illya.test",
+      "policy": "private HTTPS origin with ASCII multi-label DNS only; no credentials/path/query/fragment/IP/official ppy.sh",
+      "applies_to": "next launch",
+      "active_origin": "captured in session and frozen while running",
+      "stable_port": 443,
+      "lazer_custom_https_port": true,
+      "official_fallback": false,
+      "hosts_ca_or_tls_skip_changes": false
+    },
+    "preferences_and_account": {
+      "shared_existing_realm_and_maps": true,
+      "shared_game_preferences_filename": "game.ini",
+      "private_auth_filename": "auth.illyaverse.json",
+      "private_auth_partition": "canonical HTTPS origin, including custom port",
+      "private_fields": [
+        "Username",
+        "Token",
+        "SaveUsername",
+        "SavePassword",
+        "WasSupporter",
+        "UserOnlineStatus",
+        "PMFriendsOnly"
+      ],
+      "official_account_lines_preserved": "original bytes",
+      "old_whole_game_config_migration": false,
+      "one_lazer_per_data_root": true,
+      "later_external_manual_game_launch_prevented": false,
+      "external_concurrent_config_replacement_supported": false,
+      "persistence": "same-directory atomic replacement with optimistic conflict detection"
+    },
+    "lock_files": {
+      "primary": ".kaleidoscope.lock",
+      "legacy_compatibility": ".illyaverse-launcher.lock",
+      "both_held": true,
+      "empty_files_intentionally_remain": true,
+      "file_presence_proves_running": false
+    },
+    "checks": {
+      "managed": {
+        "log": {
+          "sha256": "d2556a65570249c87312e98886a9e4ee3c772cb81cffacf1ea77063e8b1ae9cd",
+          "path": ".artifacts/builds/integration-20261009/managed-auth-endpoint-20261009T140216Z-0a6dff0043bd4d1f8df9bad3ab235203.log"
+        },
+        "counts_are_separate_scopes_not_native_certification": true,
+        "endpoint_policy_source_linked": 193,
+        "startup_diagnostic_progress": 135,
+        "pinned_startup_metadata": 9,
+        "auth_file_source_linked": 38,
+        "production_policy": 36,
+        "direct_stock": 135,
+        "mandatory_bootstrap": 136,
+        "native_shared_preferences_auth_config": 64,
+        "native_auth_checks_included_in_direct_and_mandatory_scopes": true,
+        "source_manifest_evidence": {
+          "source_linked_auth_checks": 38,
+          "actual_native_account_checks": 64,
+          "focused_checks_including_setup": 79,
+          "combined_direct_stock_checks": 135,
+          "combined_mandatory_bootstrap_checks": 136,
+          "real_client_gui_and_login": "pending_human_test",
+          "persistence": "atomic same-directory replacement with optimistic conflict detection; concurrent external replacement unsupported"
+        },
+        "boundary": "Synthetic files and isolated stock parser/serializer/config fixtures; account scope intercepts API workers at entry with zero traffic, transport scopes use fixed loopback HTTP/WebSocket fixtures; no original GameHost, player Realm, GUI, GPU, player credentials or external network"
+      },
+      "rust": {
+        "log": {
+          "sha256": "f8ed342c286d8e1fe369ca4dfa4365c97caefbc75470c304b3f49f40c283a414",
+          "path": ".artifacts/builds/integration-20261009/launcher-endpoint-auth-final-20261009T140737Z-4cfe2b18032e4fefab76c6342b8bb581.log"
+        },
+        "passed": 90,
+        "failed": 0,
+        "library": 69,
+        "cli_unit": 3,
+        "cli_integration": 6,
+        "lifecycle": 12,
+        "clippy_all_targets": true,
+        "rustfmt": true,
+        "synthetic_hostfxr_boundaries": 8,
+        "game_started": false
+      },
+      "synthetic_package": {
+        "log": {
+          "sha256": "7c5c99706b5c0333813829e6293d6c98554593ec3636db86c4c784e3848de381",
+          "path": ".artifacts/builds/integration-20261009/launcher-endpoint-auth-font-package-20261009T140606Z-7b18db0c52b34b5a9f1ed88569a1884e.log"
+        },
+        "passed": 77,
+        "failed": 0,
+        "payload": "owned synthetic fixtures",
+        "exe_or_dll_executed": false,
+        "actual_embedded_interface_or_native_gui_proof": false
+      },
+      "browser_gui": {
+        "verification": {
+          "sha256": "dc081fcccd223097f9644b84244a2017fd961c19c8bf93b9105704716b3db587",
+          "path": ".artifacts/tests/launcher-gui-endpoint-41898b4095854bc38506f686e95050e5/verification.json"
+        },
+        "confirmed_log": {
+          "sha256": "5146700b7d8f3b657fc47c8aacd30865fc87b4757492bcc05a06adb14d8515da",
+          "path": ".artifacts/tests/launcher-gui-endpoint-41898b4095854bc38506f686e95050e5/playwright-confirmed.log"
+        },
+        "passed": 10,
+        "failed": 0,
+        "engine": "Playwright Chromium",
+        "desktop_viewport": [
+          800,
+          720
+        ],
+        "narrow_viewport": [
+          390,
+          844
+        ],
+        "bridge": "synthetic native IPC",
+        "actual_tauri_window_opened": false,
+        "cleanup_receipt": {
+          "sha256": "db359e4d1663be55a85fe8da5af1fd2931a9c84429a254fdbeb03236c2811849",
+          "path": ".artifacts/tests/launcher-gui-endpoint-41898b4095854bc38506f686e95050e5/cleanup-receipt-20261009T132930Z-3a55a8385f84464ea903c15e6b6a43c0.json"
+        },
+        "cleanup_manifest_null_fields": "Preserved historical serialization error; later immutable cleanup receipt confirms zero argv matches and port 3017 listeners, with original OS PID unrecorded.",
+        "source_scope": "Frontend browser test snapshot; later Windows GUI subsystem attribute and font license files are separately reflected in the actual compiled package."
+      }
+    },
+    "retained_runtime": {
+      "hold": true,
+      "redeployed": false,
+      "migrations": 22,
+      "source_migration_23_not_applied": true
+    },
+    "native_validation": {
+      "tauri_window": false,
+      "lazer_window": false,
+      "login": false,
+      "gameplay": false,
+      "score_replay": false,
+      "chat_multiplayer_reconnect": false,
+      "exit_cleanup": false,
+      "disposition": "pending human native testing"
+    }
   }
 }

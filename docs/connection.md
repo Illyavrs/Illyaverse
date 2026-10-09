@@ -1,8 +1,8 @@
 # 連線到 Illyaverse
 
-玩家使用專用 [Kaleidoscope 啟動器](kaleidoscope-launcher.md)：先在網站註冊，選擇已安裝的 stable／lazer，再按「啟動」。stable 使用固定 `-devserver`，lazer 沿用官方安裝檔和現有圖譜庫，在啟動前強制載入原創 Transfiguration 外掛。原生登入、遊玩與退出清理仍待玩家驗證；隔離測試不代表全功能相容。
+玩家使用專用 [Kaleidoscope 啟動器](kaleidoscope-launcher.md)：先在網站註冊，選擇已安裝的 stable／lazer，在設定確認伺服器網址，再按「啟動」。stable 使用該網域的 `-devserver`，lazer 沿用官方安裝檔和現有圖譜庫，在啟動前強制載入原創 Transfiguration 外掛。原生登入、遊玩與退出清理仍待玩家驗證；隔離測試不代表全功能相容。
 
-本文範例使用 `illya.example.com` 作為營運者擁有的根網域，供管理員設定伺服器與手動測試 stable 使用。目前 Kaleidoscope 測試包固定連到 `illya.test`，玩家不能輸入其他伺服器。正式營運前須由開發者更新並驗證套件的固定端點，再發布對應套件；只修改伺服器的 `.env` 不會改變已發出的啟動器。`illya.test` 適合本機開發，沒有公開 DNS 或公開 CA 憑證。公開玩家應優先使用正常 DNS 與受信任的 HTTPS，通常不需要修改 hosts。
+本文範例使用 `illya.example.com` 作為營運者擁有的根網域，供管理員設定伺服器與手動測試 stable 使用。新版 Kaleidoscope GUI 測試包預設連到 `https://illya.test`，設定可保存其他 Illyaverse 部署的 HTTPS 基底網址，下次啟動才生效；現有遊戲保留啟動時的網址。網址限制與可下載測試包見[啟動器指南](kaleidoscope-launcher.md)。只修改伺服器的 `.env` 不會改變玩家保存的網址。`illya.test` 適合本機開發，沒有公開 DNS 或公開 CA 憑證。公開玩家應優先使用正常 DNS 與受信任的 HTTPS，通常不需要修改 hosts。
 
 ## 使用 stable
 
@@ -28,9 +28,9 @@ Windows PowerShell 的啟動範例：
 
 ## 使用 lazer
 
-新的 [Kaleidoscope／Transfiguration 流程](kaleidoscope-launcher.md)使用已安裝的官方 lazer，不需要重編整套 client 或建立獨立圖譜庫。Rust 啟動橋接器在遊戲 Main 之前載入外掛，確認固定 endpoints、現有資料目錄、獨立帳號設定及 HTTP／WebSocket guard。必要修補、相容性或檔案驗證失敗時不執行遊戲入口；更新到未測版本後需更新相容的啟動器與橋接配套，沒有官方 fallback。
+新的 [Kaleidoscope／Transfiguration 流程](kaleidoscope-launcher.md)使用已安裝的官方 lazer，不需要重編整套 client 或建立獨立圖譜庫。Rust 啟動橋接器在遊戲 Main 之前載入外掛，確認本次 HTTPS 網址、現有資料目錄、獨立帳號設定及 HTTP／WebSocket guard。必要修補、相容性或檔案驗證失敗時不執行遊戲入口；更新到未測版本後需更新相容的啟動器與橋接配套，沒有官方 fallback。
 
-啟動器依 `%APPDATA%\osu`、portable 安裝的 `framework.ini` 和 `storage.ini` 的 `FullPath` 查找有效資料位置，沿用原有 `client.realm`／`files`，不複製、匯入或連結另一份圖譜庫。官方 `game.ini` 保留；私服設定在同一資料目錄的 `game.illyaverse.ini` 載入及保存，不讀取或複製官方 token。資料位置無法確認時停止；此次執行不切換資料位置，避免把復原或存檔導向另一份資料。詳細路徑與設定契約見[啟動器指南](kaleidoscope-launcher.md#lazer)。
+啟動器依 `%APPDATA%\osu`、portable 安裝的 `framework.ini` 和 `storage.ini` 的 `FullPath` 查找有效資料位置，沿用原有 `client.realm`／`files`，不複製、匯入或連結另一份圖譜庫。遊戲、音訊、輸入、顯示及介面偏好仍讀寫原本的 `game.ini`；七項帳號快取與記住登入欄位按 HTTPS 網址另外保存在同一資料目錄的 `auth.illyaverse.json`。官方帳號欄位在 native parser／API 使用前被隔離，保存偏好時保留官方帳號行的原始位元組。舊 `game.illyaverse.ini` 不載入或遷移。資料位置無法確認時停止；此次執行不切換資料位置，避免把復原或存檔導向另一份資料。同一資料目錄只支援一個 lazer session，外部同時替換設定檔不受支援；詳細路徑與設定契約見[啟動器指南](kaleidoscope-launcher.md)。
 
 獨立監護程序等待遊戲實際結束後清理自己的 DLL；GUI 關閉不會讓它提前刪除。`%LOCALAPPDATA%\Illyaverse\Kaleidoscope` 只保存啟動器控制紀錄，不是圖譜庫。中斷時按原本目錄及檔案身分復原，不刪其他 ruleset。公開 DNS／HTTPS 不需要 hosts；目前 `illya.test` 仍需[本機 DNS／CA](local-client-testing.md)。
 
@@ -130,7 +130,7 @@ hosts 只改 DNS 結果，**不會改變 HTTPS 的 hostname 或憑證驗證**。
 | 客戶端 | 必須以真實客戶端驗證 |
 | --- | --- |
 | Stable | 指定版本 `-devserver` 登入、封包／token、頻道聊天、下載、自訂譜面、score submit、replay、登出／重連 |
-| 官方 lazer + Kaleidoscope／Transfiguration | 支援版本檢查、啟動前固定端點、沿用既有圖譜庫、獨立帳號設定與官方 token 保留、連線失敗不回到官方、OAuth 登入／refresh／撤銷、API v2、SignalR、送分／replay、多人遊戲、退出後清理與啟動器異常復原；原生流程仍待驗證 |
+| 官方 lazer + Kaleidoscope／Transfiguration | 支援版本檢查、啟動前捕捉設定的 HTTPS 網址、沿用既有圖譜庫與遊戲偏好、按網址隔離帳號與保留官方帳號行、連線失敗不回到官方、OAuth 登入／refresh／撤銷、API v2、SignalR、送分／replay、多人遊戲、退出後清理與啟動器異常復原；原生流程仍待驗證 |
 | Lazer source build（開發者比較工具） | 自有 endpoints、OAuth refresh／撤銷、API v2、SignalR negotiation／方法、score token、replay frames、multiplayer／metadata；不作為玩家預設連線方式 |
 | 直接啟動官方 lazer | 尚未驗證任意私服端點切換；請使用上方固定伺服器啟動器流程 |
 

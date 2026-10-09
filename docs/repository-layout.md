@@ -41,7 +41,7 @@ Illyaverse/
 └── DESIGN.md                        網站的設計規則與材料參數
 ```
 
-Kaleidoscope 的介面與核心集中在同一個產品 repository。`tools/kaleidoscope/ui` 處理玩家看到的視窗，`tools/kaleidoscope/src` 提供可在隔離 fixture 中測試的 Rust 核心。Tauri 用 `kaleidoscope = { path = "../.." }` 連接核心，沒有第二份啟動與清理邏輯。Transfiguration 由它在 lazer 啟動前載入，負責固定私服端點與相容性檢查；正式 bridge 不包含官方客戶端或其資源。
+Kaleidoscope 的介面與核心集中在同一個產品 repository。`tools/kaleidoscope/ui` 處理玩家看到的視窗，`tools/kaleidoscope/src` 提供可在隔離 fixture 中測試的 Rust 核心。Tauri 用 `kaleidoscope = { path = "../.." }` 連接核心，沒有第二份啟動與清理邏輯。Transfiguration 由它在 lazer 啟動前載入，負責本次私服 HTTPS 網址、帳號隔離與相容性檢查；正式 bridge 不包含官方客戶端或其資源。
 
 共用 `crates/`、`migrations/`、根 npm／Cargo lockfile、Compose、部署與整合文件由 Illyaverse parent 管理。子專案有各自的 Git 歷史與版本，仍透過完整 parent checkout 取得共同建置環境；單獨 clone 一個子專案不包含其他服務、共用 crates／schema 或 parent lockfile。
 
