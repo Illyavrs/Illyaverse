@@ -1,8 +1,19 @@
 # Kaleidoscope
 
-Illyaverse 的原創 Rust 連線助手。玩家使用 `apps/kaleidoscope` 的 Tauri／Next.js 視窗，固定連到 Illyaverse；stable 使用 `-devserver`，lazer 使用原創 Transfiguration 強制啟動外掛。沒有玩家伺服器選單。
+Illyaverse 的原創 Rust 連線助手。玩家使用 `apps/kaleidoscope` 的 Tauri／Next.js 視窗，固定連到 Illyaverse；stable 使用 `-devserver`，lazer 沿用已安裝的客戶端和現有圖譜庫，在啟動前載入原創 Transfiguration 外掛。沒有玩家伺服器選單。
 
 操作與退出清理見[啟動器指南](../../docs/kaleidoscope-launcher.md)。公開 DNS／HTTPS 環境不需要 hosts。現在的本機 `illya.test` 測試仍需開發 DNS／CA，真實原生遊玩尚待驗證。
+
+Windows storage resolver 從 `%APPDATA%\osu` 或含 `framework.ini` 的 portable
+安裝目錄開始，再依 `storage.ini` 的 `FullPath` 找出既有有效路徑。直接沿用
+`client.realm`／`files`，不建立空白替代庫、不複製或匯入、不建立 junction。
+Transfiguration 只將 `OsuConfigManager` 導向同一資料目錄的
+`game.illyaverse.ini`，於設定載入及 API 背景執行緒啟動前確認私服設定；不讀取、
+複製或覆寫官方 `game.ini`。私服執行不切換這次已確認的圖譜資料位置。
+`%LOCALAPPDATA%\Illyaverse\Kaleidoscope` 保存控制、ready 和 session v2 復原紀錄，
+session 記錄原本 library 的路徑及目錄身分，並按已安裝 DLL 的雜湊／檔案身分清理。
+舊 session v1 只用於清理原 `%LOCALAPPDATA%\Illyaverse\lazer` 的自有外掛；此路徑
+不再是玩家圖譜庫。原生現有圖譜、私服登入、官方設定保留及退出清理仍需實測。
 
 以下 CLI hosts／profile 命令保留給開發者部署規劃，不是玩家 launcher 的伺服器設定。
 

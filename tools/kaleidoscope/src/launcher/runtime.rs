@@ -2,7 +2,8 @@
 //! client lifetime, and exact-file cleanup even after the visible UI closes.
 
 use super::install::{artifact_sha256, ManagedRuleset, RULESET_FILENAME};
-use super::{host, process};
+use super::storage::Library;
+use super::{host, process, storage};
 use crate::Result;
 use fs2::FileExt;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -110,6 +111,14 @@ struct Session {
     guardian: Option<process::Identity>,
     child: Option<process::Identity>,
     install_session: Option<Uuid>,
+    // Version 2 records the resolved library before the guardian is started.
+    // Recovery must never follow a subsequently changed storage.ini/preferences.
+    #[serde(default)]
+    library: Option<Library>,
+    // Version 1 wrote readiness beside the old private library. This flag only
+    // permits that fixed historical location while migrating recovery records.
+    #[serde(default)]
+    legacy_ready: bool,
     phase: Phase,
     detail: String,
     stop_requested: bool,
@@ -128,7 +137,8 @@ struct Ready {
 #[derive(Clone)]
 struct Paths {
     control: PathBuf,
-    data: PathBuf,
+    roaming: PathBuf,
+    legacy_data: PathBuf,
     launcher: PathBuf,
 }
 
@@ -138,20 +148,21 @@ impl Paths {
         return Err("Kaleidoscope 原生啟動器目前僅支援 Windows".into());
         #[cfg(windows)]
         {
-            let local = std::env::var_os("LOCALAPPDATA")
-                .map(PathBuf::from)
-                .ok_or("無法找到目前使用者的 LOCALAPPDATA")?;
+            let local = storage::local_app_data()?;
             check_components(&local)?;
             let base = local.join("Illyaverse");
             let control = base.join("Kaleidoscope");
             ensure_directory(&control)?;
             let control = fs::canonicalize(control).map_err(|error| error.to_string())?;
-            let data = base.join("lazer");
+            let roaming = storage::roaming_app_data()?;
+            check_components(&roaming)?;
+            let legacy_data = base.join("lazer");
             let launcher =
                 canonical_file(&std::env::current_exe().map_err(|error| error.to_string())?)?;
             Ok(Self {
                 control,
-                data,
+                roaming,
+                legacy_data,
                 launcher,
             })
         }
@@ -162,11 +173,8 @@ impl Paths {
     fn session(&self) -> PathBuf {
         self.control.join(SESSION_FILENAME)
     }
-    fn rulesets(&self) -> PathBuf {
-        self.data.join("rulesets")
-    }
     fn ready(&self, nonce: &str) -> PathBuf {
-        self.data.join(format!("session-ready-{nonce}.json"))
+        self.control.join(format!("session-ready-{nonce}.json"))
     }
     fn bridge(&self) -> Result<PathBuf> {
         Ok(self
@@ -175,6 +183,19 @@ impl Paths {
             .ok_or("啟動器缺少安裝資料夾")?
             .join(RULESET_FILENAME))
     }
+}
+
+fn resolve_library(paths: &Paths, executable: &Path) -> Result<Library> {
+    storage::resolve(&paths.roaming, &paths.control, executable)
+}
+
+fn refuse_other_lazer_instances() -> Result<()> {
+    // Also catches a selected client restarted during the launch race window.
+    // Only start() may gracefully close the exact user-selected installation.
+    if !process::find_lazer_candidates()?.is_empty() {
+        return Err("另一個 lazer 正在執行；請先關閉後再使用現有圖譜庫".into());
+    }
+    Ok(())
 }
 
 /// Returns only client paths and launcher state. No hostname setting is exposed.
@@ -229,6 +250,12 @@ pub fn start(client: Client) -> Result<Snapshot> {
     for running in process::find_by_executable(&selected)? {
         process::close_gracefully(&running, CLOSE_TIMEOUT)?;
     }
+    let library = if client == Client::Lazer {
+        refuse_other_lazer_instances()?;
+        Some(resolve_library(&paths, &selected)?)
+    } else {
+        None
+    };
     let _lock = ControlLock::open(&paths)?;
     if read_session(&paths)?
         .as_ref()
@@ -240,7 +267,7 @@ pub fn start(client: Client) -> Result<Snapshot> {
     }
     let nonce = fresh_nonce()?;
     let session = Session {
-        version: 1,
+        version: 2,
         nonce: nonce.clone(),
         client,
         selected_identity: process::executable_identity(&selected)?,
@@ -250,6 +277,8 @@ pub fn start(client: Client) -> Result<Snapshot> {
         guardian: None,
         child: None,
         install_session: None,
+        library,
+        legacy_ready: false,
         phase: Phase::Preparing,
         detail: "正在準備 Illyaverse 連線".into(),
         stop_requested: false,
@@ -332,6 +361,20 @@ fn snapshot_at(paths: &Paths) -> Result<Snapshot> {
             }
         }
     };
+    let current_library = session
+        .as_ref()
+        .filter(|record| !session_completed(record))
+        .and_then(|record| record.library.clone())
+        .or_else(|| {
+            preferences
+                .lazer
+                .as_deref()
+                .and_then(|path| resolve_library(paths, path).ok())
+        });
+    let plugin_present = match current_library {
+        Some(library) => path_exists(&library.rulesets().join(RULESET_FILENAME))?,
+        None => path_exists(&paths.legacy_data.join("rulesets").join(RULESET_FILENAME))?,
+    };
     Ok(Snapshot {
         stable: StableSnapshot {
             path: preferences.stable.as_deref().map(display_path),
@@ -349,7 +392,7 @@ fn snapshot_at(paths: &Paths) -> Result<Snapshot> {
         detail: session
             .map(|session| session.detail)
             .unwrap_or_else(|| "選擇遊戲安裝路徑以連線至 Illyaverse".into()),
-        plugin_present: path_exists(&paths.rulesets().join(RULESET_FILENAME))?,
+        plugin_present,
     })
 }
 
@@ -418,6 +461,14 @@ fn session_is_live(session: &Session) -> Result<bool> {
     Ok(false)
 }
 
+fn session_completed(session: &Session) -> bool {
+    matches!(session.phase, Phase::Idle | Phase::Error)
+        && session.install_session.is_none()
+        && session.child.is_none()
+        && session.guardian.is_none()
+        && !session.legacy_ready
+}
+
 fn recover_at(paths: &Paths) -> Result<()> {
     let _lock = ControlLock::open(paths)?;
     let session = read_session(paths)?;
@@ -429,37 +480,59 @@ fn recover_at(paths: &Paths) -> Result<()> {
     {
         return Err("遊戲或其守護程序仍在執行；不會移除正在使用的連線模組".into());
     }
-    let rulesets = paths.rulesets();
-    if rulesets.exists() {
-        let mut managed = ManagedRuleset::open(&rulesets)?;
-        let journal = managed.active_session()?;
-        if journal.is_some() && session.is_none() {
-            return Err("連線模組有復原紀錄，但缺少程序所有權紀錄；檔案已保留".into());
-        }
-        if let (Some(owned), Some(receipt)) = (
-            session.as_ref().and_then(|value| value.install_session),
-            journal.as_ref(),
-        ) {
-            if owned != receipt.session_id {
-                return Err("連線模組的工作階段身分不符；檔案已保留".into());
+    let completed = session.as_ref().is_some_and(session_completed);
+    let library = match &session {
+        Some(_) if completed => None,
+        Some(record) => record.library.clone(),
+        None => {
+            let preferences = read_preferences(paths)?;
+            if let Some(selected) = preferences.lazer.as_deref() {
+                Some(resolve_library(paths, selected)?)
+            } else if path_exists(&paths.legacy_data)? {
+                Some(Library::open(&paths.legacy_data)?)
+            } else {
+                None
             }
         }
-        if let Err(error) = managed.recover() {
-            if let Some(mut failed) = session.clone() {
-                failed.phase = Phase::CleanupFailed;
-                failed.detail = error.clone();
-                write_json(&paths.session(), &failed)?;
+    };
+    if let Some(library) = library {
+        library.validate()?;
+        let rulesets = library.rulesets();
+        if path_exists(&rulesets)? {
+            let mut managed = ManagedRuleset::open(&rulesets)?;
+            let journal = managed.active_session()?;
+            if journal.is_some() {
+                refuse_other_lazer_instances()?;
             }
-            return Err(error);
+            if journal.is_some() && session.is_none() {
+                return Err("連線模組有復原紀錄，但缺少程序所有權紀錄；檔案已保留".into());
+            }
+            if let (Some(owned), Some(receipt)) = (
+                session.as_ref().and_then(|value| value.install_session),
+                journal.as_ref(),
+            ) {
+                if owned != receipt.session_id {
+                    return Err("連線模組的工作階段身分不符；檔案已保留".into());
+                }
+            }
+            if let Err(error) = managed.recover() {
+                if let Some(mut failed) = session.clone() {
+                    failed.phase = Phase::CleanupFailed;
+                    failed.detail = error.clone();
+                    write_json(&paths.session(), &failed)?;
+                }
+                return Err(error);
+            }
         }
     }
     if let Some(mut session) = session {
-        cleanup_ready(paths, &session.nonce)?;
+        cleanup_session_ready(paths, &session)?;
         session.phase = Phase::Idle;
         session.detail = "已關閉遊戲並移除 Illyaverse 連線模組".into();
         session.guardian = None;
         session.child = None;
         session.install_session = None;
+        session.legacy_ready = false;
         session.stop_requested = false;
         write_json(&paths.session(), &session)?;
     }
@@ -513,7 +586,13 @@ fn run_guardian(paths: &Paths, nonce: &str) -> Result<i32> {
         record.detail = "正在移除連線模組".into();
     })?;
     let cleanup = match &mut managed {
-        Some(managed) => managed.cleanup().map(|_| ()),
+        Some(managed) => session
+            .library
+            .as_ref()
+            .ok_or("清理缺少原有圖譜資料夾紀錄".into())
+            .and_then(Library::validate)
+            .and_then(|()| refuse_other_lazer_instances())
+            .and_then(|()| managed.cleanup().map(|_| ())),
         None => Ok(()),
     }
     .and_then(|()| cleanup_ready(paths, nonce));
@@ -560,6 +639,12 @@ fn run_client(
     }
     if session.client == Client::Lazer {
         verify_lazer_compatibility(paths, &selected)?;
+        refuse_other_lazer_instances()?;
+        session
+            .library
+            .as_ref()
+            .ok_or("lazer 缺少原有圖譜資料夾紀錄")?
+            .validate()?;
     }
     if matching_session(paths, &session.nonce)?.stop_requested {
         return Err("啟動已取消".into());
@@ -575,8 +660,14 @@ fn run_client(
         }
         Client::Lazer => {
             let (bridge, hash) = verify_bridge(paths)?;
-            ensure_directory(&paths.rulesets())?;
-            *managed = Some(ManagedRuleset::open(paths.rulesets())?);
+            let library = session
+                .library
+                .as_ref()
+                .ok_or("lazer 缺少原有圖譜資料夾紀錄")?;
+            library.validate()?;
+            ensure_directory(&library.rulesets())?;
+            *managed = Some(ManagedRuleset::open(library.rulesets())?);
+            library.validate()?;
             let receipt = managed
                 .as_mut()
                 .expect("installation guard exists")
@@ -592,7 +683,8 @@ fn run_client(
                 "ILLYAVERSE_LAZER_INSTALL_ROOT",
                 selected.parent().ok_or("lazer 安裝路徑缺少父資料夾")?,
             );
-            command.env("ILLYAVERSE_LAZER_DATA_ROOT", &paths.data);
+            command.env("ILLYAVERSE_LAZER_DATA_ROOT", &library.root);
+            command.env("ILLYAVERSE_LAZER_CONTROL_ROOT", &paths.control);
             command.env("ILLYAVERSE_LAZER_SESSION", &session.nonce);
             command.env("ILLYAVERSE_LAZER_READY_FILE", paths.ready(&session.nonce));
             command.env("OSU_DISABLE_ERROR_REPORTING", "1");
@@ -690,9 +782,15 @@ fn run_lazer_host(paths: &Paths, nonce: &str) -> Result<i32> {
     let selected = validate_client(&session.selected_executable, Client::Lazer)?;
     verify_lazer_compatibility(paths, &selected)?;
     let install = selected.parent().ok_or("lazer 缺少安裝資料夾")?;
-    validate_child_environment(paths, nonce, install)?;
+    let library = session
+        .library
+        .as_ref()
+        .ok_or("lazer 缺少原有圖譜資料夾紀錄")?;
+    library.validate()?;
+    refuse_other_lazer_instances()?;
+    validate_child_environment(paths, nonce, install, library)?;
     let (_, hash) = verify_bridge(paths)?;
-    let bridge = paths.rulesets().join(RULESET_FILENAME);
+    let bridge = library.rulesets().join(RULESET_FILENAME);
     if artifact_sha256(&bridge)? != hash {
         return Err("已安裝的連線模組與發行雜湊不符；不會進入 Main".into());
     }
@@ -703,10 +801,16 @@ fn run_lazer_host(paths: &Paths, nonce: &str) -> Result<i32> {
     )
 }
 
-fn validate_child_environment(paths: &Paths, nonce: &str, install: &Path) -> Result<()> {
+fn validate_child_environment(
+    paths: &Paths,
+    nonce: &str,
+    install: &Path,
+    library: &Library,
+) -> Result<()> {
     for (name, expected) in [
         ("ILLYAVERSE_LAZER_INSTALL_ROOT", install.to_path_buf()),
-        ("ILLYAVERSE_LAZER_DATA_ROOT", paths.data.clone()),
+        ("ILLYAVERSE_LAZER_DATA_ROOT", library.root.clone()),
+        ("ILLYAVERSE_LAZER_CONTROL_ROOT", paths.control.clone()),
         ("ILLYAVERSE_LAZER_READY_FILE", paths.ready(nonce)),
     ] {
         if std::env::var_os(name).map(PathBuf::from).as_ref() != Some(&expected) {
@@ -750,16 +854,15 @@ fn read_preferences(paths: &Paths) -> Result<Preferences> {
 }
 
 fn read_session(paths: &Paths) -> Result<Option<Session>> {
-    let session: Option<Session> = read_json(&paths.session())?;
-    if let Some(session) = &session {
-        if session.version != 1
+    let mut session: Option<Session> = read_json(&paths.session())?;
+    if let Some(session) = &mut session {
+        if !matches!(session.version, 1 | 2)
             || !valid_nonce(&session.nonce)
             || session.detail.len() > 4096
             || !session.selected_executable.is_absolute()
             || !session.launcher_executable.is_absolute()
             || session.selected_identity.len() > 128
             || session.launcher_identity.len() > 128
-            || session.launcher_executable != paths.launcher
             || !session
                 .selected_executable
                 .file_name()
@@ -770,6 +873,46 @@ fn read_session(paths: &Paths) -> Result<Option<Session>> {
                 .any(|part| matches!(part, Component::ParentDir))
         {
             return Err("工作階段復原紀錄無效；現有檔案已保留".into());
+        }
+        // The recorded launcher belongs to the historical session. Moving or
+        // upgrading the current package must not prevent status or recovery;
+        // guardian/host entry and live process ownership still match that record.
+        if session.version == 1 {
+            if session.library.is_some() {
+                return Err("舊版工作階段不得指定另一個圖譜資料夾".into());
+            }
+            if session.client == Client::Lazer && path_exists(&paths.legacy_data)? {
+                session.library = Some(Library::open(&paths.legacy_data)?);
+            } else if session.install_session.is_some() {
+                return Err("舊版私有圖譜資料夾已不見；復原紀錄已保留".into());
+            } else if session.client == Client::Lazer {
+                // No historical root, owned install or process means the old
+                // guardian never reached installation. Permit journal recovery.
+                if session.child.is_some() || session.guardian.is_some() {
+                    return Err("舊版遊戲工作階段缺少原有資料夾；紀錄已保留".into());
+                }
+                session.phase = Phase::Error;
+            }
+            session.legacy_ready = session.client == Client::Lazer;
+            session.version = 2;
+        }
+        if session.legacy_ready
+            && (session.client != Client::Lazer
+                || session.library.as_ref().is_some_and(|library| {
+                    library.root != fs::canonicalize(&paths.legacy_data).unwrap_or_default()
+                }))
+        {
+            return Err("舊版啟動訊號不得指定另一個資料夾".into());
+        }
+        match (&session.client, &session.library) {
+            (Client::Lazer, Some(library)) => {
+                library.validate_record()?;
+            }
+            (Client::Lazer, None)
+                if session.install_session.is_none()
+                    && matches!(session.phase, Phase::Idle | Phase::Error) => {}
+            (Client::Stable, None) => {}
+            _ => return Err("工作階段缺少一致的圖譜資料夾紀錄；檔案已保留".into()),
         }
         for (identity, guardian) in [(&session.guardian, true), (&session.child, false)] {
             let Some(identity) = identity else {
@@ -813,6 +956,21 @@ fn cleanup_ready(paths: &Paths, nonce: &str) -> Result<()> {
         let path = paths.ready(nonce);
         ordinary_file(&path)?;
         fs::remove_file(path).map_err(|_| "無法移除工作階段啟動訊號")?;
+    }
+    Ok(())
+}
+
+fn cleanup_session_ready(paths: &Paths, session: &Session) -> Result<()> {
+    if !session.legacy_ready {
+        return cleanup_ready(paths, &session.nonce);
+    }
+    let path = paths
+        .legacy_data
+        .join(format!("session-ready-{}.json", session.nonce));
+    if let Some(ready) = read_json::<Ready>(&path)? {
+        validate_ready(&ready, &session.nonce)?;
+        ordinary_file(&path)?;
+        fs::remove_file(path).map_err(|_| "無法移除舊版工作階段啟動訊號")?;
     }
     Ok(())
 }
@@ -1178,9 +1336,12 @@ mod tests {
             write_pe(&client, 0x8664);
             let paths = Paths {
                 control,
-                data: directory.join("private-lazer"),
+                roaming: directory.join("roaming"),
+                legacy_data: directory.join("private-lazer"),
                 launcher,
             };
+            fs::create_dir(&paths.roaming).unwrap();
+            fs::create_dir(paths.roaming.join("osu")).unwrap();
             Self {
                 directory,
                 paths,
@@ -1192,6 +1353,14 @@ mod tests {
             fs::write(&bridge, b"owned startup bridge fixture").unwrap();
             let hash = artifact_sha256(&bridge).unwrap();
             (bridge, hash)
+        }
+        fn upgraded_paths(&self) -> Paths {
+            let mut paths = self.paths.clone();
+            let package = self.directory.join("upgraded-package");
+            fs::create_dir(&package).unwrap();
+            paths.launcher = package.join("kaleidoscope.fixture.exe");
+            fs::write(&paths.launcher, b"upgraded launcher identity fixture").unwrap();
+            paths
         }
         fn layout(&self) {
             let root = self.client.parent().unwrap();
@@ -1211,7 +1380,7 @@ mod tests {
         }
         fn session(&self, paths: &Paths) -> Session {
             Session {
-                version: 1,
+                version: 2,
                 nonce: fresh_nonce().unwrap(),
                 client: Client::Lazer,
                 selected_executable: self.client.clone(),
@@ -1221,6 +1390,8 @@ mod tests {
                 guardian: None,
                 child: None,
                 install_session: None,
+                library: Some(resolve_library(paths, &self.client).unwrap()),
+                legacy_ready: false,
                 phase: Phase::Preparing,
                 detail: "fixture preparing".into(),
                 stop_requested: false,
@@ -1299,6 +1470,321 @@ mod tests {
     }
 
     #[test]
+    fn recovery_uses_recorded_library_even_after_preferences_and_selector_change() {
+        let fixture = Fixture::new();
+        let paths = &fixture.paths;
+        let library = resolve_library(paths, &fixture.client).unwrap();
+        ensure_directory(&library.rulesets()).unwrap();
+        fs::write(library.root.join("client.realm"), b"realm marker").unwrap();
+        fs::create_dir(library.root.join("files")).unwrap();
+        fs::write(library.root.join("files/map.fixture"), b"resource marker").unwrap();
+        fs::write(library.root.join("game.ini"), b"official config marker").unwrap();
+        let (bridge, hash) = fixture.bridge();
+        let mut manager = ManagedRuleset::open(library.rulesets()).unwrap();
+        let receipt = manager.install(bridge, &hash).unwrap();
+        drop(manager);
+        let mut record = fixture.session(paths);
+        record.install_session = Some(receipt.session_id);
+        write_json(&paths.session(), &record).unwrap();
+        let different = fixture.directory.join("different-library");
+        fs::create_dir(&different).unwrap();
+        fs::create_dir(different.join("rulesets")).unwrap();
+        let foreign = different.join("rulesets").join(RULESET_FILENAME);
+        fs::write(&foreign, b"foreign DLL must remain").unwrap();
+        fs::write(
+            library.root.join("storage.ini"),
+            format!("FullPath = {}", different.display()),
+        )
+        .unwrap();
+        write_json(&paths.prefs(), &Preferences::default()).unwrap();
+        recover_at(paths).unwrap();
+        assert!(!receipt.installed_path.exists());
+        assert_eq!(fs::read(foreign).unwrap(), b"foreign DLL must remain");
+        assert_eq!(
+            fs::read(library.root.join("client.realm")).unwrap(),
+            b"realm marker"
+        );
+        assert_eq!(
+            fs::read(library.root.join("files/map.fixture")).unwrap(),
+            b"resource marker"
+        );
+        assert_eq!(
+            fs::read(library.root.join("game.ini")).unwrap(),
+            b"official config marker"
+        );
+        assert_eq!(read_session(paths).unwrap().unwrap().phase, Phase::Idle);
+    }
+
+    #[test]
+    fn recovery_preserves_owned_artifact_when_library_parent_identity_changes() {
+        let fixture = Fixture::new();
+        let paths = &fixture.paths;
+        let library = resolve_library(paths, &fixture.client).unwrap();
+        ensure_directory(&library.rulesets()).unwrap();
+        let (bridge, hash) = fixture.bridge();
+        let mut manager = ManagedRuleset::open(library.rulesets()).unwrap();
+        let receipt = manager.install(bridge, &hash).unwrap();
+        drop(manager);
+        let mut record = fixture.session(paths);
+        record.install_session = Some(receipt.session_id);
+        write_json(&paths.session(), &record).unwrap();
+        let displaced = fixture.directory.join("displaced-library");
+        fs::rename(&library.root, &displaced).unwrap();
+        fs::create_dir(&library.root).unwrap();
+        // Even preserving the inner rulesets directory ID cannot authorize a
+        // replacement library root. The separate session root ID must win.
+        fs::rename(displaced.join("rulesets"), library.rulesets()).unwrap();
+        assert!(recover_at(paths).unwrap_err().contains("身分已變更"));
+        assert!(receipt.installed_path.exists());
+        assert!(receipt.journal_path.exists());
+        assert!(paths.session().exists());
+    }
+
+    #[test]
+    fn cleanup_recovers_install_publication_before_receipt_persistence() {
+        let fixture = Fixture::new();
+        let paths = &fixture.paths;
+        let record = fixture.session(paths);
+        write_json(&paths.session(), &record).unwrap();
+        let library = record.library.as_ref().unwrap();
+        ensure_directory(&library.rulesets()).unwrap();
+        let (bridge, hash) = fixture.bridge();
+        let mut manager = ManagedRuleset::open(library.rulesets()).unwrap();
+        let receipt = manager.install(bridge, &hash).unwrap();
+        drop(manager);
+        // Crash happened before the receipt UUID reached the session journal.
+        assert!(record.install_session.is_none());
+        recover_at(paths).unwrap();
+        assert!(!receipt.installed_path.exists());
+        assert!(!receipt.journal_path.exists());
+    }
+
+    #[test]
+    fn legacy_v1_recovery_is_fixed_to_original_private_library_and_ready_path() {
+        let fixture = Fixture::new();
+        let paths = &fixture.paths;
+        fs::create_dir(&paths.legacy_data).unwrap();
+        fs::create_dir(paths.legacy_data.join("rulesets")).unwrap();
+        let (bridge, hash) = fixture.bridge();
+        let mut manager = ManagedRuleset::open(paths.legacy_data.join("rulesets")).unwrap();
+        let receipt = manager.install(bridge, &hash).unwrap();
+        drop(manager);
+        let mut record = fixture.session(paths);
+        record.version = 1;
+        record.library = None;
+        record.install_session = Some(receipt.session_id);
+        write_json(&paths.session(), &record).unwrap();
+        let signal = json!({"protocol":1,"session":record.nonce,"status":"ready","endpoint":SERVER,"fixture":false});
+        let legacy_ready = paths
+            .legacy_data
+            .join(format!("session-ready-{}.json", record.nonce));
+        write_json(&legacy_ready, &signal).unwrap();
+        let modern_root = resolve_library(paths, &fixture.client).unwrap();
+        ensure_directory(&modern_root.rulesets()).unwrap();
+        let untouched = modern_root.rulesets().join(RULESET_FILENAME);
+        fs::write(&untouched, b"foreign shared library DLL").unwrap();
+        write_json(
+            &paths.prefs(),
+            &Preferences {
+                stable: None,
+                lazer: Some(fixture.client.clone()),
+            },
+        )
+        .unwrap();
+        recover_at(paths).unwrap();
+        assert!(!receipt.installed_path.exists());
+        assert!(!legacy_ready.exists());
+        assert_eq!(fs::read(untouched).unwrap(), b"foreign shared library DLL");
+        let migrated = read_session(paths).unwrap().unwrap();
+        assert_eq!(migrated.version, 2);
+        assert!(!migrated.legacy_ready);
+        assert_eq!(migrated.phase, Phase::Idle);
+    }
+
+    #[test]
+    fn new_ready_path_is_control_only_and_completed_records_allow_library_moves() {
+        let fixture = Fixture::new();
+        let paths = &fixture.paths;
+        let mut record = fixture.session(paths);
+        let library = record.library.as_ref().unwrap();
+        let signal = json!({"protocol":1,"session":record.nonce,"status":"ready","endpoint":SERVER,"fixture":false});
+        assert_eq!(
+            paths.ready(&record.nonce).parent(),
+            Some(paths.control.as_path())
+        );
+        write_json(&paths.ready(&record.nonce), &signal).unwrap();
+        fs::write(
+            library.root.join("session-ready-unrelated.json"),
+            b"unrelated marker",
+        )
+        .unwrap();
+        cleanup_session_ready(paths, &record).unwrap();
+        assert!(!paths.ready(&record.nonce).exists());
+        assert_eq!(
+            fs::read(library.root.join("session-ready-unrelated.json")).unwrap(),
+            b"unrelated marker"
+        );
+        record.phase = Phase::Idle;
+        write_json(&paths.session(), &record).unwrap();
+        fs::rename(&library.root, fixture.directory.join("moved-library")).unwrap();
+        recover_at(paths).unwrap();
+        assert_eq!(read_session(paths).unwrap().unwrap().phase, Phase::Idle);
+    }
+
+    #[test]
+    fn completed_idle_session_allows_package_move_for_status_and_recovery() {
+        for client in [Client::Stable, Client::Lazer] {
+            let fixture = Fixture::new();
+            let original = &fixture.paths;
+            let mut record = fixture.session(original);
+            record.client = client;
+            record.phase = Phase::Idle;
+            if client == Client::Stable {
+                record.library = None;
+            }
+            write_json(&original.session(), &record).unwrap();
+            let upgraded = fixture.upgraded_paths();
+            fs::remove_file(&original.launcher).unwrap();
+
+            assert_eq!(snapshot_at(&upgraded).unwrap().phase, Phase::Idle);
+            recover_at(&upgraded).unwrap();
+            let retained = matching_session(&upgraded, &record.nonce).unwrap();
+            assert_eq!(retained.phase, Phase::Idle);
+            assert_eq!(retained.launcher_executable, original.launcher);
+            assert_eq!(retained.launcher_identity, record.launcher_identity);
+            assert!(session_completed(&retained));
+        }
+    }
+
+    #[test]
+    fn upgraded_package_recovers_v2_owned_install_and_control_ready_signal() {
+        let fixture = Fixture::new();
+        let original = &fixture.paths;
+        let mut record = fixture.session(original);
+        let library = record.library.as_ref().unwrap();
+        ensure_directory(&library.rulesets()).unwrap();
+        fs::write(library.root.join("client.realm"), b"shared realm marker").unwrap();
+        fs::write(library.root.join("game.ini"), b"official config marker").unwrap();
+        let foreign = library.rulesets().join("foreign.ruleset.dll");
+        fs::write(&foreign, b"foreign ruleset marker").unwrap();
+        let (bridge, hash) = fixture.bridge();
+        let mut managed = ManagedRuleset::open(library.rulesets()).unwrap();
+        let receipt = managed.install(bridge, &hash).unwrap();
+        drop(managed);
+        record.install_session = Some(receipt.session_id);
+        record.phase = Phase::CleanupFailed;
+        write_json(&original.session(), &record).unwrap();
+        let signal = json!({"protocol":1,"session":record.nonce,"status":"ready","endpoint":SERVER,"fixture":false});
+        write_json(&original.ready(&record.nonce), &signal).unwrap();
+        let upgraded = fixture.upgraded_paths();
+        fs::remove_file(&original.launcher).unwrap();
+
+        assert!(snapshot_at(&upgraded).unwrap().plugin_present);
+        recover_at(&upgraded).unwrap();
+        assert!(!receipt.installed_path.exists());
+        assert!(!receipt.journal_path.exists());
+        assert!(!original.ready(&record.nonce).exists());
+        assert_eq!(fs::read(foreign).unwrap(), b"foreign ruleset marker");
+        assert_eq!(
+            fs::read(library.root.join("client.realm")).unwrap(),
+            b"shared realm marker"
+        );
+        assert_eq!(
+            fs::read(library.root.join("game.ini")).unwrap(),
+            b"official config marker"
+        );
+        assert_eq!(read_session(&upgraded).unwrap().unwrap().phase, Phase::Idle);
+    }
+
+    #[test]
+    fn upgraded_package_recovers_v1_only_from_its_historical_library() {
+        let fixture = Fixture::new();
+        let original = &fixture.paths;
+        ensure_directory(&original.legacy_data.join("rulesets")).unwrap();
+        let (bridge, hash) = fixture.bridge();
+        let mut managed = ManagedRuleset::open(original.legacy_data.join("rulesets")).unwrap();
+        let receipt = managed.install(bridge, &hash).unwrap();
+        drop(managed);
+        let mut record = fixture.session(original);
+        let shared = record.library.as_ref().unwrap();
+        ensure_directory(&shared.rulesets()).unwrap();
+        let untouched = shared.rulesets().join(RULESET_FILENAME);
+        fs::write(&untouched, b"foreign shared library DLL").unwrap();
+        record.version = 1;
+        record.library = None;
+        record.install_session = Some(receipt.session_id);
+        write_json(&original.session(), &record).unwrap();
+        let signal = json!({"protocol":1,"session":record.nonce,"status":"ready","endpoint":SERVER,"fixture":false});
+        let ready = original
+            .legacy_data
+            .join(format!("session-ready-{}.json", record.nonce));
+        write_json(&ready, &signal).unwrap();
+        let upgraded = fixture.upgraded_paths();
+        fs::remove_file(&original.launcher).unwrap();
+
+        recover_at(&upgraded).unwrap();
+        assert!(!receipt.installed_path.exists());
+        assert!(!receipt.journal_path.exists());
+        assert!(!ready.exists());
+        assert_eq!(fs::read(untouched).unwrap(), b"foreign shared library DLL");
+        let migrated = read_session(&upgraded).unwrap().unwrap();
+        assert_eq!(migrated.version, 2);
+        assert_eq!(migrated.phase, Phase::Idle);
+        assert_eq!(migrated.launcher_executable, original.launcher);
+        assert!(!migrated.legacy_ready);
+    }
+
+    #[test]
+    fn malformed_library_and_cross_library_install_session_preserve_artifacts() {
+        let fixture = Fixture::new();
+        let paths = &fixture.paths;
+        let mut record = fixture.session(paths);
+        let library = record.library.as_ref().unwrap();
+        ensure_directory(&library.rulesets()).unwrap();
+        let (bridge, hash) = fixture.bridge();
+        let mut manager = ManagedRuleset::open(library.rulesets()).unwrap();
+        let receipt = manager.install(bridge, &hash).unwrap();
+        drop(manager);
+        record.install_session = Some(Uuid::new_v4());
+        write_json(&paths.session(), &record).unwrap();
+        assert!(recover_at(paths).unwrap_err().contains("工作階段身分不符"));
+        assert!(receipt.installed_path.exists());
+        let original = serde_json::to_value(&record).unwrap();
+        for invalid in [
+            json!({"root":"relative", "identity":"unknown"}),
+            json!({"root":library.root, "identity":""}),
+            json!({"root":library.root,"identity":library.identity,"deletePath":fixture.directory}),
+        ] {
+            let mut value = original.clone();
+            value["library"] = invalid;
+            write_json(&paths.session(), &value).unwrap();
+            assert!(read_session(paths).is_err());
+            assert!(receipt.installed_path.exists());
+        }
+        let mut legacy = original;
+        legacy["version"] = json!(1);
+        write_json(&paths.session(), &legacy).unwrap();
+        assert!(read_session(paths).is_err());
+    }
+
+    #[test]
+    fn legacy_preinstallation_crash_can_recover_but_new_session_requires_library() {
+        let fixture = Fixture::new();
+        let mut record = fixture.session(&fixture.paths);
+        record.library = None;
+        write_json(&fixture.paths.session(), &record).unwrap();
+        assert!(read_session(&fixture.paths).is_err());
+        record.version = 1;
+        write_json(&fixture.paths.session(), &record).unwrap();
+        recover_at(&fixture.paths).unwrap();
+        assert_eq!(
+            read_session(&fixture.paths).unwrap().unwrap().phase,
+            Phase::Idle
+        );
+        assert!(!fixture.paths.legacy_data.exists());
+    }
+
+    #[test]
     fn preferences_and_session_parsing_are_bounded_and_cannot_add_commands_or_paths() {
         let fixture = Fixture::new();
         write_json(
@@ -1314,7 +1800,7 @@ mod tests {
         .unwrap();
         assert!(read_preferences(&fixture.paths).is_err());
         let mut session = serde_json::to_value(fixture.session(&fixture.paths)).unwrap();
-        session["launcherExecutable"] = json!(fixture.client);
+        session["launcherExecutable"] = json!("relative-launcher.exe");
         write_json(&fixture.paths.session(), &session).unwrap();
         assert!(read_session(&fixture.paths).is_err());
         session = serde_json::to_value(fixture.session(&fixture.paths)).unwrap();
@@ -1348,9 +1834,27 @@ mod tests {
     #[test]
     fn an_install_journal_without_process_ownership_is_preserved() {
         let fixture = Fixture::new();
+        write_json(
+            &fixture.paths.prefs(),
+            &Preferences {
+                stable: None,
+                lazer: Some(fixture.client.clone()),
+            },
+        )
+        .unwrap();
         let (bridge, hash) = fixture.bridge();
-        ensure_directory(&fixture.paths.rulesets()).unwrap();
-        let mut installation = ManagedRuleset::open(fixture.paths.rulesets()).unwrap();
+        ensure_directory(
+            &resolve_library(&fixture.paths, &fixture.client)
+                .unwrap()
+                .rulesets(),
+        )
+        .unwrap();
+        let mut installation = ManagedRuleset::open(
+            resolve_library(&fixture.paths, &fixture.client)
+                .unwrap()
+                .rulesets(),
+        )
+        .unwrap();
         let receipt = installation.install(bridge, &hash).unwrap();
         drop(installation);
         assert!(recover_at(&fixture.paths)
@@ -1362,12 +1866,14 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn recovery_refuses_live_child_and_handles_pid_reuse_without_closing_it() {
+    fn upgraded_launcher_refuses_live_child_and_handles_pid_reuse_without_closing_it() {
         let fixture = Fixture::new();
         let paths = fixture.live_paths();
         let (bridge, hash) = fixture.bridge();
-        ensure_directory(&paths.rulesets()).unwrap();
-        let mut managed = ManagedRuleset::open(paths.rulesets()).unwrap();
+        ensure_directory(&resolve_library(&paths, &fixture.client).unwrap().rulesets()).unwrap();
+        let mut managed =
+            ManagedRuleset::open(resolve_library(&paths, &fixture.client).unwrap().rulesets())
+                .unwrap();
         let receipt = managed.install(bridge, &hash).unwrap();
         drop(managed);
         let own = process::current_identity().unwrap();
@@ -1377,20 +1883,22 @@ mod tests {
         record.install_session = Some(receipt.session_id);
         record.phase = Phase::Running;
         write_json(&paths.session(), &record).unwrap();
-        assert!(recover_at(&paths).unwrap_err().contains("仍在執行"));
+        let upgraded = fixture.upgraded_paths();
+        assert_eq!(snapshot_at(&upgraded).unwrap().phase, Phase::Running);
+        assert!(recover_at(&upgraded).unwrap_err().contains("仍在執行"));
         assert!(receipt.installed_path.exists());
         // Same PID, different creation time proves the recorded child is gone.
         record.child.as_mut().unwrap().creation_time += 1;
         write_json(&paths.session(), &record).unwrap();
-        recover_at(&paths).unwrap();
+        recover_at(&upgraded).unwrap();
         assert!(!receipt.installed_path.exists());
-        assert_eq!(read_session(&paths).unwrap().unwrap().phase, Phase::Idle);
+        assert_eq!(read_session(&upgraded).unwrap().unwrap().phase, Phase::Idle);
         assert_eq!(process::state(&own).unwrap(), process::State::Live);
     }
 
     #[cfg(windows)]
     #[test]
-    fn live_guardian_and_ambiguous_process_identity_prevent_recovery() {
+    fn upgraded_launcher_preserves_live_guardian_and_ambiguous_process_identity() {
         let fixture = Fixture::new();
         let paths = fixture.live_paths();
         let own = process::current_identity().unwrap();
@@ -1398,13 +1906,30 @@ mod tests {
         record.launcher_identity = own.executable_identity.clone();
         record.guardian = Some(own);
         write_json(&paths.session(), &record).unwrap();
-        assert!(recover_at(&paths).is_err());
+        let upgraded = fixture.upgraded_paths();
+        assert!(recover_at(&upgraded).unwrap_err().contains("仍在執行"));
         // An internally consistent record with a changed image identity remains ambiguous.
         record.launcher_identity.push_str("-changed");
         record.guardian.as_mut().unwrap().executable_identity = record.launcher_identity.clone();
         write_json(&paths.session(), &record).unwrap();
-        assert!(recover_at(&paths).unwrap_err().contains("無法確認"));
+        assert!(recover_at(&upgraded).unwrap_err().contains("無法確認"));
         assert!(paths.session().exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn upgraded_package_cannot_take_over_a_previous_guardian_launch() {
+        let fixture = Fixture::new();
+        let record = fixture.session(&fixture.paths);
+        write_json(&fixture.paths.session(), &record).unwrap();
+        let before = fs::read(fixture.paths.session()).unwrap();
+        let upgraded = fixture.upgraded_paths();
+        assert!(matching_session(&upgraded, &record.nonce).is_ok());
+        assert!(run_guardian(&upgraded, &record.nonce)
+            .unwrap_err()
+            .contains("守護程序並非此工作階段的啟動器"));
+        assert_eq!(fs::read(fixture.paths.session()).unwrap(), before);
+        assert!(read_session(&upgraded).unwrap().unwrap().guardian.is_none());
     }
 
     #[test]

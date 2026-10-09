@@ -2,7 +2,7 @@
 
 可以把測試伺服器部署在目前這台電腦。單機測試使用 `illya.test` 與 `127.0.0.1`，不需要購買網域、修改公開 DNS 或開放路由器。`localhost` 代表使用者自己的電腦；若之後要讓別台電腦連線，應另用實際主機 IP／公開部署設定。
 
-此配置準備本機 HTTPS、正確 Host 路由及獨立資料庫。**不代表 stable／lazer 已經通過原生客戶端驗證，原生 crash 的原因與修復仍待確認。** 實際測試仍需分別檢查登入、聊天、下載、遊玩、成績、replay、多人房間與重新連線。[Kaleidoscope 啟動器](kaleidoscope-launcher.md)沿用官方 lazer，強制載入原創 Transfiguration 外掛；隔離啟動／合約測試已通過，真實 GUI 仍待驗證。先前獨立 source build 保留為可選的開發比較工具。
+此配置準備本機 HTTPS、正確 Host 路由及獨立的伺服器測試資料庫；玩家 lazer 仍沿用現有圖譜庫。**不代表 stable／lazer 已經通過原生客戶端驗證，原生 crash 的原因與修復仍待確認。** 實際測試仍需分別檢查登入、聊天、下載、遊玩、成績、replay、多人房間與重新連線。[Kaleidoscope 啟動器](kaleidoscope-launcher.md)沿用官方 lazer 和其圖譜資料，強制載入原創 Transfiguration 外掛；各版隔離啟動／合約測試見[驗證記錄](verification.md)，真實 GUI 仍待驗證。先前獨立 source build 保留為可選的開發比較工具。
 
 ## 獨立測試環境
 
@@ -177,9 +177,11 @@ Stable 的根網域規劃與啟動參數：
 
 路徑只是範例，請用實際安裝位置與獨立測試設定。此文件沒有啟動客戶端，也沒有修改官方帳號的連線設定。
 
-Lazer 的目前流程使用已安裝的官方 stock client，以及完整的 Kaleidoscope／Transfiguration 測試包，不需要重新編譯整套 client。先完成上面的本機 DNS／CA 設定，再依[啟動器文件](kaleidoscope-launcher.md)開啟 `Kaleidoscope.exe`、選擇 lazer 的 `osu!.exe`，並由啟動器啟動。營運者可用 `tools\kaleidoscope\scripts\package-launcher.ps1` 建立測試包；產物位於被 Git 忽略的 `data-kaleidoscope-package`，包含啟動器、橋接 DLL、`package.json` 與 `compatibility.json`。請保持完整配套。
+Lazer 的目前流程使用已安裝的官方 stock client、現有圖譜庫，以及完整的 Kaleidoscope／Transfiguration 測試包，不需要重新編譯整套 client 或另外匯入圖譜。先完成上面的本機 DNS／CA 設定，再依[啟動器文件](kaleidoscope-launcher.md)開啟 `Kaleidoscope.exe`、選擇 lazer 的 `osu!.exe`，並由啟動器啟動。營運者可用 `tools\kaleidoscope\scripts\package-launcher.ps1` 建立測試包；產物位於新的、被 Git 忽略的 `data-kaleidoscope-package-<時間>-<nonce>/` 與同名 ZIP，包含啟動器、橋接 DLL、`package.json` 與 `compatibility.json`。請保持完整配套。
 
-目前相容性固定為 Windows x64 stock `2026.1005.1-tachyon` 與 .NET runtime `10.0.12`，並核對[相容性清單](../tools/transfiguration/compatibility.json)中的 assembly versions／SHA-256。啟動器在遊戲 Main 前強制載入原創 Transfiguration，設定固定 endpoints、HTTP／WebSocket guard 與 `%LOCALAPPDATA%\Illyaverse\lazer` 私服資料目錄，不讀取或複製官方登入資料。必要修補、檔案或相容性核對失敗時不執行遊戲入口；更新到未測版本後需取得相容的新配套，沒有官方伺服器 fallback。單獨改 hosts、直接執行 stock client 或手動放置 DLL，都不是此啟動流程。完整契約見[連線文件](connection.md)與[橋接說明](../tools/transfiguration/README.md)。
+目前相容性固定為 Windows x64 stock `2026.1005.1-tachyon` 與 .NET runtime `10.0.12`，並核對[相容性清單](../tools/transfiguration/compatibility.json)中的 assembly versions／SHA-256。啟動器先解析現有 lazer 的預設／portable／自訂資料目錄，再於遊戲 Main 前強制載入原創 Transfiguration，設定固定 endpoints 和 HTTP／WebSocket guard。原有 `client.realm`／`files` 直接使用；官方 `game.ini` 不讀取、複製或覆寫，私服登入資訊與設定另存同一資料目錄的 `game.illyaverse.ini`。啟動器控制紀錄使用 `%LOCALAPPDATA%\Illyaverse\Kaleidoscope`，不是另一份圖譜庫。必要修補、檔案、路徑或相容性核對失敗時不執行遊戲入口；更新到未測版本後需取得相容的新配套，沒有官方伺服器 fallback。單獨改 hosts、直接執行 stock client 或手動放置 DLL，都不是此啟動流程。完整契約見[連線文件](connection.md)與[橋接說明](../tools/transfiguration/README.md)。
+
+實機測試還須確認：原有圖譜可見、沒有額外匯入步驟、私服帳號登入成功、官方設定保持原樣，以及正常退出或復原後只移除本次外掛。這些結果需要由真正客戶端操作回報，隔離 fixture 不能替代。請勿為了測試手動複製官方 token，或在私服遊戲尚未退出時同時開啟另一份 lazer 使用這個圖譜庫。
 
 若需要比較 endpoints 或另行開發測試，可選用保留的[獨立 source build](lazer-client-build.md)；它是另外的測試方案，使用自己的資料目錄，不是啟動器自動 fallback。以下 CLI 仍只輸出開發規劃 manifest，並不是官方客戶端可直接匯入的設定：
 

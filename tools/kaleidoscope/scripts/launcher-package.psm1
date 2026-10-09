@@ -95,12 +95,16 @@ function Assert-BridgePackageMetadata($Artifact, $Compatibility, [string]$Bridge
     foreach ($contract in $Compatibility.contracts) {
         if ($contract -isnot [string] -or [string]::IsNullOrWhiteSpace($contract) -or !$contracts.Add($contract)) { throw 'Invalid or duplicate compatibility contract.' }
     }
-    foreach ($contract in @('OsuGameBase.CreateEndpoints', 'Host.GetSuitableDesktopHost', 'DesktopGameHost.GetDefaultGameStorage', 'RulesetStore.addRuleset', 'SocketsHttpHandler.SendAsync', 'ClientWebSocket.ConnectAsync(Uri,CancellationToken)')) {
+    foreach ($contract in @('OsuGameBase.CreateEndpoints', 'Host.GetSuitableDesktopHost', 'DesktopGameHost.GetDefaultGameStorage', 'IniConfigManager<OsuSetting>.Filename(exact OsuConfigManager only)', 'OsuConfigManager.ctor(Storage):pre-load and post-load isolation', 'APIAccess.ctor(OsuGameBase,OsuConfigManager,EndpointConfiguration,string)', 'RulesetStore.addRuleset', 'SocketsHttpHandler.SendAsync', 'ClientWebSocket.ConnectAsync(Uri,CancellationToken)')) {
         if (!$contracts.Contains($contract)) { throw "Missing mandatory compatibility contract: $contract" }
     }
     $verification = [ordered]@{
         native_metadata_and_endpoints = 'passed'; http_websocket_and_redirects = 'passed'; mandatory_bootstrap_before_headless_main = 'passed'; production_destination_policy = 'passed'
-        rx_native_request_context = 'passed_headless'; rx_statistics_generation_cache = 'passed_headless'; native_gui_and_login = 'pending_human_test'
+        rx_native_request_context = 'passed_headless'; rx_statistics_generation_cache = 'passed_headless'
+        shared_existing_library_storage = 'passed_headless_path_and_marker_fixture'
+        private_configuration_before_api_constructor = 'passed_headless_real_config_constructor'
+        private_credential_save_logout_remember_flags = 'passed_headless_native_handlers_worker_intercepted'
+        real_api_worker_refresh_and_login = 'pending_human_test'; native_gui_and_login = 'pending_human_test'
     }
     Assert-PackageKeys $Compatibility.verification @($verification.Keys) 'compatibility.json.verification'
     foreach ($key in $verification.Keys) { Assert-PackageLiteral $Compatibility.verification[$key] $verification[$key] "compatibility.json.verification.$key" }
@@ -254,9 +258,15 @@ This package is fixed to https://illya.test and requires the documented local
 DNS/CA setup. It is a local test artifact; public download is not promised.
 Lazer updates outside the tested build stop before Main. Update the complete
 launcher and bridge package together; do not copy this DLL into official rulesets.
-Close the game to remove the temporary private-profile DLL. The independent
-guardian survives closing this window. After an interrupted guardian or power
-loss, reopen the launcher and use cleanup. Foreign or changed files are kept.
+Lazer uses your existing beatmap library, including configured custom/portable
+storage. Private account and game settings use game.illyaverse.ini in that same
+data folder; official game.ini credentials are not read, copied or overwritten.
+Private game preferences start at defaults on first use. Changing the data folder
+requires closing the private client and configuring the normal lazer client.
+Close the game to remove the temporary DLL from the existing rulesets folder.
+The independent guardian survives closing this window. After an interrupted
+guardian or power loss, reopen the launcher and use cleanup. Foreign or changed
+files are kept.
 
 Native GUI/gameplay/login remains pending user-operated verification. Package
 integrity and embedded-interface evidence do not prove a real game session.

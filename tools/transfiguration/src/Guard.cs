@@ -14,6 +14,7 @@ internal static class Guard
     private static readonly object gate = new();
     private static string installRoot = string.Empty;
     private static string dataRoot = string.Empty;
+    private static string controlRoot = string.Empty;
     private static readonly List<MethodBase> patched = new();
     private static Assembly game = null!;
     private static Assembly framework = null!;
@@ -29,11 +30,13 @@ internal static class Guard
             if (session.Length != 64 || !session.All(Uri.IsHexDigit)) fail("session_invalid");
             installRoot = absoluteDirectory(required("ILLYAVERSE_LAZER_INSTALL_ROOT"));
             dataRoot = absoluteDirectory(required("ILLYAVERSE_LAZER_DATA_ROOT"));
+            controlRoot = absoluteDirectory(required("ILLYAVERSE_LAZER_CONTROL_ROOT"));
             validateDataRoot();
             var readyFile = canonicalPath(required("ILLYAVERSE_LAZER_READY_FILE"));
-            if (!string.Equals(readyFile, Path.Combine(dataRoot, $"session-ready-{session}.json"), StringComparison.OrdinalIgnoreCase)) fail("ready_path_invalid");
+            if (!string.Equals(readyFile, Path.Combine(controlRoot, $"session-ready-{session}.json"), StringComparison.OrdinalIgnoreCase)) fail("ready_path_invalid");
             if (File.Exists(readyFile)) fail("ready_file_exists");
             rejectReparse(dataRoot);
+            rejectReparse(controlRoot);
             Environment.SetEnvironmentVariable("OSU_DISABLE_ERROR_REPORTING", "1");
             Environment.SetEnvironmentVariable("OSU_EXTERNAL_UPDATE_PROVIDER", "Illyaverse");
             // No inherited hook may apply unexpectedly to child processes. The active runtime property is unchanged.
@@ -95,20 +98,22 @@ internal static class Guard
     {
 #if ILLYAVERSE_FIXTURE
         if (!Path.GetFileName(dataRoot).StartsWith("data-transfiguration-proof", StringComparison.Ordinal)) fail("fixture_data_path_invalid");
+        if (!Path.GetFileName(controlRoot).StartsWith("data-transfiguration-proof", StringComparison.Ordinal)) fail("fixture_control_path_invalid");
 #else
-        var expected = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Illyaverse", "lazer");
-        if (!string.Equals(dataRoot, expected, StringComparison.OrdinalIgnoreCase)) fail("data_path_invalid");
+        var expected = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Illyaverse", "Kaleidoscope");
+        if (!string.Equals(controlRoot, expected, StringComparison.OrdinalIgnoreCase)) fail("control_path_invalid");
 #endif
-        if (string.Equals(dataRoot, installRoot, StringComparison.OrdinalIgnoreCase)
-            || dataRoot.StartsWith(installRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) fail("data_install_overlap");
+        // Portable lazer legitimately stores its library beside its executable. Only the
+        // launcher control directory is independent; the resolved library is reused.
+        if (string.Equals(dataRoot, controlRoot, StringComparison.OrdinalIgnoreCase)
+            || dataRoot.StartsWith(controlRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            || controlRoot.StartsWith(dataRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) fail("control_data_overlap");
     }
 
     private static void rejectReparse(string path)
     {
-        if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) fail("data_reparse_point");
-        var parent = Directory.GetParent(path);
-        if (parent is not null && parent.Name.Equals("Illyaverse", StringComparison.OrdinalIgnoreCase)
-            && (parent.Attributes & FileAttributes.ReparsePoint) != 0) fail("data_reparse_point");
+        for (var current = new DirectoryInfo(path); current is not null; current = current.Parent)
+            if ((current.Attributes & FileAttributes.ReparsePoint) != 0) fail("data_reparse_point");
     }
 
     private static Assembly loadClient(string filename)
@@ -168,6 +173,7 @@ internal static class Guard
         _ = method(type(framework, "osu.Framework.Platform.DesktopGameHost"), "GetDefaultGameStorage");
         _ = method(type(desktop, "osu.Desktop.OsuGameDesktop"), "GetStorageForStableInstall");
         _ = typeof(osu.Game.Rulesets.Transfiguration.BridgeRuleset).GetMethods();
+        AccountConfigIsolation.VerifyContracts(dataRoot);
         RelaxContext.VerifyContracts();
     }
 
@@ -218,6 +224,10 @@ internal static class Guard
         patch(method(storage, "TryChangeToCustomStorage", typeof(osu.Game.IO.OsuStorageError).MakeByRefType()), "NoCustomStoragePrefix");
         patch(method(storage, "ChangeDataPath", typeof(string)), "FixedDataPathPrefix");
         patch(method(type(game, "osu.Game.OsuGameBase"), "MigrateUserData", typeof(string)), "NoMigrationPrefix");
+        patch(AccountConfigIsolation.FilenameGetter, "FilenamePrefix", typeof(AccountConfigIsolation));
+        patch(AccountConfigIsolation.ConfigConstructor, "ConfigConstructorPrefix", typeof(AccountConfigIsolation));
+        patch(AccountConfigIsolation.ConfigConstructor, "ConfigConstructorPostfix", typeof(AccountConfigIsolation), postfix: true);
+        patch(AccountConfigIsolation.ApiConstructor, "ApiConstructorPrefix", typeof(AccountConfigIsolation));
     }
 
     private static bool EndpointsPrefix(ref object __result)
@@ -240,11 +250,9 @@ internal static class Guard
 
     private static void HostPrefix(ref string gameName, ref object hostOptions)
     {
-        gameName = "illyaverse";
         hostOptions ??= Activator.CreateInstance(type(framework, "osu.Framework.HostOptions"))!;
         set(hostOptions, "IPCPipeName", "illyaverse-lazer");
         set(hostOptions, "FriendlyGameName", "Illyaverse • osu!lazer");
-        set(hostOptions, "PortableInstallation", false);
     }
 
     private static bool StoragePrefix(object __instance, ref object __result)
@@ -261,7 +269,8 @@ internal static class Guard
         __result = false;
         return false;
     }
-    private static void FixedDataPathPrefix(ref string newPath) => newPath = string.Empty;
+    // Skip the entire write. Clearing newPath would still save shared storage.ini.
+    private static bool FixedDataPathPrefix() => false;
     private static bool NoMigrationPrefix(ref bool __result) { __result = false; return false; }
     private static bool RulesetAssemblyPrefix(Assembly assembly) => assembly != typeof(StartupHook).Assembly;
     private static void ExternalUrlPrefix(string url) => NetworkPolicy.Require(new Uri(url, UriKind.Absolute));

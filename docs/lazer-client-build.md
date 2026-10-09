@@ -1,6 +1,6 @@
 # 可重現的 Illyaverse lazer 測試客戶端
 
-本文件保留先前的 source build 作為開發比較工具。玩家新流程是 [Kaleidoscope／Transfiguration 啟動器](kaleidoscope-launcher.md)，沿用官方安裝檔，不必重編整套 lazer。下文的 JSON profile 仍只是開發 endpoint 規劃。
+本文件保留先前的 source build 作為開發比較工具。玩家流程是 [Kaleidoscope／Transfiguration 啟動器](kaleidoscope-launcher.md)，沿用官方安裝檔和現有 `client.realm`／`files` 圖譜庫，不必重編整套 lazer 或另外匯入圖譜。下文的 JSON profile 仍只是開發 endpoint 規劃。
 
 以下獨立編譯、固定版本的 lazer 測試客戶端供開發者比較協定行為，玩家不需依本文件編譯。Kaleidoscope 的 JSON profile 仍只是開發 endpoint 規劃；目前啟動器透過 Transfiguration 在遊戲啟動前設定固定端點。直接啟動官方 client 並沒有經驗證的任意 `--server` 切換功能，修改 hosts 也不會改寫 OAuth／API 設定。啟動器的原生遊戲流程仍待玩家實測。
 
@@ -30,7 +30,7 @@
 data-lazer-client/upstream/osu.Desktop/bin/Debug/net10.0/osu!.exe
 ```
 
-原創 adapter 與 bootstrap 使用獨立 game name `illyaverse-lazer-test`、獨立 IPC pipe、停用 legacy IPC port、使用不檢查更新的 UpdateManager，並關閉自動查找 stable 安裝資料。上游依獨立 host 的 storage 載入設定；首次啟動仍需確認測試資料目錄，勿把它改成官方 client 的資料目錄。不要使用此 adapter 的 tournament 模式。
+只有此開發比較工具使用獨立 game name `illyaverse-lazer-test`、獨立 IPC pipe、停用 legacy IPC port、使用不檢查更新的 UpdateManager，並關閉自動查找 stable 安裝資料。上游依獨立 host 的 storage 載入設定；首次啟動仍需確認測試資料目錄，勿把它改成官方 client 的資料目錄。這是 source build 的測試隔離，不是玩家啟動器的資料安排。不要使用此 adapter 的 tournament 模式。
 
 ## 連到本機測試環境
 

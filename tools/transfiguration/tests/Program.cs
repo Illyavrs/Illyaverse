@@ -53,12 +53,15 @@ internal static class Program
         var nativeRoot = Path.GetFullPath(nativeHosting ? Environment.GetEnvironmentVariable("ILLYAVERSE_LAZER_INSTALL_ROOT")! : args[1]);
         var dataRoot = Path.GetFullPath(nativeHosting ? Environment.GetEnvironmentVariable("ILLYAVERSE_LAZER_DATA_ROOT")! : args[2]);
         Directory.CreateDirectory(dataRoot);
+        var controlRoot = Path.GetFullPath(nativeHosting ? Environment.GetEnvironmentVariable("ILLYAVERSE_LAZER_CONTROL_ROOT")! : dataRoot + "-control");
+        Directory.CreateDirectory(controlRoot);
         if (!Path.GetFileName(dataRoot).StartsWith("data-transfiguration-proof", StringComparison.Ordinal)) throw new ArgumentException("Proof data directory required");
         var session = nativeHosting ? Environment.GetEnvironmentVariable("ILLYAVERSE_LAZER_SESSION")!
             : Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
-        var ready = Path.Combine(dataRoot, $"session-ready-{session}.json");
+        var ready = Path.Combine(controlRoot, $"session-ready-{session}.json");
         Environment.SetEnvironmentVariable("ILLYAVERSE_LAZER_INSTALL_ROOT", nativeRoot);
         Environment.SetEnvironmentVariable("ILLYAVERSE_LAZER_DATA_ROOT", dataRoot);
+        Environment.SetEnvironmentVariable("ILLYAVERSE_LAZER_CONTROL_ROOT", controlRoot);
         Environment.SetEnvironmentVariable("ILLYAVERSE_LAZER_SESSION", session);
         Environment.SetEnvironmentVariable("ILLYAVERSE_LAZER_READY_FILE", ready);
         if (nativeHosting)
@@ -107,7 +110,7 @@ internal static class Program
             var game = AssemblyLoadContext.Default.Assemblies.Single(a => a.GetName().Name == "osu.Game");
             var framework = AssemblyLoadContext.Default.Assemblies.Single(a => a.GetName().Name == "osu.Framework");
             var baseType = game.GetType("osu.Game.OsuGameBase", true)!;
-            // No constructor, client Main, GameHost, Realm, APIAccess or cached credentials are executed/read.
+            // No game constructor, client Main, GameHost or Realm is executed.
             var gameShell = RuntimeHelpers.GetUninitializedObject(baseType);
             var endpoints = baseType.GetMethod("CreateEndpoints")!.Invoke(gameShell, null)!;
             require(property(endpoints, "APIUrl") as string == "http://127.0.0.1:18376", "real native CreateEndpoints returns the fixed fixture API");
@@ -119,27 +122,30 @@ internal static class Program
             require(property(endpoints, "APIClientID") as string == "illyaverse-local-client", "OAuth client identity is fixed");
 
             var guard = bridge.GetType("Illyaverse.Transfiguration.Guard", true)!;
-            require(((System.Collections.ICollection)guard.GetField("patched", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!).Count == 25, "installed guard registry includes every exact destination, storage and RX contract");
+            require(((System.Collections.ICollection)guard.GetField("patched", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!).Count == 29, "installed guard registry includes destination, shared storage, config isolation and RX contracts");
             var options = Activator.CreateInstance(framework.GetType("osu.Framework.HostOptions", true)!)!;
             options.GetType().GetProperty("PortableInstallation")!.SetValue(options, true);
             object?[] hostArgs = ["osu", options];
             method(guard, "HostPrefix").Invoke(null, hostArgs);
-            require(hostArgs[0] as string == "illyaverse" && property(options, "IPCPipeName") as string == "illyaverse-lazer", "private game identity and IPC are independent of official lazer");
-            require(property(options, "PortableInstallation") is false, "portable selection cannot override the private profile");
+            require(hostArgs[0] as string == "osu" && property(options, "IPCPipeName") as string == "illyaverse-lazer", "stock game identity and independent private IPC are preserved");
+            require(property(options, "PortableInstallation") is true, "portable host option is preserved while resolved library is fixed");
             object?[] storageArgs = [new FakeStorageHost(), null];
-            require(method(guard, "StoragePrefix").Invoke(null, storageArgs) is false && storageArgs[1] as string == dataRoot, "storage override uses only the validated private data root");
+            require(method(guard, "StoragePrefix").Invoke(null, storageArgs) is false && storageArgs[1] as string == dataRoot, "storage override reuses exactly the launcher resolved existing library");
             require(method(guard, "RulesetAssemblyPrefix").Invoke(null, [bridge]) is false, "connection sentinel does not add a playable ruleset");
             var storageType = game.GetType("osu.Game.IO.OsuStorage", true)!;
             var storageShell = RuntimeHelpers.GetUninitializedObject(storageType);
-            require(storageType.GetProperty("CustomStoragePath")!.GetValue(storageShell) is null, "private storage.ini cannot redirect account storage to an official profile");
+            require(storageType.GetProperty("CustomStoragePath")!.GetValue(storageShell) is null, "already resolved custom storage cannot redirect the shared library again");
             object?[] customArgs = [null];
             require(storageType.GetMethod("TryChangeToCustomStorage")!.Invoke(storageShell, customArgs) is false
                 && customArgs[0]?.ToString() == "NotAccessible", "explicit custom profile changes stop before Host.GetStorage");
             require(baseType.GetMethod("MigrateUserData")!.Invoke(gameShell, ["C:/fixture-official-profile-not-accessed"]) is false,
                 "interactive profile migration stops without reading or moving any target");
             object?[] dataPathArgs = ["C:/fixture-official-profile-not-accessed"];
-            method(guard, "FixedDataPathPrefix").Invoke(null, dataPathArgs);
-            require(dataPathArgs[0] as string == string.Empty, "saved custom data path always remains empty");
+            var storageConfig = Path.Combine(dataRoot, "storage.ini");
+            File.WriteAllText(storageConfig, "FullPath = synthetic-existing-custom-library\n");
+            storageType.GetMethod("ChangeDataPath")!.Invoke(storageShell, dataPathArgs);
+            require(File.ReadAllText(storageConfig) == "FullPath = synthetic-existing-custom-library\n",
+                "actual storage changes stop before writing shared storage.ini");
             var desktop = AssemblyLoadContext.Default.Assemblies.Single(a => a.GetName().Name == "osu!");
             var desktopType = desktop.GetType("osu.Desktop.OsuGameDesktop", true)!;
             var desktopShell = RuntimeHelpers.GetUninitializedObject(desktopType);
@@ -175,11 +181,13 @@ internal static class Program
             require(Encoding.UTF8.GetString(bytes, 0, received.Count) == "fixture", "allowed plain headless websocket succeeds");
             require(forbiddenHits == 0 && fixtureHits == 3, "only the fixed local fixture received traffic");
             checks += RelaxProof.Run(bridge);
+            checks += AccountIsolationProof.Run(bridge, dataRoot, endpoints);
+            require(fixtureHits == 3 && forbiddenHits == 0, "config/constructor/logout proof generated no network traffic");
             Console.WriteLine($"Native contracts: osu.Game {game.GetName().Version}; osu.Framework {framework.GetName().Version}");
             Console.WriteLine($"Native directory: {nativeRoot}; runtime {Environment.Version}");
             foreach (var assembly in new[] { game, framework, AssemblyLoadContext.Default.Assemblies.Single(a => a.GetName().Name == "osu!"), typeof(SocketsHttpHandler).Assembly })
                 Console.WriteLine($"Native SHA256 {assembly.GetName().Name}: {Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(assembly.Location)))}");
-            Console.WriteLine($"PASS {checks} isolated bridge checks; no GUI/client Main/GameHost/APIAccess/official request executed");
+            Console.WriteLine($"PASS {checks} isolated bridge checks; no GUI/client Main/GameHost/Realm/real user credentials/official request executed");
             return 0;
         }
         finally
@@ -223,12 +231,15 @@ internal static class Program
         var data = Path.GetFullPath(rejectionData);
         if (!Path.GetFileName(data).StartsWith("data-transfiguration-proof", StringComparison.Ordinal)) throw new ArgumentException("Proof data directory required");
         Directory.CreateDirectory(data);
+        var control = data + "-control";
+        Directory.CreateDirectory(control);
         var session = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
-        var ready = Path.Combine(data, $"session-ready-{session}.json");
+        var ready = Path.Combine(control, $"session-ready-{session}.json");
         Environment.SetEnvironmentVariable("ILLYAVERSE_LAZER_INSTALL_ROOT", Path.GetFullPath(installation));
         Environment.SetEnvironmentVariable("ILLYAVERSE_LAZER_DATA_ROOT", data);
+        Environment.SetEnvironmentVariable("ILLYAVERSE_LAZER_CONTROL_ROOT", scenario == "overlap" ? data : control);
         Environment.SetEnvironmentVariable("ILLYAVERSE_LAZER_SESSION", scenario == "nonce" ? "invalid" : session);
-        Environment.SetEnvironmentVariable("ILLYAVERSE_LAZER_READY_FILE", scenario == "ready-path" ? Path.Combine(data, "foreign-ready.json") : ready);
+        Environment.SetEnvironmentVariable("ILLYAVERSE_LAZER_READY_FILE", scenario == "ready-path" ? Path.Combine(control, "foreign-ready.json") : ready);
         if (scenario == "relative") Environment.SetEnvironmentVariable("ILLYAVERSE_LAZER_DATA_ROOT", "relative-data");
         if (scenario == "unc") Environment.SetEnvironmentVariable("ILLYAVERSE_LAZER_DATA_ROOT", @"\\fixture.invalid\never-connected");
         if (scenario == "ready-exists") File.WriteAllText(ready, "fixture-owner-marker");
@@ -239,6 +250,7 @@ internal static class Program
             "ready-exists" => "transfiguration_ready_file_exists",
             "relative" => "transfiguration_path_not_absolute",
             "unc" => "transfiguration_path_not_local",
+            "overlap" => "transfiguration_control_data_overlap",
             _ => throw new ArgumentException("Unknown rejection scenario")
         };
         try

@@ -566,7 +566,7 @@ fn file_identity(_path: &Path) -> Result<String> {
     Err("Managed launcher installation is unsupported on this platform".into())
 }
 
-fn directory_identity(path: &Path) -> Result<String> {
+pub(super) fn directory_identity(path: &Path) -> Result<String> {
     file_identity(path)
 }
 

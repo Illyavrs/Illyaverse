@@ -44,12 +44,34 @@ pub fn find_by_executable(executable: &Path) -> Result<Vec<Identity>> {
     platform::find_by_executable(executable)
 }
 
+/// Refuse concurrent library users without closing another installation. A
+/// matching filename is only a discovery hint; unreadable candidates prevent
+/// launch rather than being treated as a safely unrelated stable client.
+pub fn find_lazer_candidates() -> Result<Vec<Identity>> {
+    platform::find_lazer_candidates()
+}
+
 pub fn close_gracefully(expected: &Identity, timeout: Duration) -> Result<()> {
     platform::close_gracefully(expected, timeout)
 }
 
 pub fn executable_identity(path: &Path) -> Result<String> {
     platform::executable_identity(path)
+}
+
+#[cfg(any(windows, test))]
+fn looks_like_lazer(executable: &Path) -> Result<bool> {
+    let install = executable
+        .parent()
+        .ok_or("Client candidate has no installation folder")?;
+    for companion in ["osu!.dll", "osu.Game.dll", "osu.Framework.dll"] {
+        match std::fs::symlink_metadata(install.join(companion)) {
+            Ok(_) => return Ok(true),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return Err("Cannot safely inspect another client installation".into()),
+        }
+    }
+    Ok(false)
 }
 
 #[cfg(not(windows))]
@@ -59,6 +81,9 @@ mod platform {
         Err("Native launcher process ownership currently supports Windows only".into())
     }
     pub(super) fn find_by_executable(_path: &Path) -> Result<Vec<Identity>> {
+        Err("Native launcher process discovery currently supports Windows only".into())
+    }
+    pub(super) fn find_lazer_candidates() -> Result<Vec<Identity>> {
         Err("Native launcher process discovery currently supports Windows only".into())
     }
     pub(super) fn close_gracefully(_identity: &Identity, _timeout: Duration) -> Result<()> {
@@ -260,6 +285,37 @@ mod platform {
         Ok(results)
     }
 
+    pub(super) fn find_lazer_candidates() -> Result<Vec<Identity>> {
+        let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+        if snapshot == INVALID_HANDLE_VALUE {
+            return Err("Cannot enumerate client processes".into());
+        }
+        let snapshot = Handle(snapshot);
+        let mut entry: PROCESSENTRY32W = unsafe { std::mem::zeroed() };
+        entry.dwSize = size_of::<PROCESSENTRY32W>() as u32;
+        let mut available = unsafe { Process32FirstW(snapshot.0, &mut entry) } != 0;
+        let mut results = Vec::new();
+        while available {
+            let length = entry
+                .szExeFile
+                .iter()
+                .position(|value| *value == 0)
+                .unwrap_or(entry.szExeFile.len());
+            let basename = String::from_utf16_lossy(&entry.szExeFile[..length]);
+            if basename.eq_ignore_ascii_case("osu!.exe") {
+                // Do not silently ignore an access-denied client using the same
+                // Realm. Nothing here sends a close message to these candidates.
+                if let Some(candidate) = identity(entry.th32ProcessID)? {
+                    if looks_like_lazer(&candidate.executable)? {
+                        results.push(candidate);
+                    }
+                }
+            }
+            available = unsafe { Process32NextW(snapshot.0, &mut entry) } != 0;
+        }
+        Ok(results)
+    }
+
     struct CloseWindows {
         pid: u32,
         posted: usize,
@@ -337,5 +393,36 @@ mod tests {
             .unwrap_err()
             .contains("identity"));
         assert_eq!(state(&own).unwrap(), State::Live);
+    }
+
+    #[test]
+    fn candidate_detection_distinguishes_stable_and_managed_installations() {
+        let directory = std::env::temp_dir().join(format!(
+            "kaleidoscope-process-test-{}",
+            uuid::Uuid::new_v4().hyphenated()
+        ));
+        std::fs::create_dir(&directory).unwrap();
+        let directory = std::fs::canonicalize(directory).unwrap();
+        let executable = directory.join("osu!.exe");
+        std::fs::write(&executable, b"fixture, never executed").unwrap();
+        assert!(!looks_like_lazer(&executable).unwrap());
+        for companion in ["osu!.dll", "osu.Game.dll", "osu.Framework.dll"] {
+            let path = directory.join(companion);
+            std::fs::write(&path, b"assembly metadata fixture").unwrap();
+            assert!(looks_like_lazer(&executable).unwrap());
+            std::fs::remove_file(path).unwrap();
+        }
+        assert_eq!(
+            std::fs::read(&executable).unwrap(),
+            b"fixture, never executed"
+        );
+        let temporary = std::fs::canonicalize(std::env::temp_dir()).unwrap();
+        assert_eq!(directory.parent(), Some(temporary.as_path()));
+        assert!(directory
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("kaleidoscope-process-test-"));
+        std::fs::remove_dir_all(directory).unwrap();
     }
 }

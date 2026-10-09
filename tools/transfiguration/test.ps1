@@ -25,7 +25,7 @@ $proofFixture = Join-Path $proofRoot 'bin/Fixture/net10.0/osu.Game.Rulesets.Tran
 $proofProduction = Join-Path $proofRoot 'artifacts/osu.Game.Rulesets.Transfiguration.dll'
 Invoke-ProofCommand $proofExe @('--policy',$proofProduction)
 Invoke-ProofCommand $proofExe @($proofFixture,$proofNative,(Join-Path $proofOutput 'data-transfiguration-proof-native'))
-foreach ($proofCase in 'nonce','ready-path','ready-exists','relative','unc') {
+foreach ($proofCase in 'nonce','ready-path','ready-exists','relative','unc','overlap') {
     Invoke-ProofCommand $proofExe @('--reject',$proofFixture,$proofNative,(Join-Path $proofOutput 'data-transfiguration-proof-reject'),$proofCase)
 }
 
@@ -33,13 +33,16 @@ if ($NativeHost) {
     $proofHost = [IO.Path]::GetFullPath($NativeHost)
     if (!(Test-Path -LiteralPath $proofHost -PathType Leaf)) { throw 'Native runtime_probe executable missing; build its Kaleidoscope example first' }
     $proofData = Join-Path $proofOutput 'data-transfiguration-proof-native-host'
+    $proofControl = Join-Path $proofOutput 'data-transfiguration-proof-native-host-control'
     [IO.Directory]::CreateDirectory($proofData) | Out-Null
+    [IO.Directory]::CreateDirectory($proofControl) | Out-Null
     $proofNonce = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).ToLowerInvariant()
     $proofEnvironment = @{
         ILLYAVERSE_LAZER_INSTALL_ROOT = $proofNative
         ILLYAVERSE_LAZER_DATA_ROOT = $proofData
+        ILLYAVERSE_LAZER_CONTROL_ROOT = $proofControl
         ILLYAVERSE_LAZER_SESSION = $proofNonce
-        ILLYAVERSE_LAZER_READY_FILE = (Join-Path $proofData "session-ready-$proofNonce.json")
+        ILLYAVERSE_LAZER_READY_FILE = (Join-Path $proofControl "session-ready-$proofNonce.json")
         ILLYAVERSE_TRANSFIGURATION_NATIVE_PROOF = '1'
         ILLYAVERSE_TRANSFIGURATION_PROOF_BRIDGE = $proofFixture
     }

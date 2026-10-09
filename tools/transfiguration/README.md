@@ -31,12 +31,20 @@ assemblies 與 proof runtime 不可放進正式 package。
 已驗證。
 
 測試使用獨立的 compile-time loopback fixture（127.0.0.1:18376）與自己的測試
-資料夾，沒有執行 osu! `Main`、GameHost、UI、Realm database 或 APIAccess 建構子，也沒有
-讀取帳號快取。它驗證 stock assemblies 的實際 endpoint/storage 方法、同版
+資料夾，沒有執行 osu! `Main`、GameHost、UI 或 Realm database，也沒有讀取玩家的
+帳號快取。它驗證 stock assemblies 的實際 endpoint/storage 方法、同版
 .NET 10.0.12 transport、foreign redirect 阻擋、官方 HTTP/WS 在連線前拒絕、
-五種啟動參數拒絕，以及必要 native bootstrap 在測試 `Main` 前完成。正式 DLL
+六種啟動參數拒絕，以及必要 native bootstrap 在測試 `Main` 前完成。正式 DLL
 另有沒有網路操作的固定 policy proof。完整 stdout 留在 `proof-output/contract-proof.txt`。
 遊戲 UI、登入與完整協定仍需玩家實機驗證。
+
+帳號隔離 proof 使用真正的 stock `NativeStorage`、`OsuConfigManager` 和
+`APIAccess` 建構子，資料僅有合成的有效／過期官方 token 與圖譜資源／Realm
+標記檔。它驗證私服設定在 Load 前選用另一個檔名、官方 `game.ini` 保持
+byte-identical，以及私服設定儲存、重載、記住密碼切換與 stock Logout handler。
+proof 專用的 `APIAccess.run` prefix 讓 worker 在入口立即結束，避免登入或
+refresh 網路工作；此 patch 不存在正式 DLL。這些測試不是實際登入／refresh
+或共享 Realm schema 相容性驗證。
 
 ## RX 讀取 context
 
@@ -64,17 +72,32 @@ API success callbacks。
 
 ## 啟動器契約
 
-啟動器必須先建立自己的 `%LOCALAPPDATA%\Illyaverse\lazer` profile，驗證它和
-rulesets 目錄不是 reparse points，再將正式 DLL 暫存至該 profile 的 `rulesets/`。
-官方 profile、token、refresh token、設定與 portable storage 不得複製進來。
-stable 自動匯入及遊戲內更換或遷移資料目錄在此橋接模式下停用。
+啟動器先解析玩家既有的 lazer 資料目錄，包括預設、portable 和 `storage.ini`
+的自訂路徑。原本的 `client.realm` 與 `files/` 直接沿用，沒有獨立圖譜庫、複製
+或再次匯入。啟動器驗證目錄和 `rulesets/` 不是 reparse points，再暫存正式 DLL
+至該資料目錄的 `rulesets/`。guardian／journal 和 readiness 使用啟動器既有的
+`%LOCALAPPDATA%\Illyaverse\Kaleidoscope` 控制目錄。
+
+私服的帳號與遊戲設定存於同一資料目錄的 `game.illyaverse.ini`。橋接在
+`IniConfigManager<OsuSetting>.Filename` 加上僅適用於 exact `OsuConfigManager`
+instance 的 patch，確保基底建構子的 Load 已選用私服檔名。`APIAccess` 的
+constructor prefix 在讀取 username/token 或啟動 worker 前再次驗證該 config
+確實經過隔離建構子，並且 endpoints 是固定私服設定。官方 `game.ini` 不讀取、
+不複製、不覆寫；私服第一次使用的遊戲偏好會從預設值開始。
+
+遊戲名稱與 portable host option 保留；已解析的資料路徑由 bridge 固定，IPC
+使用獨立的 `illyaverse-lazer`。橋接模式下不再套用第二次 custom-storage
+redirect，遊戲內更換或遷移資料目錄也停用，避免改寫共用的 `storage.ini`。
+stable 自動匯入停用。若要更換資料路徑，先退出私服啟動器，透過 stock lazer
+設定後再從啟動器重開。
 
 | Child process environment | 值 |
 | --- | --- |
 | `ILLYAVERSE_LAZER_INSTALL_ROOT` | 所選官方安裝的絕對本機路徑 |
-| `ILLYAVERSE_LAZER_DATA_ROOT` | `%LOCALAPPDATA%\Illyaverse\lazer` |
+| `ILLYAVERSE_LAZER_DATA_ROOT` | 玩家既有且已解析的 lazer 資料目錄，絕對本機路徑 |
+| `ILLYAVERSE_LAZER_CONTROL_ROOT` | `%LOCALAPPDATA%\Illyaverse\Kaleidoscope` |
 | `ILLYAVERSE_LAZER_SESSION` | 啟動器以 CSPRNG 產生的 64 hex nonce |
-| `ILLYAVERSE_LAZER_READY_FILE` | data root 下 `session-ready-<nonce>.json`，必須不存在 |
+| `ILLYAVERSE_LAZER_READY_FILE` | control root 下 `session-ready-<nonce>.json`，必須不存在 |
 
 native host 初始化自己的第一個 runtime context，強制
 `System.StartupHookProvider.IsSupported=true` 與 `STARTUP_HOOKS=<DLL absolute path>`
@@ -106,6 +129,7 @@ ruleset；若相容 DLL 被手動放入官方 profile 後直接啟動，sentinel
 - [osu! desktop Release startup hook 設定](https://github.com/ppy/osu/blob/6cbcae7fbb764839a66c1adf564c2e1679242072/osu.Desktop/osu.Desktop.csproj)
 - [osu! endpoint、storage 與 API 建立順序](https://github.com/ppy/osu/blob/6cbcae7fbb764839a66c1adf564c2e1679242072/osu.Game/OsuGameBase.cs)
 - [osu! custom storage 切換](https://github.com/ppy/osu/blob/6cbcae7fbb764839a66c1adf564c2e1679242072/osu.Game/IO/OsuStorage.cs)
+- [osu-framework config Load/Save 與 Filename](https://github.com/ppy/osu-framework/blob/ab102608f363f24e0e33ec629a9bf613e72c9950/osu.Framework/Configuration/IniConfigManager.cs)
 - [.NET SocketsHttpHandler transport](https://github.com/dotnet/runtime/blob/v10.0.12/src/libraries/System.Net.Http/src/System/Net/Http/SocketsHttpHandler/SocketsHttpHandler.cs)
 - [Harmony 2.4.2](https://github.com/pardeike/Harmony/releases/tag/v2.4.2.0)
 

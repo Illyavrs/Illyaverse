@@ -89,7 +89,7 @@ try {
         Write-FixtureJson $path $artifact
         Expect-Refusal "artifact rejects $case" { New-FixturePackage $source "artifact-$case" }
     }
-    foreach ($case in @('endpoint', 'assembly-hash', 'missing-assembly', 'runtime', 'contracts', 'proof-state', 'fixture-type', 'source-mismatch')) {
+    foreach ($case in @('endpoint', 'assembly-hash', 'missing-assembly', 'runtime', 'contracts', 'missing-account-isolation-contract', 'missing-api-constructor-contract', 'missing-account-isolation-proof', 'account-proof-overclaim', 'worker-proof-overclaim', 'proof-state', 'fixture-type', 'source-mismatch')) {
         $source = New-FixtureSource "compatibility-$case"
         $path = Join-Path $source 'bridge/compatibility.json'
         $value = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json -AsHashtable
@@ -99,6 +99,11 @@ try {
             'missing-assembly' { $value.assemblies.Remove('System.Net.Http.dll') }
             'runtime' { $value.runtime = 'unknown' }
             'contracts' { $value.contracts = @('OsuGameBase.CreateEndpoints') }
+            'missing-account-isolation-contract' { $value.contracts = @($value.contracts | Where-Object { $_ -cne 'IniConfigManager<OsuSetting>.Filename(exact OsuConfigManager only)' }) }
+            'missing-api-constructor-contract' { $value.contracts = @($value.contracts | Where-Object { $_ -cne 'APIAccess.ctor(OsuGameBase,OsuConfigManager,EndpointConfiguration,string)' }) }
+            'missing-account-isolation-proof' { $value.verification.Remove('private_configuration_before_api_constructor') }
+            'account-proof-overclaim' { $value.verification.private_credential_save_logout_remember_flags = 'passed_native_login' }
+            'worker-proof-overclaim' { $value.verification.real_api_worker_refresh_and_login = 'passed' }
             'proof-state' { $value.verification.native_gui_and_login = 'passed' }
             'fixture-type' { $value.fixture = 'false' }
             'source-mismatch' { $value.runtime = '10.0.13' }

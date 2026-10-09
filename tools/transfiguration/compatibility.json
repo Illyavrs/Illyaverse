@@ -40,6 +40,8 @@
     "OsuStorage.TryChangeToCustomStorage",
     "OsuStorage.ChangeDataPath",
     "OsuGameBase.MigrateUserData",
+    "IniConfigManager<OsuSetting>.Filename(exact OsuConfigManager only)",
+    "OsuConfigManager.ctor(Storage):pre-load and post-load isolation",
     "SocketsHttpHandler.ctor",
     "HttpClientHandler.ctor",
     "SocketsHttpHandler.Send",
@@ -63,6 +65,10 @@
     "production_destination_policy": "passed",
     "rx_native_request_context": "passed_headless",
     "rx_statistics_generation_cache": "passed_headless",
+    "shared_existing_library_storage": "passed_headless_path_and_marker_fixture",
+    "private_configuration_before_api_constructor": "passed_headless_real_config_constructor",
+    "private_credential_save_logout_remember_flags": "passed_headless_native_handlers_worker_intercepted",
+    "real_api_worker_refresh_and_login": "pending_human_test",
     "native_gui_and_login": "pending_human_test"
   }
 }

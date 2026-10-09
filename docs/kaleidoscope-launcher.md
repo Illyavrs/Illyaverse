@@ -2,7 +2,7 @@
 
 Kaleidoscope 是 Illyaverse 專用的 Windows 啟動器。先在網站註冊，再選擇已安裝的 stable 或 lazer，按「啟動」。遊戲已執行時，按鈕會改為「關閉並重新啟動」。沒有其他伺服器選單。
 
-目前測試版固定連到 `https://illya.test`。啟動器與原創 Transfiguration 外掛已通過隔離測試；真正的遊戲視窗、登入、遊玩與退出流程仍待玩家驗證。營運者尚未發布公開下載，請先取得營運者提供的測試包。
+目前測試版固定連到 `https://illya.test`。lazer 使用已安裝的客戶端和現有圖譜庫，不需要另外匯入或複製圖譜。啟動器與原創 Transfiguration 外掛的測試範圍見[驗證記錄](verification.md)；真正的遊戲視窗、登入、遊玩與退出流程仍待玩家驗證。營運者尚未發布公開下載，請先取得營運者提供的完整測試包。
 
 ## 第一次使用
 
@@ -23,13 +23,19 @@ Kaleidoscope 是 Illyaverse 專用的 Windows 啟動器。先在網站註冊，�
 
 不需要重新編譯整套 lazer，但啟動器與外掛仍需相容性維護。目前只允許已測試的 stock `2026.1005.1-tachyon` 檔案與執行環境。更新後不相容時，等待新版 Kaleidoscope／Transfiguration 配套測試包；啟動器會停止，沒有官方伺服器 fallback。啟動器綁定遊戲檔案與外掛的雜湊，請一起更新完整測試包，不要單獨替換 DLL。
 
-私服資料固定在 `%LOCALAPPDATA%\Illyaverse\lazer`，與官方帳號設定、token、譜面庫和 IPC 分開。外掛暫放在這個私服資料目錄的 `rulesets` 子資料夾，不複製官方登入資料，也不自動匯入 stable 資料。遊戲的資料目錄切換維持此隔離範圍。不要手動把外掛複製到官方 rulesets。
+啟動器找出這份 lazer 實際使用的資料目錄，直接沿用原有 `client.realm` 和 `files` 圖譜資源。一般安裝從 `%APPDATA%\osu` 開始查找；安裝資料夾存在 `framework.ini` 時依 portable 模式查找，再讀取 `storage.ini` 的 `FullPath` 自訂路徑。找不到或無法安全確認既有路徑時會停止，不會建立另一個空白圖譜庫。沒有複製、搬移、重新匯入或建立 junction 的步驟。這項路徑判定以固定 [osu-framework 版本](https://github.com/ppy/osu-framework/tree/ab102608f363f24e0e33ec629a9bf613e72c9950)和原創[路徑解析器](../tools/kaleidoscope/src/launcher/storage.rs)為依據。
+
+官方的 `game.ini` 不會被讀取、複製或覆寫。私服登入資訊與遊戲設定存於同一資料目錄的 `game.illyaverse.ini`；外掛在設定載入和 API 背景執行緒啟動前確認這份獨立設定，不把官方帳號或 token 送到 Illyaverse。遊戲資料庫和圖譜資源仍是現有那份，只有這次執行的 IPC 與帳號設定分開。[設定隔離程式](../tools/transfiguration/src/AccountConfigIsolation.cs)記錄此邊界。
+
+外掛暫放在上述現有資料目錄的 `rulesets` 子資料夾。復原紀錄與就緒訊號存於 `%LOCALAPPDATA%\Illyaverse\Kaleidoscope`，不作為圖譜庫。啟動器記錄本次圖譜目錄與目錄身分，清理時不重新依另一份 `storage.ini` 選擇路徑。此次私服執行停用自動匯入 stable 和資料目錄切換；要更改 lazer 的資料位置，先結束遊戲並完成外掛清理，再由正常 lazer 調整，下一次啟動器會重新確認既有位置。不要手動放置或替換 Transfiguration DLL。
 
 ## 關閉與清理
 
 遊戲結束後，獨立監護程序會確認程序身分與實際退出，再刪除本次放入的外掛。只關閉啟動器視窗時，監護程序繼續等待遊戲。
 
 強制結束監護程序或斷電時，當下無法執行刪除。下次開啟啟動器會檢查復原紀錄；有殘留時按「重試清理」。遊戲仍在執行，或檔案被更換、修改、連結到其他位置時，工具保留檔案並顯示錯誤。清理失敗不會顯示完成，也不刪除其他 ruleset。
+
+要回到官方伺服器，先關閉此次私服遊戲並確認清理完成，再正常開啟 lazer。舊版曾在 `%LOCALAPPDATA%\Illyaverse\lazer` 留下的啟動紀錄只供復原原本自有外掛，不會被選作新版圖譜庫，也不會刪除其中的圖譜或設定。
 
 ## 營運者建置測試包
 
