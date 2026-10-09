@@ -1,4 +1,5 @@
 mod account_recovery;
+mod account_sessions;
 mod admin;
 mod announcements;
 #[cfg(test)]
@@ -232,6 +233,8 @@ async fn guard(State(state): State<AppState>, request: Request, next: Next) -> R
     let limit =
         if path.starts_with("/api/v1/auth/recovery/") || path.starts_with("/api/v1/auth/email/") {
             Some((5, 60, "recovery"))
+        } else if path.starts_with("/api/v1/official/beatmapsets/") {
+            Some((30, 60, "official_discovery"))
         } else if mutating && path.starts_with("/api/v1/auth/") {
             Some((20, 600, "auth"))
         } else if path.ends_with("/stream") {
@@ -367,6 +370,15 @@ fn router(state: AppState) -> Router {
         )
         .route("/api/v1/auth/logout", post(auth::logout))
         .route("/api/v1/me", get(auth::me))
+        .route("/api/v1/me/sessions", get(account_sessions::list))
+        .route(
+            "/api/v1/me/sessions/{client}/{id}",
+            delete(account_sessions::revoke),
+        )
+        .route(
+            "/api/v1/me/sessions/revoke-others",
+            post(account_sessions::revoke_others),
+        )
         .route("/api/v1/me/relationships", get(social::list))
         .route(
             "/api/v1/me/relationships/{id}",
@@ -408,6 +420,20 @@ fn router(state: AppState) -> Router {
             )),
         )
         .route("/api/v1/beatmapsets", get(map_catalogue::list))
+        .route(
+            "/api/v1/official/beatmapsets/search",
+            get(maps::browse_official).layer(SetResponseHeaderLayer::overriding(
+                header::CACHE_CONTROL,
+                axum::http::HeaderValue::from_static("no-store"),
+            )),
+        )
+        .route(
+            "/api/v1/official/beatmapsets/{id}",
+            get(maps::official_detail).layer(SetResponseHeaderLayer::overriding(
+                header::CACHE_CONTROL,
+                axum::http::HeaderValue::from_static("no-store"),
+            )),
+        )
         .route(
             "/api/v1/beatmaps/{id}/set/difficulties",
             get(map_catalogue::difficulties),

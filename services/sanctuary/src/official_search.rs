@@ -1,5 +1,5 @@
-//! Staff discovery of official sets. The cache contains only public upstream
-//! summaries; retained catalog state and authorization are rechecked per request.
+//! Official discovery shares bounded upstream caches for players and staff.
+//! Public browsing never imports maps. Local availability is merged afresh.
 use super::*;
 use axum::extract::RawQuery;
 use serde::Serialize;
@@ -16,6 +16,7 @@ pub(super) struct SearchKey {
     status: String,
     sort: String,
     cursor: Option<String>,
+    set_id: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -45,10 +46,32 @@ fn cursor_valid(value: &str) -> bool {
     !value.is_empty() && value.len() <= 2048 && value.bytes().all(|c| (0x20..=0x7e).contains(&c))
 }
 
+fn query_encoding_valid(raw: &str) -> bool {
+    let mut decoded = Vec::with_capacity(raw.len());
+    let mut bytes = raw.bytes();
+    while let Some(byte) = bytes.next() {
+        if byte == b'%' {
+            let Some(high) = bytes.next().and_then(|byte| (byte as char).to_digit(16)) else {
+                return false;
+            };
+            let Some(low) = bytes.next().and_then(|byte| (byte as char).to_digit(16)) else {
+                return false;
+            };
+            decoded.push((high * 16 + low) as u8);
+        } else {
+            decoded.push(byte);
+        }
+    }
+    std::str::from_utf8(&decoded).is_ok()
+}
+
 fn parse(raw: Option<String>) -> ApiResult<SearchKey> {
     let raw = raw.unwrap_or_default();
     if raw.len() > 8192 {
         return Err(ApiError::bad("The search query exceeds its size limit."));
+    }
+    if !query_encoding_valid(&raw) {
+        return Err(ApiError::bad("Invalid search query encoding."));
     }
     let uri = format!("/?{raw}")
         .parse()
@@ -82,11 +105,15 @@ fn parse(raw: Option<String>) -> ApiResult<SearchKey> {
         status: input.status,
         sort: input.sort,
         cursor: input.cursor_string,
+        set_id: None,
     })
 }
 
 impl SearchKey {
     fn path(&self) -> String {
+        if let Some(id) = self.set_id {
+            return format!("/api/v2/beatmapsets/{id}");
+        }
         // Url's query encoder keeps opaque cursors and Unicode terms in one
         // parameter. Neither input can choose the production host or route.
         let mut url = reqwest::Url::parse("https://osu.ppy.sh/api/v2/beatmapsets/search")
@@ -122,6 +149,17 @@ struct Difficulty {
     mode: i16,
     stars: f64,
     length_seconds: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    checksum: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    local_id: Option<i64>,
+    archive_available: bool,
+    bpm: Option<f64>,
+    ar: Option<f64>,
+    cs: Option<f64>,
+    od: Option<f64>,
+    hp: Option<f64>,
+    max_combo: Option<i32>,
 }
 #[derive(Clone, Default, Serialize)]
 struct Local {
@@ -194,6 +232,16 @@ fn id(value: &Value) -> ApiResult<i64> {
         .as_i64()
         .filter(|id| (1..=MAX_OFFICIAL_ID).contains(id))
         .ok_or_else(invalid)
+}
+fn optional_number(value: Option<&Value>, maximum: f64) -> ApiResult<Option<f64>> {
+    match value {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => value
+            .as_f64()
+            .filter(|value| value.is_finite() && (0.0..=maximum).contains(value))
+            .map(Some)
+            .ok_or_else(invalid),
+    }
 }
 fn transform(value: &Value) -> ApiResult<SearchResult> {
     let sets = value["beatmapsets"]
@@ -277,6 +325,35 @@ fn transform(value: &Value) -> ApiResult<SearchResult> {
                 mode,
                 stars,
                 length_seconds,
+                checksum: match map.get("checksum") {
+                    None | Some(Value::Null) => None,
+                    Some(value) => Some(
+                        value
+                            .as_str()
+                            .filter(|value| {
+                                value.len() == 32 && value.bytes().all(|c| c.is_ascii_hexdigit())
+                            })
+                            .ok_or_else(invalid)?
+                            .to_ascii_lowercase(),
+                    ),
+                },
+                local_id: None,
+                archive_available: false,
+                bpm: optional_number(map.get("bpm"), 100_000.0)?,
+                ar: optional_number(map.get("ar"), 100.0)?,
+                cs: optional_number(map.get("cs"), 100.0)?,
+                od: optional_number(map.get("accuracy"), 100.0)?,
+                hp: optional_number(map.get("drain"), 100.0)?,
+                max_combo: match map.get("max_combo") {
+                    None | Some(Value::Null) => None,
+                    Some(value) => Some(
+                        value
+                            .as_i64()
+                            .and_then(|value| i32::try_from(value).ok())
+                            .filter(|value| *value >= 0)
+                            .ok_or_else(invalid)?,
+                    ),
+                },
             });
             if difficulties.len() > 512 {
                 return Err(invalid());
@@ -390,7 +467,7 @@ async fn authorize(state: &AppState, headers: &HeaderMap) -> ApiResult<()> {
 }
 async fn resolve(
     state: &AppState,
-    headers: &HeaderMap,
+    headers: Option<&HeaderMap>,
     key: &SearchKey,
 ) -> ApiResult<SearchResult> {
     let selector = MapSelector::OfficialSearch(key.clone());
@@ -415,19 +492,47 @@ async fn resolve(
         (flight, official.slots.clone())
     };
     let _flight = flight.lock().await;
-    authorize(state, headers).await?;
+    if let Some(headers) = headers {
+        authorize(state, headers).await?;
+    }
     {
         let mut official = state.official.lock().await;
         if let Some(result) = cached(&mut official, key) {
             return result;
         }
     }
+    let _public_permit = if headers.is_none() {
+        let slots = state.official.lock().await.public_discovery_slots.clone();
+        Some(slots.try_acquire_owned().map_err(|_| busy())?)
+    } else {
+        None
+    };
     let _permit = slots.try_acquire_owned().map_err(|_| busy())?;
+    if headers.is_none() {
+        // Public browsing can occupy at most two resolution slots, and consume
+        // at most thirty cache misses a minute across all callers. Cached
+        // results do not consume this budget; native resolution keeps capacity.
+        let mut official = state.official.lock().await;
+        official
+            .public_discovery_requests
+            .retain(|at| at.elapsed() < Duration::from_secs(60));
+        if official.public_discovery_requests.len() >= 30 {
+            return Err(busy());
+        }
+        official.public_discovery_requests.push(Instant::now());
+    }
     let result = async {
         let response = official_request(state, &key.path(), true).await?;
         let bytes = read_official_bytes(response, 4 * 1024 * 1024).await?;
-        let value = serde_json::from_slice(&bytes).map_err(|_| invalid())?;
-        transform(&value)
+        let value: Value = serde_json::from_slice(&bytes).map_err(|_| invalid())?;
+        if let Some(set_id) = key.set_id {
+            if value["id"].as_i64() != Some(set_id) {
+                return Err(invalid());
+            }
+            transform(&json!({"beatmapsets":[value],"total":1,"cursor_string":null}))
+        } else {
+            transform(&value)
+        }
     }
     .await;
     remember(&mut *state.official.lock().await, key.clone(), &result);
@@ -442,21 +547,35 @@ async fn merge_local(state: &AppState, result: &mut SearchResult) -> ApiResult<(
     if ids.is_empty() {
         return Ok(());
     }
-    let rows = sqlx::query("SELECT candidate.id, (SELECT count(*) FROM beatmaps b WHERE b.official_set_id=candidate.id AND b.source='official') AS stored_count, EXISTS(SELECT 1 FROM official_beatmapset_archives a WHERE a.official_set_id=candidate.id) AS archive_available, NOT illya_beatmapset_active(candidate.id) AS withdrawn FROM unnest($1::bigint[]) AS candidate(id)")
+    // Availability, retained counts and exact difficulty links use one database
+    // snapshot. Withdrawal cannot split those projections across two reads.
+    let rows = sqlx::query("SELECT candidate.id, (SELECT count(*) FROM beatmaps b WHERE b.official_set_id=candidate.id AND b.source='official') AS stored_count, EXISTS(SELECT 1 FROM official_beatmapset_archives a WHERE a.official_set_id=candidate.id) AS archive_available, NOT illya_beatmapset_active(candidate.id) AS withdrawn, COALESCE((SELECT jsonb_agg(jsonb_build_object('official_id',b.official_id,'local_id',b.id,'checksum',b.md5,'archive_available',EXISTS(SELECT 1 FROM official_beatmapset_archive_members m JOIN official_beatmapset_archives a ON a.id=m.archive_id WHERE m.beatmap_id=b.id AND a.official_set_id=candidate.id))) FROM beatmaps b WHERE b.source='official' AND b.official_id IS NOT NULL AND b.official_set_id=candidate.id AND illya_beatmapset_active(b.native_set_id)), '[]'::jsonb) AS stored FROM unnest($1::bigint[]) AS candidate(id)")
         .bind(&ids).fetch_all(&state.db).await?;
-    let local = rows
-        .into_iter()
-        .map(|row| {
-            (
-                row.get::<i64, _>("id"),
-                Local {
-                    stored_count: row.get("stored_count"),
-                    archive_available: row.get("archive_available"),
-                    withdrawn: row.get("withdrawn"),
-                },
-            )
-        })
-        .collect::<HashMap<_, _>>();
+    #[derive(Deserialize)]
+    struct Stored {
+        official_id: i64,
+        local_id: i64,
+        checksum: String,
+        archive_available: bool,
+    }
+    let mut local = HashMap::new();
+    let mut stored = HashMap::new();
+    for row in rows {
+        let set_id = row.get::<i64, _>("id");
+        local.insert(
+            set_id,
+            Local {
+                stored_count: row.get("stored_count"),
+                archive_available: row.get("archive_available"),
+                withdrawn: row.get("withdrawn"),
+            },
+        );
+        let members: Vec<Stored> =
+            serde_json::from_value(row.get("stored")).map_err(ApiError::internal)?;
+        for member in members {
+            stored.insert((set_id, member.official_id), member);
+        }
+    }
     for item in &mut result.items {
         item.local = local
             .get(&item.official_set_id)
@@ -469,6 +588,16 @@ async fn merge_local(state: &AppState, result: &mut SearchResult) -> ApiResult<(
             item.local.archive_available = false;
         }
     }
+    for item in &mut result.items {
+        for map in &mut item.difficulties {
+            let member = stored
+                .get(&(item.official_set_id, map.official_id))
+                .filter(|_| !item.local.withdrawn)
+                .filter(|member| map.checksum.as_ref() == Some(&member.checksum));
+            map.local_id = member.map(|member| member.local_id);
+            map.archive_available = member.is_some_and(|member| member.archive_available);
+        }
+    }
     Ok(())
 }
 pub async fn search(
@@ -479,7 +608,7 @@ pub async fn search(
     authorize(&state, &headers).await?;
     let key = parse(raw)?;
     let result = tokio::time::timeout(OPERATION_DEADLINE, async {
-        let mut result = resolve(&state, &headers, &key).await?;
+        let mut result = resolve(&state, Some(&headers), &key).await?;
         authorize(&state, &headers).await?;
         merge_local(&state, &mut result).await?;
         authorize(&state, &headers).await?;
@@ -491,7 +620,9 @@ pub async fn search(
         Ok(result) => result?,
         Err(_) => {
             let error = timeout_error();
-            if let Ok(mut official) = state.official.try_lock() {
+            if let Ok(mut official) = state.official.try_lock()
+                && cached(&mut official, &key).is_none_or(|result| result.is_err())
+            {
                 remember(
                     &mut official,
                     key,
@@ -503,6 +634,70 @@ pub async fn search(
     };
     Ok(Json(
         serde_json::to_value(result).map_err(ApiError::internal)?,
+    ))
+}
+
+async fn public_result(state: &AppState, key: SearchKey) -> ApiResult<SearchResult> {
+    let deadline = tokio::time::Instant::now() + OPERATION_DEADLINE;
+    if let Some(set_id) = key.set_id {
+        tokio::time::timeout_at(
+            deadline,
+            availability::require_active_set(&state.db, set_id),
+        )
+        .await
+        .map_err(|_| timeout_error())??;
+    }
+    let mut result = match tokio::time::timeout_at(deadline, resolve(state, None, &key)).await {
+        Ok(result) => result?,
+        Err(_) => {
+            let error = timeout_error();
+            if let Ok(mut official) = state.official.try_lock()
+                && cached(&mut official, &key).is_none_or(|result| result.is_err())
+            {
+                remember(
+                    &mut official,
+                    key,
+                    &Err(ApiError(error.0, error.1, error.2.clone())),
+                );
+            }
+            return Err(error);
+        }
+    };
+    // Local SQL has the same overall deadline, but its failures must never
+    // replace a healthy shared upstream cache entry.
+    tokio::time::timeout_at(deadline, async {
+        merge_local(state, &mut result).await?;
+        result.items.retain(|item| !item.local.withdrawn);
+        if let Some(set_id) = key.set_id {
+            availability::require_active_set(&state.db, set_id).await?;
+        }
+        Ok(result)
+    })
+    .await
+    .map_err(|_| timeout_error())?
+}
+
+pub async fn browse(State(state): State<AppState>, RawQuery(raw): RawQuery) -> ApiResult {
+    let result = public_result(&state, parse(raw)?).await?;
+    Ok(Json(
+        serde_json::to_value(result).map_err(ApiError::internal)?,
+    ))
+}
+
+pub async fn detail(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult {
+    if !(1..=MAX_OFFICIAL_ID).contains(&id) {
+        return Err(ApiError::bad("Supply one valid official set ID."));
+    }
+    let mut key = parse(None)?;
+    key.set_id = Some(id);
+    let result = public_result(&state, key).await?;
+    let item = result
+        .items
+        .into_iter()
+        .next()
+        .ok_or_else(ApiError::missing)?;
+    Ok(Json(
+        serde_json::to_value(item).map_err(ApiError::internal)?,
     ))
 }
 

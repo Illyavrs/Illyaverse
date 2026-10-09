@@ -684,9 +684,9 @@ pub struct PasswordChange {
     current_password: String,
     new_password: String,
 }
-/// The caller locks the user row before changing credentials or revoking sessions.
-/// Keeping one web session is only appropriate for an authenticated password change.
-pub(crate) async fn revoke_sessions(
+/// The caller holds the user's mutation fence before revoking login sessions.
+/// Keeping one web session supports an authenticated own-account operation.
+pub(crate) async fn revoke_login_sessions(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     user_id: i64,
     keep_web_session: Option<Uuid>,
@@ -704,6 +704,16 @@ pub(crate) async fn revoke_sessions(
         .bind(user_id)
         .execute(&mut **tx)
         .await?;
+    Ok(())
+}
+/// Credential changes invalidate both logins and pending account recovery.
+/// Plain session logout leaves recovery links and their mail delivery intact.
+pub(crate) async fn revoke_sessions(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    user_id: i64,
+    keep_web_session: Option<Uuid>,
+) -> ApiResult<()> {
+    revoke_login_sessions(tx, user_id, keep_web_session).await?;
     sqlx::query("UPDATE account_recovery_tokens SET consumed_at=COALESCE(consumed_at,now()) WHERE user_id=$1")
         .bind(user_id)
         .execute(&mut **tx)

@@ -30,6 +30,7 @@ pub use official_set_metadata::metadata;
 #[path = "official_search.rs"]
 mod official_search;
 pub use official_search::search as search_official;
+pub use official_search::{browse as browse_official, detail as official_detail};
 #[path = "map_card_preview.rs"]
 mod map_card_preview;
 pub use map_card_preview::preview as card_preview;
@@ -53,6 +54,11 @@ pub struct OfficialState {
     resolutions: HashMap<MapSelector, CachedFailure>,
     set_metadata: HashMap<i64, official_set_metadata::CachedMetadata>,
     search_cache: HashMap<official_search::SearchKey, official_search::CachedSearch>,
+    public_discovery_slots: Arc<tokio::sync::Semaphore>,
+    public_discovery_requests: Vec<Instant>,
+    // HTTP spacing and OAuth renewal share this gate. Cached discovery never
+    // waits on a network request while holding the cache/state mutex.
+    request_gate: Arc<Mutex<()>>,
     flights: HashMap<MapSelector, Weak<Mutex<()>>>,
     slots: Arc<tokio::sync::Semaphore>,
     #[cfg(test)]
@@ -68,6 +74,9 @@ impl Default for OfficialState {
             resolutions: HashMap::new(),
             set_metadata: HashMap::new(),
             search_cache: HashMap::new(),
+            public_discovery_slots: Arc::new(tokio::sync::Semaphore::new(2)),
+            public_discovery_requests: Vec::new(),
+            request_gate: Arc::new(Mutex::new(())),
             flights: HashMap::new(),
             slots: Arc::new(tokio::sync::Semaphore::new(4)),
             #[cfg(test)]
@@ -1053,18 +1062,15 @@ fn official_request_interval(configured: Option<&str>) -> Duration {
     )
 }
 
-async fn throttle(official: &mut OfficialState) {
-    if let Some(next) = official.next_request {
-        tokio::time::sleep(next.saturating_duration_since(Instant::now())).await;
-    }
+fn request_interval(_official: &OfficialState) -> Duration {
     let interval = official_request_interval(std::env::var("OSU_API_INTERVAL_MS").ok().as_deref());
     #[cfg(test)]
-    let interval = if official.fixture.is_some() {
+    let interval = if _official.fixture.is_some() {
         Duration::from_millis(1)
     } else {
         interval
     };
-    official.next_request = Some(Instant::now() + interval);
+    interval
 }
 
 fn upstream_error(code: &'static str, message: &str) -> ApiError {
@@ -1118,19 +1124,39 @@ fn remember_upstream_failure(official: &mut OfficialState, error: &ApiError) {
 // All production requests use this fixed origin. Only a test fixture can replace it.
 async fn send_official_request(
     state: &AppState,
-    official: &mut OfficialState,
     path: &str,
     oauth_body: Option<&Value>,
     authenticated: bool,
 ) -> ApiResult<reqwest::Response> {
-    let origin = "https://osu.ppy.sh";
-    #[cfg(test)]
-    let origin = official
-        .fixture
-        .as_ref()
-        .map_or(origin, |fixture| fixture.origin.as_str());
-    let url = format!("{origin}{path}");
-    throttle(official).await;
+    let (url, token, delay, interval) = {
+        let official = state.official.lock().await;
+        if let Some(error) = official.failure.as_ref().and_then(CachedFailure::error) {
+            return Err(error);
+        }
+        let origin = "https://osu.ppy.sh";
+        #[cfg(test)]
+        let origin = official
+            .fixture
+            .as_ref()
+            .map_or(origin, |fixture| fixture.origin.as_str());
+        let url = format!("{origin}{path}");
+        let token = official.token.clone();
+        let delay = official.next_request.map_or(Duration::ZERO, |next| {
+            next.saturating_duration_since(Instant::now())
+        });
+        (url, token, delay, request_interval(&official))
+    };
+    tokio::time::sleep(delay).await;
+    {
+        let mut official = state.official.lock().await;
+        // The request gate serializes senders. A cancelled spacing wait has not
+        // sent anything and must not move the next permitted request forward.
+        let now = Instant::now();
+        official.next_request = Some(
+            now.checked_add(interval)
+                .unwrap_or_else(|| now + Duration::from_secs(3600)),
+        );
+    }
     let mut request = if let Some(body) = oauth_body {
         state.client.post(&url).json(body)
     } else {
@@ -1138,7 +1164,7 @@ async fn send_official_request(
     };
     request = request.header(header::ACCEPT, "application/json");
     if authenticated {
-        request = request.bearer_auth(official.token.as_deref().unwrap_or_default());
+        request = request.bearer_auth(token.as_deref().unwrap_or_default());
     }
     let response = match request.send().await {
         Ok(response) => response,
@@ -1147,7 +1173,7 @@ async fn send_official_request(
                 "official_api_failed",
                 "The official API could not complete the request.",
             );
-            remember_upstream_failure(official, &error);
+            remember_upstream_failure(&mut *state.official.lock().await, &error);
             return Err(error);
         }
     };
@@ -1159,6 +1185,7 @@ async fn send_official_request(
             .and_then(|value| value.parse::<u64>().ok())
             .unwrap_or(2)
             .max(1);
+        let mut official = state.official.lock().await;
         official.next_request = Some(
             Instant::now()
                 .checked_add(Duration::from_secs(delay))
@@ -1171,13 +1198,14 @@ async fn send_official_request(
             "official_rate_limited",
             "The official API rate limit was reached. Please try later.".into(),
         );
-        remember_upstream_failure(official, &error);
+        remember_upstream_failure(&mut official, &error);
         return Err(error);
     }
     if response.status() == StatusCode::NOT_FOUND && oauth_body.is_none() {
         return Err(ApiError::missing());
     }
     if !response.status().is_success() {
+        let mut official = state.official.lock().await;
         let error = if oauth_body.is_some()
             || matches!(
                 response.status(),
@@ -1195,7 +1223,7 @@ async fn send_official_request(
                 "The official API could not complete the request.",
             )
         };
-        remember_upstream_failure(official, &error);
+        remember_upstream_failure(&mut official, &error);
         return Err(error);
     }
     Ok(response)
@@ -1237,23 +1265,30 @@ async fn official_request(
     path: &str,
     authenticated: bool,
 ) -> ApiResult<reqwest::Response> {
-    let mut official = state.official.lock().await;
-    if let Some(error) = official.failure.as_ref().and_then(CachedFailure::error) {
-        return Err(error);
-    }
-    if authenticated
-        && (official.expires.is_none_or(|e| e <= Instant::now()) || official.token.is_none())
-    {
-        let (id, secret) = match configured_credentials(&official) {
-            Ok(credentials) => credentials,
-            Err(error) => {
-                remember_upstream_failure(&mut official, &error);
-                return Err(error);
-            }
-        };
+    let gate = state.official.lock().await.request_gate.clone();
+    let _request = gate.lock().await;
+    let credentials = {
+        let mut official = state.official.lock().await;
+        if let Some(error) = official.failure.as_ref().and_then(CachedFailure::error) {
+            return Err(error);
+        }
+        if authenticated
+            && (official.expires.is_none_or(|e| e <= Instant::now()) || official.token.is_none())
+        {
+            Some(match configured_credentials(&official) {
+                Ok(credentials) => credentials,
+                Err(error) => {
+                    remember_upstream_failure(&mut official, &error);
+                    return Err(error);
+                }
+            })
+        } else {
+            None
+        }
+    };
+    if let Some((id, secret)) = credentials {
         let body = json!({"client_id":id,"client_secret":secret,"grant_type":"client_credentials","scope":"public"});
-        let response =
-            send_official_request(state, &mut official, "/oauth/token", Some(&body), false).await?;
+        let response = send_official_request(state, "/oauth/token", Some(&body), false).await?;
         let token = read_official_bytes(response, 64 * 1024)
             .await
             .and_then(|bytes| {
@@ -1277,22 +1312,24 @@ async fn official_request(
                     "official_auth_failed",
                     "The official OAuth response was invalid.",
                 );
-                remember_upstream_failure(&mut official, &error);
+                remember_upstream_failure(&mut *state.official.lock().await, &error);
                 return Err(error);
             }
         };
+        let mut official = state.official.lock().await;
         official.token = token["access_token"].as_str().map(str::to_owned);
         official.expires = Some(
             Instant::now()
-                + Duration::from_secs(
+                .checked_add(Duration::from_secs(
                     token["expires_in"]
                         .as_u64()
                         .unwrap_or(60)
                         .saturating_sub(30),
-                ),
+                ))
+                .unwrap_or_else(Instant::now),
         );
     }
-    send_official_request(state, &mut official, path, None, authenticated).await
+    send_official_request(state, path, None, authenticated).await
 }
 
 #[derive(Deserialize)]
