@@ -2,8 +2,8 @@
   "version": 1,
   "checkpoint": "integration-20261009",
   "recorded_at_utc": "2026-10-09T11:19:13Z",
-  "status": "retained_client_schema_25_deployed_main_schema_22_source_26_27_not_live_human_native_pending",
-  "historical_checkpoint_notice": "Earlier objects retain their original source/image/time scopes, including schema22 and HOLD states. The latest retained runtime is recorded separately in retained_client_schema_25_deployment; no earlier gate certifies source26/27 or native gameplay.",
+  "status": "retained_client_schema_27_deployed_main_schema_22_single_real_archive_get_verified_human_native_pending",
+  "historical_checkpoint_notice": "Earlier objects retain their original source/image/time scopes, including schema22/schema25, HOLD and pre-deployment states. The latest retained runtime is recorded separately in retained_client_schema_27_deployment; earlier gate counts, failed receipts and HEAD302-only provider basis remain unchanged.",
   "git_topology": {
     "projects": [
       "Serendipity",
@@ -599,7 +599,7 @@
     "native_gameplay_verified": false,
     "retained_services_redeployed": false
   },
-  "updated_at_utc": "2026-10-09T19:05:27.1853000Z",
+  "updated_at_utc": "2026-10-09T19:41:29.4450447Z",
   "post_deployment_source_fixes": {
     "retained_services_redeployed": false,
     "serendipity": "1179315",
@@ -1748,6 +1748,257 @@
       "Original PM, catalogue, archive and Node fixture failures remain archived; earlier source25 receipts and deployment references remain unchanged.",
       "Owned PostgreSQL and intercepted/loopback browser fixtures do not prove real provider availability or stock-client behavior.",
       "Normal scores, gameplay, replay, chat, Relax, multiplayer, reconnect and cleanup remain pending human verification in the latest retained schema25 environment."
+    ]
+  },
+  "retained_client_schema_27_deployment": {
+    "status": "passed",
+    "stage": "complete",
+    "project": "illyaverse-client-test",
+    "source_schema": 25,
+    "target_schema": 27,
+    "main_schema": 22,
+    "started_at_utc": "2026-10-09T19:33:40.8526231Z",
+    "finished_at_utc": "2026-10-09T19:37:09.5170459Z",
+    "runtime_image_build_parent": "0b4bec3a05fe0136cff8192e461aa3b4f608626f",
+    "documentation_commit_boundary": "Later documentation-only commits do not change the frozen parent used to build these runtime images.",
+    "images": {
+      "sanctuary": "sha256:780dc57bae6fa7c414e0702d8155567bc852659d572b37ec5826697e71864da4",
+      "resonance": "sha256:57565bd01eb363fb2919d317709a00eb1372fc81048f3b61ad120328abc46c4e",
+      "serendipity": "sha256:d39a15a55f7dbc768a32ce0c87301f3553d5f2e83961d2ce1b6a9324a59e610a"
+    },
+    "evidence": {
+      "image_build": {
+        "path": ".artifacts/builds/integration-images-27-d101fa4ddabb4289913763689f89b8ca/verification.json",
+        "sha256": "25229b212273843dfe61c1bdb272205615a5484629bce8760b9d9f825f9c125f"
+      },
+      "source_27_release_gates": {
+        "path": ".artifacts/builds/client-community-deploy27-5d0a0889c57145b6b36610e7e9bf4a30/release-gates27.json",
+        "sha256": "ac11179dc299aa1183d68999c4ca3b65af7647080ae465dc68da52369e188d35"
+      },
+      "reviewed_read_only_preflight_checkpoint": {
+        "path": ".artifacts/builds/client-community-deploy27-5d0a0889c57145b6b36610e7e9bf4a30/run-preflight-20261009T193216Z-ed98ba354d954e87b2e0c2563a0dc1cb/reviewed-checkpoint.json",
+        "sha256": "8a6488dd4ed45f9a38fa067565bfdba552cd173eb951d34611aff98735d6ce78"
+      },
+      "actual_deployment": {
+        "path": ".artifacts/builds/client-community-deploy27-5d0a0889c57145b6b36610e7e9bf4a30/run-deploy-20261009T193340Z-17b52a123bca4127959a5fe334ec39f2/manifest-0010.json",
+        "sha256": "f0362ba427c390e27b227a1e31211dc80bcae0c6f8deae2ba2815c694f3bc2ee"
+      },
+      "live_https": {
+        "path": ".artifacts/tests/client-https27-20261010-192510-root/verification-8ac0452768c54a25abe8b7d03f07efc6.json",
+        "sha256": "cf8018bafea8f5e7e729ac2f8b340d324463cf09e44d3d0a9c75fcee15839ea0"
+      },
+      "real_provider_archive_get": {
+        "path": ".artifacts/tests/live-archive27-44642251e3594731b0cfca477720d840/verdict-20261009T193800Z-54fecc9b09064fcaafa5647dfbaa8507.json",
+        "sha256": "a2b256dfdb8347ff771d8628ca196a172d8b5f25a5b9cc4e819478d7c7cd986b"
+      },
+      "post_deployment_local_provider_configuration": {
+        "path": ".artifacts/tests/client-https27-20261010-192510-root/provider-configuration.json",
+        "sha256": "1f89015e186a487c65e88480229ec48e442459ee031bf5fab71faf704fa5856f"
+      },
+      "startup_27": {
+        "path": ".artifacts/tests/startup27-e4b2b8d3156d410a909e77581c0fb418/run-2026-10-09T192031558Z-e997b5df8c7144a1903517b97792e237/startup27-proof.json",
+        "sha256": "51ed42d9432b61fa4ee513ea6137ae50702573fba24a7db6b2d253199d7a0b57"
+      },
+      "startup_original_failures_index": {
+        "path": ".artifacts/tests/startup27-e4b2b8d3156d410a909e77581c0fb418/startup27-proof-index.json",
+        "sha256": "5ef6eb585cb5251fa58fe0903b56926388e57f9aab9d319c82aa06d1622cc04d"
+      },
+      "protocol_27_final": {
+        "path": ".artifacts/tests/protocol-full-schema27-9664a1c12d1b4557936f3a74faa1fd07/final-verification.json",
+        "sha256": "cf65a481b7f4b1a2861773c113d0b8aec65c956dd40a36f0c76deba01aa063c6"
+      },
+      "protocol_original_wrapper_failure": {
+        "path": ".artifacts/tests/protocol-full-schema27-9664a1c12d1b4557936f3a74faa1fd07/verification.json",
+        "sha256": "07abdd7078c08ae14eefc157a46291968a1336e48ff69b7afa8deda1fd4902a1"
+      },
+      "recovery_27_final": {
+        "path": ".artifacts/tests/recovery-community27-009e69348a4a441fbd123c294279f719/verification-attempt2.json",
+        "sha256": "9dab40bc8e6988d9bbd57cc2a0348c93a6be9b656070a099cf2f75b423211c05"
+      },
+      "recovery_original_harness_failure": {
+        "path": ".artifacts/tests/recovery-community27-009e69348a4a441fbd123c294279f719/verification.json",
+        "sha256": "145ccd44b99804aa71ac85393afbae0b932956ff8fe27a00cce788955a8fb142"
+      }
+    },
+    "frozen_build": {
+      "all_three_build_exit_codes_zero": true,
+      "source_before_after_unchanged": true,
+      "physical_source_files": 954,
+      "physical_source_sha256": "25cc478a1ceb4019368145a66855c84b0acdcabf9fe39b472bef1f4761dd6e7a",
+      "exact_migration_lf_checksums": 27,
+      "retained_image_aliases_unchanged": true,
+      "builder_ran_or_deployed_containers": false,
+      "clean_clone_context_equivalence_claimed": false
+    },
+    "isolated_runtime_gates": {
+      "startup": {
+        "passed": true,
+        "check_groups": 9,
+        "original_tables": 42,
+        "sequences": 19,
+        "original_roles_and_file_bytes_ownership_preserved": true,
+        "pm_receipt_pairs": 2,
+        "exact_schema_27_ledger": true,
+        "all_three_initial_catalogue_epochs_zero": true,
+        "quiet_predicates": 14,
+        "owned_resources_zero": true,
+        "original_harness_failures_preserved": 2
+      },
+      "protocol": {
+        "passed": true,
+        "http_requests": 593,
+        "check_categories": 68,
+        "categories_are_assertion_count": false,
+        "exact_schema_27_ledger": true,
+        "final_owned_resources_zero": true,
+        "final_both_ports_bindable": true,
+        "original_immediate_port_release_wrapper_failure_preserved": true
+      },
+      "recovery": {
+        "passed": true,
+        "tables": 45,
+        "synthetic_rows": 72,
+        "sequences": 19,
+        "exact_migration_ledger": 27,
+        "binary_fixtures": 3,
+        "fixture_uid_gid": 10001,
+        "schema_rows_sequences_files_and_ownership_match": true,
+        "pm_receipt_catalogue_epoch_cas_and_rollback_checked": true,
+        "restored_api_ready": true,
+        "owned_resources_zero": true,
+        "first_sql_dollar_harness_failure_preserved": true
+      },
+      "primary_and_branch_counts_not_combined": true,
+      "native_client_execution": false
+    },
+    "preflight": {
+      "read_only": true,
+      "retained_containers": 10,
+      "client_schema": 25,
+      "main_schema": 22,
+      "quiet_predicates_zero": 14,
+      "client_files": 60,
+      "main_files": 4,
+      "root_ownership_present": true,
+      "exact_reviewed_checkpoint_bound": true
+    },
+    "cutover": {
+      "verified_application_services": [
+        "sanctuary",
+        "resonance",
+        "serendipity"
+      ],
+      "application_containers_replaced": 3,
+      "checks_passed": 10,
+      "receipt_backfill_26": true,
+      "initial_catalogue_27": true,
+      "roles_and_sequences": true,
+      "original_core_rows": true,
+      "original_stored_bytes_and_ownership": true,
+      "protected_client_postgresql_caddy_and_all_main_runtime_preserved": true,
+      "main_schema_22_unchanged": true,
+      "exact_schema_27_ledger": true,
+      "rank_history": true,
+      "public_ca_unchanged": true,
+      "runtime_environment_boundary": "Protected runtime environments and all existing application values preserved except the two declared client-test API provider additions.",
+      "application_startup_database_writes": true,
+      "manual_sql_mutations": false,
+      "automatic_rollback": false,
+      "builds_pulls_or_retagging": false,
+      "native_client_control": false
+    },
+    "private_backup": {
+      "complete": true,
+      "manifest_sha256": "e02760c570d93b35875303564d0e1f2c0009a950f014e066da81bc19b4798644",
+      "contents_read_or_published_by_documentation_worker": false
+    },
+    "live_https": {
+      "completed_at_utc": "2026-10-09T19:37:49.4848649Z",
+      "passed": 10,
+      "failed": 0,
+      "certificate_validation": "default Windows trust; no override",
+      "users_2_status": 200,
+      "admin_page_status": 200,
+      "players_alias": {
+        "path": "/players/2?mode=0&variant=relax",
+        "status": 308,
+        "location": "/users/2?mode=0&variant=relax",
+        "exact_query_preserved": true
+      },
+      "server_local_catalogue_status": 200,
+      "unauthenticated_me_status": 401,
+      "authenticated_admin_or_native_game_behavior_verified": false
+    },
+    "real_provider_archive_get": {
+      "status": "passed_single_public_anonymous_server_route_request",
+      "requested_set_id": 1,
+      "requested_route": "/api/v1/official/beatmapsets/1/archive",
+      "http_request_attempts": 1,
+      "http_status": 200,
+      "elapsed_milliseconds": 5509,
+      "compressed_bytes": 2840455,
+      "sha256": "4dc800b8e447405524f1a9eea0eec5a2c7dd8f60400e66f8b7b932bcad823530",
+      "server_sha256_matches": true,
+      "osz_attachment_and_content_type_match": true,
+      "zip_entries": 3,
+      "osu_chart_count": 1,
+      "distinct_nonempty_referenced_audio_count": 1,
+      "all_file_crc32_verified": true,
+      "requested_set_ids_match": true,
+      "tls_validation_bypassed": false,
+      "authentication_used": false,
+      "redirects_followed": 0,
+      "retries": 0,
+      "archive_bytes_persisted": false,
+      "upstream_direct_request": false,
+      "complete_upstream_manifest_independently_observed": false,
+      "database_preservation_independently_observed_by_probe": false,
+      "import_playback_or_native_game_tested": false,
+      "original_metadata_authority": "Deployed server validation and separate synthetic backend proofs; the single real request checks received identity, ZIP CRCs and referenced audio."
+    },
+    "provider_configuration": {
+      "runtime_client_test_api_additions": {
+        "OSU_ARCHIVE_URL_TEMPLATE": "https://osu.direct/api/d/{set_id}",
+        "OSU_ARCHIVE_REDIRECT_HOSTS": "storage.osu.direct"
+      },
+      "general_env_example_default_url_template": "",
+      "local_file_persistence": {
+        "completed_at_utc": "2026-10-09T19:41:29.4450447Z",
+        "after_deployment": true,
+        "ignored_file": ".env.client-test.local",
+        "only_two_public_provider_keys_added": true,
+        "other_original_bytes_utf8_and_acl_preserved": true,
+        "other_environment_contents_or_hashes_recorded": false,
+        "runtime_environment_changed_by_file_persistence": false,
+        "main_environment_changed": false
+      },
+      "earlier_head_302_basis_in_release_aggregate_preserved": true,
+      "later_single_real_get_recorded_separately": true
+    },
+    "native_human": {
+      "previous_lazer_login": "human_reported_success",
+      "latest_native_human_reply_received": false,
+      "pending": [
+        "Normal scores",
+        "native gameplay",
+        "replay",
+        "chat",
+        "Relax",
+        "multiplayer",
+        "reconnect",
+        "exit cleanup"
+      ],
+      "debug_gui_test_package_unchanged": true,
+      "release_build_windows_error_5_unresolved": true,
+      "agent_native_game_or_player_files_accessed": false
+    },
+    "limits": [
+      "The runtime image build parent remains 0b4bec3a05fe0136cff8192e461aa3b4f608626f, independent of later documentation-only commits.",
+      "Earlier source25 and source27 pre-deployment scopes, original failures and aggregate HEAD302-only provider basis remain unchanged.",
+      "Ten unauthenticated HTTPS checks do not prove authenticated administration or native clients.",
+      "One real server-route archive GET proves that received archive transfer only; it does not independently certify the complete original upstream manifest, database preservation, import or playback.",
+      "Ignored artifacts are local evidence and are not included in a normal Git clone.",
+      "Private backup records and all other environment contents/hashes remain unpublished."
     ]
   }
 }

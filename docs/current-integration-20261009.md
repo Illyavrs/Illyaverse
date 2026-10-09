@@ -1,10 +1,34 @@
 # 2026-10-09 整合 checkpoint
 
-目前保留的 `illyaverse-client-test` 已於 **2026-10-09 18:25:08 UTC** 完成 schema 22 → 25 部署，Sanctuary、Resonance、Serendipity 三個 application services 使用固定來源與映像；玩家圖譜排名提案、Beatmap Nominator 與新版審核流程已在這套環境部署。主部署仍保留 schema 22。新的 source-26 私訊與 source-27 catalogue／archive 工作仍屬來源變更，尚未部署，不能用下列舊 gate 宣稱已驗證。
+The retained `illyaverse-client-test` completed **schema 25 -> 27 at 2026-10-09 19:37:09 UTC**. Its three application services now include private-message receipts, the effective catalogue and archive acquisition. Main remains schema 22. The runtime images were built from frozen parent `0b4bec3a05fe0136cff8192e461aa3b4f608626f`; this later documentation update does not change that build identity.
 
-玩家先前已回報使用同一份 GUI 成功登入 lazer；這是人員回報，agent 沒有啟動或檢查玩家遊戲。最新 schema-25 環境的 Normal 送分、真人 gameplay、Replay、聊天、RX 與退出清理仍等待玩家非同步測試；多人、重連與完整原生流程也未因此取得驗證。先前 guarded deployment、兩次啟動失敗及來源／隔離檢查的原始證據與限制保留於下方歷史 checkpoint 和 [release-readiness.md](release-readiness.md)。
+The previous lazer login success is a player report. No new human native result has arrived: Normal scores, gameplay, replay, chat, Relax, multiplayer, reconnect and exit cleanup remain pending on the latest environment. The Debug GUI test package is unchanged; the Windows error 5 release-build limitation remains unresolved. Historical checkpoints and failures below retain their original scope.
 
-## 已部署的 client-test schema 25
+## Retained schema-27 deployment
+
+| Boundary | Current state |
+| --- | --- |
+| Client-test | Schema 27; three application services deployed. |
+| Main | Schema 22; protected runtime and data preserved. |
+| Runtime image source | Frozen parent `0b4bec3a05fe0136cff8192e461aa3b4f608626f`; later docs-only commits are separate. |
+
+| Service | Deployed image |
+| --- | --- |
+| Sanctuary | `sha256:780dc57bae6fa7c414e0702d8155567bc852659d572b37ec5826697e71864da4` |
+| Resonance | `sha256:57565bd01eb363fb2919d317709a00eb1372fc81048f3b61ad120328abc46c4e` |
+| Serendipity | `sha256:d39a15a55f7dbc768a32ce0c87301f3553d5f2e83961d2ce1b6a9324a59e610a` |
+
+The [build receipt](../.artifacts/builds/integration-images-27-d101fa4ddabb4289913763689f89b8ca/verification.json) binds all three zero-exit builds, five child pins, unchanged physical COPY inputs and 27 exact LF migrations. The [release aggregate](../.artifacts/builds/client-community-deploy27-5d0a0889c57145b6b36610e7e9bf4a30/release-gates27.json) binds the final gates: isolated startup passed nine check groups, protocol passed 593 HTTP requests / 68 categories with final cleanup, and recovery matched 45 tables / 72 synthetic rows / 19 sequences and three binary fixtures with UID/GID 10001. Categories are not assertion counts. The primary 14 selected browser cases and isolated branch suites remain separate; two startup harness failures, the recovery SQL-dollar harness failure and the protocol immediate-port-release wrapper failure are preserved.
+
+The [reviewed read-only Preflight checkpoint](../.artifacts/builds/client-community-deploy27-5d0a0889c57145b6b36610e7e9bf4a30/run-preflight-20261009T193216Z-ed98ba354d954e87b2e0c2563a0dc1cb/reviewed-checkpoint.json) bound ten retained containers, all 14 quiet predicates, 60 client / four main files and root ownership. The [actual Deploy manifest](../.artifacts/builds/client-community-deploy27-5d0a0889c57145b6b36610e7e9bf4a30/run-deploy-20261009T193340Z-17b52a123bca4127959a5fe334ec39f2/manifest-0010.json) is `passed` / `complete`: three services verified, all ten checks passed and private backup completed. PM receipt backfill, initial catalogue state and the exact schema-27 ledger passed; original core rows, stored bytes/ownership, roles/sequences, rank history, client PostgreSQL/Caddy, all main runtime and the public CA were preserved. Protected environments and existing application values were preserved except the two declared client-test API provider additions. No build, pull, retag, manual SQL or native-client control occurred during Deploy.
+
+The [post-deployment HTTPS receipt](../.artifacts/tests/client-https27-20261010-192510-root/verification-8ac0452768c54a25abe8b7d03f07efc6.json) passed **10/10** with default Windows trust and no override. `/users/2` and `/admin` returned 200; the players alias returned 308 with its exact `mode=0&variant=relax` query preserved; the local server catalogue API returned 200 and unauthenticated `/api/v2/me` returned 401. These status checks do not certify authenticated administration or native gameplay.
+
+One [real anonymous archive GET](../.artifacts/tests/live-archive27-44642251e3594731b0cfca477720d840/verdict-20261009T193800Z-54fecc9b09064fcaafa5647dfbaa8507.json) through the deployed server route for set 1 passed: HTTP 200 in 5.509 seconds, 2,840,455 compressed bytes, matching server SHA-256 and `.osz` attachment headers, three ZIP entries, one chart, one nonempty referenced audio file and verified CRCs. It used normal TLS with no retry or redirect and persisted no raw archive. This single transfer did not independently verify the complete upstream manifest or database preservation, and did not test import, playback or a native client; deployed server metadata validation and the separate backend fixtures retain their own scope. The earlier release aggregate's HEAD302-only provider basis remains historical.
+
+The client-test API uses `OSU_ARCHIVE_URL_TEMPLATE=https://osu.direct/api/d/{set_id}` and `OSU_ARCHIVE_REDIRECT_HOSTS=storage.osu.direct`; the general `.env.example` defaults remain empty. A separate [post-cutover configuration receipt](../.artifacts/tests/client-https27-20261010-192510-root/provider-configuration.json) records only these two public keys added to ignored `.env.client-test.local`, with all other original bytes, UTF-8 and ACL preserved. That file update did not change the running environment or main configuration. Private backup contents and other environment contents/hashes remain unpublished. Exact receipt SHA-256 references are in the [evidence index](current-integration-20261009-evidence.json).
+
+## Retained schema-25 deployment (historical)
 
 這次部署固定 parent `de4653e464796d5e38af6d7caa0e710a80f9d070`，只替換 client-test 的三個 application containers。部署前完成私人 backup；client-test PostgreSQL／Caddy，以及主部署所有 containers 的 IDs、StartedAt、mounts、環境值與保留 guard 均通過。原 core rows、stored file bytes／ownership、sequences 與 rank history 保留，client-test 帳號 `illya`（公開 id `2`）的 administrator role 未改變。主資料庫的 schema 22 未改變，client-test 的 migration 1–25 ledger 精確相符。映像不重新建置、pull 或 retag；只有正常 application startup 套用資料庫 migration。
 
@@ -22,7 +46,7 @@
 
 部署後 **18:25:33 UTC** 的 [HTTPS receipt](../.artifacts/builds/client-ranking-deploy-20261009T162512Z-e73784ed224b42f38e60d6a240b85445/live-https-20261009T182533Z-02851906cfee4a5c9d0ce28a29f3d595.json) SHA-256 為 `579b189b78a5c87b04a8b68fa0439e6406ddc6cc5296a786941cc4125bc77cc4`，9／9 通過，使用正常 Windows trust、沒有 TLS bypass、cookies 或 credentials。`/users/2` 與 `/admin` 回傳 200；`/players/2?mode=0&variant=relax` 回傳 308，`Location` 精確為 `/users/2?mode=0&variant=relax`；`/api/v2/me/` 回傳預期未登入的 401。這些唯讀 HTTPS checks 不證明登入後的管理權限或原生遊玩，沒有控制真人 client。
 
-## 後續 source-26／27 整合（尚未部署）
+## Source-26/27 integration before deployment (historical)
 
 後續私訊 read receipts、effective catalogue 與官方完整 archive acquisition 已合入目前來源，migration 來源為 1–27；保留 client-test 仍為 schema 25，主部署仍為 schema 22。新的固定 schema-27 cohort 尚待完成，以下隔離來源收據不能取代最終 composition gates，也不能回填成現有部署或真人 client 證據。
 
@@ -50,7 +74,7 @@ Archive acquisition 的來源設定是 optional `OSU_ARCHIVE_URL_TEMPLATE`：HTT
 
 ## 先前 checkpoint 的歷史範圍
 
-以下各節記錄當時的來源、映像與保留狀態；其中 schema 22、HOLD 與「尚未部署」描述屬於該節的時間點。最新 client-test 狀態以上節的 schema-25 manifest 為準，舊檢查與失敗紀錄沒有改寫成新來源證據。
+The following sections retain their original source, image and runtime states, including schema 22/25, HOLD and pre-deployment descriptions. Current client-test state comes from the schema-27 manifest above; old gates and failed receipts have not been rewritten as new-source evidence.
 
 ## 本輪來源與功能
 
