@@ -66,7 +66,7 @@ pub async fn metadata(
     availability::require_active_set(&state.db, input.official_set_id).await?;
     let result = match tokio::time::timeout(
         OPERATION_DEADLINE,
-        resolve_metadata(&state, input.user_id, input.official_set_id),
+        resolve_metadata(&state, Some(input.user_id), input.official_set_id),
     )
     .await
     {
@@ -110,7 +110,7 @@ fn cached(official: &mut OfficialState, set_id: i64) -> Option<ApiResult<Officia
 
 async fn resolve_metadata(
     state: &AppState,
-    user_id: i64,
+    user_id: Option<i64>,
     set_id: i64,
 ) -> ApiResult<OfficialSetMetadata> {
     availability::require_active_set(&state.db, set_id).await?;
@@ -136,7 +136,9 @@ async fn resolve_metadata(
         (flight, official.slots.clone())
     };
     let _flight = flight.lock().await;
-    require_active_user(state, user_id).await?;
+    if let Some(user_id) = user_id {
+        require_active_user(state, user_id).await?;
+    }
     availability::require_active_set(&state.db, set_id).await?;
     {
         let mut official = state.official.lock().await;
@@ -185,6 +187,23 @@ async fn resolve_metadata(
         Err(error) => remember_failure(state, set_id, error).await,
     }
     result
+}
+
+// This private child-module boundary is only used after a public card request
+// has resolved an existing active retained map. It is not an arbitrary set API.
+pub(super) async fn preview_metadata(
+    state: &AppState,
+    set_id: i64,
+) -> ApiResult<OfficialSetMetadata> {
+    resolve_metadata(state, None, set_id).await
+}
+
+pub(super) fn remember_preview_failure(
+    official: &mut OfficialState,
+    set_id: i64,
+    error: &ApiError,
+) {
+    cache_failure(official, set_id, error);
 }
 
 async fn fetch_metadata(state: &AppState, set_id: i64) -> ApiResult<OfficialSetMetadata> {

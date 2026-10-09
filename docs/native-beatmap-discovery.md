@@ -73,6 +73,6 @@ Stable 的 filename-only BeatmapInfo（`Ids` 空陣列）保留原輸入的 zero
 3. 確認狀態已顯示，實際完成一次遊玩，再確認網站自己的成績紀錄與 replay。
 4. 若仍是 Not submitted，提供該 difficulty 的官方網址或 ID，以及發生時間。圖譜辨識與真正提交是分開的驗證；尚未嘗試送分不能判定為提交失敗。
 
-分數目前先進入 pending review，不會立即出現在公開排行榜。隔離 HTTP／PostgreSQL fixture 不代表遊戲視窗、原生送分或 replay 播放已通過。完整檢查見 [相容性清單](protocol-compatibility.md) 與 [本機測試](local-client-testing.md)。
+符合目前驗證條件的原生成績會自動公開；需要完整 capture 的 lazer 成績會等待 capture 完成。一般 stable 成績不需要逐筆 moderator 審查。隔離 HTTP／PostgreSQL fixture 不代表遊戲視窗、原生送分或 replay 播放已通過。完整檢查見 [相容性清單](protocol-compatibility.md) 與 [本機測試](local-client-testing.md)。
 
 官方 API 契約參考 [Lookup Beatmap](https://osu.ppy.sh/docs/index.html#lookup-beatmap)；伺服器實作及 fixture 為原創。

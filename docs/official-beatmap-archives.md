@@ -40,7 +40,7 @@ assets 是營運者所提供的原始內容；metadata 無法逐一證明這些 
 現有 `public` client-credentials token 可查 metadata。官方完整 `.osz` 下載
 另有登入帳號與 privilege 檢查，並重新導向 mirror；本流程讓營運者提供封包，
 沒有宣稱現有 token 可以自動下載完整官方封包。受控官方帳號 OAuth 下載連線、
-官方搜尋及完整自動 set discovery 仍是後續工作。
+網站的官方 metadata 搜尋可帶入匯入表單；完整封包自動取得仍是後續工作。
 
 ## 重試與衝突
 
@@ -65,6 +65,9 @@ Migration 0018 不為舊 `archive_path` 自動建立已驗證 manifest。
 包括所有 difficulties 原本已快取的情況；精確重試不另發 availability event。
 
 ## API
+
+匯入頁也提供[官方圖譜搜尋](official-map-search.md)：依文字、模式與狀態取得官方摘要，
+再把選中的 difficulty／set ID 帶入表單。搜尋本身不發布內容，也不取得完整封包資產。
 
 `POST /api/v1/beatmaps/import/archive` 接收兩個 multipart parts：
 

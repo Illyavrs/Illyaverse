@@ -27,6 +27,12 @@ pub use official_archive::import_archive;
 #[path = "official_set_metadata.rs"]
 mod official_set_metadata;
 pub use official_set_metadata::metadata;
+#[path = "official_search.rs"]
+mod official_search;
+pub use official_search::search as search_official;
+#[path = "map_card_preview.rs"]
+mod map_card_preview;
+pub use map_card_preview::preview as card_preview;
 #[path = "filename_backfill.rs"]
 mod filename_backfill;
 pub(crate) use filename_backfill::backfill as backfill_filename_aliases;
@@ -46,6 +52,7 @@ pub struct OfficialState {
     failure: Option<CachedFailure>,
     resolutions: HashMap<MapSelector, CachedFailure>,
     set_metadata: HashMap<i64, official_set_metadata::CachedMetadata>,
+    search_cache: HashMap<official_search::SearchKey, official_search::CachedSearch>,
     flights: HashMap<MapSelector, Weak<Mutex<()>>>,
     slots: Arc<tokio::sync::Semaphore>,
     #[cfg(test)]
@@ -60,6 +67,7 @@ impl Default for OfficialState {
             failure: None,
             resolutions: HashMap::new(),
             set_metadata: HashMap::new(),
+            search_cache: HashMap::new(),
             flights: HashMap::new(),
             slots: Arc::new(tokio::sync::Semaphore::new(4)),
             #[cfg(test)]
@@ -179,6 +187,7 @@ enum MapSelector {
     Filename(String),
     OfficialSet(i64),
     OfficialSetMetadata(i64),
+    OfficialSearch(official_search::SearchKey),
 }
 
 #[cfg(test)]
@@ -1374,7 +1383,9 @@ async fn stored_map<'e>(
     let (checksum, official_id) = match selector {
         MapSelector::Checksum(checksum) => (Some(checksum.as_str()), None),
         MapSelector::OfficialId(id) => (None, Some(*id)),
-        MapSelector::OfficialSet(_) | MapSelector::OfficialSetMetadata(_) => return Ok(None),
+        MapSelector::OfficialSet(_)
+        | MapSelector::OfficialSetMetadata(_)
+        | MapSelector::OfficialSearch(_) => return Ok(None),
         MapSelector::Filename(filename) => {
             // Bound the exact alias index lookup before joining primary keys.
             // Filename resolution must not scan the full beatmap catalogue.
@@ -1413,7 +1424,9 @@ async fn fetch_official_map(state: &AppState, selector: &MapSelector) -> ApiResu
     let path = match selector {
         MapSelector::Checksum(checksum) => format!("/api/v2/beatmaps/lookup?checksum={checksum}"),
         MapSelector::OfficialId(id) => format!("/api/v2/beatmaps/{id}"),
-        MapSelector::OfficialSet(_) | MapSelector::OfficialSetMetadata(_) => {
+        MapSelector::OfficialSet(_)
+        | MapSelector::OfficialSetMetadata(_)
+        | MapSelector::OfficialSearch(_) => {
             return Err(ApiError::internal("set selector used for a difficulty"));
         }
         MapSelector::Filename(filename) => {

@@ -400,10 +400,24 @@ fn router(state: AppState) -> Router {
         .route("/api/v1/announcements/{id}", get(announcements::get))
         .route("/api/v1/users/{id}/scores/best", get(scores::best_for_user))
         .route("/api/v1/beatmaps", get(maps::list))
+        .route(
+            "/api/v1/beatmaps/official/search",
+            get(maps::search_official).layer(SetResponseHeaderLayer::overriding(
+                header::CACHE_CONTROL,
+                axum::http::HeaderValue::from_static("no-store"),
+            )),
+        )
         .route("/api/v1/beatmapsets", get(map_catalogue::list))
         .route(
             "/api/v1/beatmaps/{id}/set/difficulties",
             get(map_catalogue::difficulties),
+        )
+        .route(
+            "/api/v1/beatmaps/{id}/set/preview",
+            get(maps::card_preview).layer(SetResponseHeaderLayer::overriding(
+                header::CACHE_CONTROL,
+                axum::http::HeaderValue::from_static("no-store"),
+            )),
         )
         .route(
             "/api/v1/beatmaps/upload",

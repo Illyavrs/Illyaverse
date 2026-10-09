@@ -62,7 +62,8 @@ export function protocolScript(value) {
   if (value === undefined || value === 'protocol') return 'services/resonance/tests/protocol_smoke.py';
   if (value === 'official-archives') return 'services/resonance/tests/official_archive_smoke.py';
   if (value === 'official-set-metadata') return 'services/resonance/tests/official_set_metadata_smoke.py';
-  throw new Error('ILLYA_PROTOCOL_SMOKE_SUITE must be protocol, official-archives or official-set-metadata.');
+  if (value === 'official-search') return 'services/resonance/tests/official_search_smoke.py';
+  throw new Error('ILLYA_PROTOCOL_SMOKE_SUITE must be protocol, official-archives, official-set-metadata or official-search.');
 }
 
 export async function launchSmoke(environment = process.env, signal) {
