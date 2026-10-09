@@ -6,6 +6,56 @@ The current public profile presentation and website chat visibility checkpoint i
 
 Last recorded evidence: 2026-10-09. Local Docker deployments and isolated-schema tests use synthetic fixtures; they are not a production player community. The INITIAL checkpoint below predates the follow-up chat, replay, mod and connection work. Later source gates and image checks are recorded in the follow-up sections; keep the INITIAL results separate from those checkpoints.
 
+## Homepage character and wordmark amplification checkpoint
+
+2026-10-09: the user's subsequent request increases the original character's
+desktop image from 400px to 480px, with its visible head about 107px above the
+introduction. The contextual 80px wordmark combines solid and outlined letters
+with a single 680ms arc draw and ink reveal, then rests. Reduced motion keeps the
+final static form; the character itself remains still. Existing factual copy,
+links, configurable glass and the original PNG bytes remain intact.
+
+The first **28 Chromium cases** passed, but batched visual inspection identified
+a real mid-animation baseline mismatch. One correction places the outline and
+ink in the same grid cell and adds actual layer-position/font assertions. After
+one rebuild, the final image passes the same **28 cases**, including 1440px,
+the user's 1280px width, 1000px, 768px, 390px and 320px in both themes; animation,
+reduced motion, heading semantics, existing tabs and localized community paths
+are covered. All disposable project resources were verified removed. These
+28 checks are separate from the previous 124-case interface checkpoint.
+
+Final website image:
+`sha256:26e5399b36300d506dfeeea8939b3605f138dd41692534b55c04050d75c433b5`.
+Targeted ESLint, TypeScript and Linux production compilation pass. All **26 new
+confirmation captures** were opened and match their PNG and current-source
+digests; four deliberately pause the real CSS animation at 280ms. Their distinct
+names preserve the preceding 96-capture evidence. The single changed-target
+detector pass reports **zero primary findings and 24 advisories** (22 contextual
+font sizes and two radii); no second detector or third polish round ran.
+The authoritative capture/source packet is
+`.impeccable/review/home-wordmark-evidence.json`. Fixture captures do not certify
+native-client gameplay, score submission or replay playback.
+
+The fresh independent generic finish reviewer returned **ship** for this narrow
+fixture interface in `.impeccable/review/home-wordmark-verdict.md`; the generic
+documenter reconciled the authorized hero descriptions and preserved shared
+tokens. These substitute roles are recorded in their reports. At 08:29 UTC the
+guarded website-only deployment passed in both retained projects. All ten
+services are healthy; eight nonwebsite container identities, images, state,
+health, timestamps and mounts, schema 22, environment values, original records
+and all 52 client-test/four main stored files remain intact. Browser delivery
+confirmed the 80px title and 480px image at 1280×720 on `https://illya.test/`.
+Deployment manifest SHA-256:
+`6cd79405795e8e50ca18923f71b2da7736ea02484a81b9e5e2d6ae73e7877272`.
+This repository record and the final documentation handoff postdate image
+compilation; the frozen image contains the preceding documentation snapshot.
+
+The user's subsequent screenshot accepts the right-hand fill animation but
+rejects the left ring and hollow resting lettering. That feedback supersedes
+this variant's design verdict; the following refinement must remove the ring
+and use solid letters. The deployment and test results above remain historical
+evidence for their named image, not approval of that follow-up.
+
 ## Interface corrections and official metadata search checkpoint
 
 2026-10-09: the latest user screenshots define this scoped correction. Inactive
@@ -79,6 +129,11 @@ reported as passing. No trust-store, hosts, firewall or native-game setting was
 changed. See [curl certificate verification](https://curl.se/docs/sslcerts.html)
 for the backend distinction; these observations do not assert a Windows trust
 repair or actual game-client certification.
+Three subsequent live API GETs pass through the same explicit OpenSSL CA and
+hostname verification: status, the retained official catalogue and map 48's
+complete set preview. The catalogue retains 48 rows; the preview has all 14
+official difficulties while accurately identifying the two stored members.
+No catalogue publication, package retrieval or database write is performed.
 
 ## Original archive filename and raw-record checkpoint
 

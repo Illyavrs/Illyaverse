@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-09T07:38:20Z",
+  "generatedAt": "2026-10-09T08:16:51Z",
   "title": "Design System: Illyaverse — Serendipity",
   "extensions": {
     "colorMeta": {
@@ -988,7 +988,7 @@
     "typographyMeta": {
       "display": {
         "displayName": "Display",
-        "purpose": "Base display role; the factual home wordmark overrides it at 64px and 52px with weight 900, 1.05 leading and -0.04em tracking."
+        "purpose": "Base display role; the solid/outlined home wordmark overrides it at 80px, 64px at 1000px and 56px at 800px with weight 900, 1.05 leading and -0.035em tracking."
       },
       "display-mobile": {
         "displayName": "Display mobile",
@@ -1064,9 +1064,9 @@
         "purpose": "Native whole-root crossfade preserves scene-sampling glass without a permanent named main backdrop root; the unchanged header stays visually anchored. A slow snapshot releases after 700ms while real loading feedback continues."
       },
       {
-        "name": "home-character-enter",
-        "value": "300ms cubic-bezier(0.16, 1, 0.3, 1)",
-        "purpose": "One entrance from 75% opacity and a 10px downward offset to the supplied character at rest."
+        "name": "home-wordmark-draw-reveal",
+        "value": "680ms cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "One ring-arc draw and temporary filled-letter reveal, then the solid/outlined wordmark rests. The outlined and filled letterforms share an inline grid cell; reduced motion presents the final form immediately. The supplied character remains static."
       },
       {
         "name": "navigation-pending",

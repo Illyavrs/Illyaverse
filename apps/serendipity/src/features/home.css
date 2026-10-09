@@ -5,12 +5,12 @@
 }
 .home-community .home-hero {
   position: relative;
-  margin-top: 40px;
+  margin-top: 108px;
 }
 .home-community .home-introduction {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 400px;
+  grid-template-columns: minmax(0, 1fr) 440px;
   align-items: center;
   gap: 24px;
   min-height: 288px;
@@ -27,10 +27,101 @@
   max-width: 65ch;
 }
 .home-community .home-intro-copy h1 {
-  font-size: 64px;
+  position: relative;
+  display: inline-block;
+  width: max-content;
+  font-size: 80px;
   font-weight: 900;
   line-height: 1.05;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.035em;
+  white-space: nowrap;
+}
+.home-community .home-wordmark-solid,
+.home-community .home-wordmark-verse {
+  position: relative;
+  z-index: 1;
+}
+.home-community .home-wordmark-verse {
+  display: inline-grid;
+  vertical-align: baseline;
+}
+.home-community .home-wordmark-outline,
+.home-community .home-wordmark-ink {
+  grid-area: 1 / 1;
+}
+.home-community .home-wordmark-solid {
+  color: var(--foreground);
+}
+.home-community .home-wordmark-outline {
+  color: var(--readable-accent);
+}
+.home-community .home-wordmark-ink {
+  color: var(--readable-accent);
+  opacity: 0;
+  clip-path: inset(0 100% 0 0);
+  pointer-events: none;
+}
+.home-community .home-wordmark-ink::before {
+  content: attr(data-letters);
+}
+@supports (-webkit-text-stroke: 1px currentColor) {
+  .home-community .home-wordmark-outline {
+    -webkit-text-fill-color: transparent;
+    -webkit-text-stroke: 1.5px var(--readable-accent);
+  }
+  .home-community .home-wordmark-ink {
+    -webkit-text-fill-color: var(--readable-accent);
+    -webkit-text-stroke: 0;
+    animation: home-wordmark-ink 680ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
+.home-community .home-wordmark-orbit {
+  position: absolute;
+  z-index: 0;
+  top: -0.22em;
+  left: -0.38em;
+  width: 1.36em;
+  height: 1.36em;
+  overflow: visible;
+  color: var(--readable-accent);
+  pointer-events: none;
+}
+.home-community .home-wordmark-arc {
+  stroke: currentColor;
+  stroke-width: 1.25;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  opacity: 0.58;
+  animation: home-wordmark-orbit 680ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.home-community .home-wordmark-arc-short {
+  opacity: 0.88;
+}
+@keyframes home-wordmark-orbit {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes home-wordmark-ink {
+  0% {
+    clip-path: inset(0 100% 0 0);
+    opacity: 0;
+  }
+  18% {
+    opacity: 1;
+  }
+  60% {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+  100% {
+    clip-path: inset(0 0 0 0);
+    opacity: 0;
+  }
 }
 .home-community .home-subtitle {
   font-size: 14px;
@@ -60,32 +151,21 @@
 }
 .home-community .home-hero-character {
   position: absolute;
-  inset-block: -56px 0;
-  right: 8px;
-  width: 400px;
+  inset-block: -112px 0;
+  right: 0;
+  width: 480px;
   overflow: hidden;
   pointer-events: none;
 }
 .home-community .home-character-image {
   position: absolute;
-  top: -52px;
+  top: -64px;
   left: 50%;
-  width: 400px;
+  width: 480px;
   max-width: none;
   height: auto;
   transform: translateX(-50%);
   user-select: none;
-  animation: home-character-enter 300ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-@keyframes home-character-enter {
-  from {
-    opacity: 0.75;
-    translate: 0 10px;
-  }
-  to {
-    opacity: 1;
-    translate: 0 0;
-  }
 }
 .home-community .home-capabilities {
   display: grid;
@@ -537,19 +617,22 @@
   color: var(--readable-accent);
 }
 @media (max-width: 1000px) {
+  .home-community .home-hero {
+    margin-top: 100px;
+  }
   .home-community .home-introduction {
-    grid-template-columns: minmax(0, 1fr) 300px;
+    grid-template-columns: minmax(0, 1fr) 340px;
   }
   .home-community .home-intro-copy h1 {
-    font-size: 52px;
+    font-size: 64px;
   }
   .home-community .home-hero-character {
-    right: 8px;
-    width: 300px;
+    top: -102px;
+    width: 340px;
   }
   .home-community .home-character-image {
-    width: 340px;
-    top: -44px;
+    width: 400px;
+    top: -56px;
   }
   .home-community .home-content-columns {
     grid-template-columns: minmax(0, 1fr) 276px;
@@ -567,6 +650,19 @@
   }
 }
 @media (max-width: 800px) {
+  .home-community .home-introduction {
+    grid-template-columns: minmax(0, 1fr) 280px;
+  }
+  .home-community .home-intro-copy h1 {
+    font-size: 56px;
+  }
+  .home-community .home-hero-character {
+    width: 280px;
+  }
+  .home-community .home-character-image {
+    width: 360px;
+    top: -50px;
+  }
   .home-community .home-content-columns {
     grid-template-columns: 1fr;
   }
@@ -598,7 +694,7 @@
     padding: 16px 16px 32px;
   }
   .home-community .home-hero {
-    margin-top: 32px;
+    margin-top: 84px;
   }
   .home-community .home-introduction {
     display: block;
@@ -608,27 +704,25 @@
   .home-community .home-intro-copy {
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    min-height: 142px;
-    padding-inline-end: 170px;
+    justify-content: flex-end;
+    min-height: 160px;
   }
   .home-community .home-intro-copy h1 {
     font-size: 36px;
-    white-space: nowrap;
   }
   .home-community .home-description {
     margin-top: 8px;
   }
   .home-community .home-hero-character {
-    top: -44px;
+    top: -90px;
     right: 0;
     bottom: auto;
-    width: 160px;
-    height: 200px;
+    width: 180px;
+    height: 198px;
   }
   .home-community .home-character-image {
-    top: -34px;
-    width: 250px;
+    top: -40px;
+    width: 300px;
   }
   .home-community .home-primary-actions {
     flex-direction: row;
@@ -718,24 +812,25 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .home-community .home-character-image {
+  .home-community .home-wordmark-arc,
+  .home-community .home-wordmark-ink {
     animation: none;
   }
 }
 @media (max-width: 360px) {
   .home-community .home-intro-copy {
-    min-height: 136px;
-    padding-inline-end: 128px;
+    min-height: 154px;
   }
   .home-community .home-intro-copy h1 {
     font-size: 32px;
   }
   .home-community .home-hero-character {
-    width: 120px;
-    height: 180px;
+    top: -86px;
+    width: 150px;
+    height: 188px;
   }
   .home-community .home-character-image {
-    width: 220px;
-    top: -30px;
+    width: 270px;
+    top: -35px;
   }
 }

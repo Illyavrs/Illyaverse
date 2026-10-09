@@ -54,7 +54,30 @@ export function HomePage() {
         <div className="home-introduction glass">
           <div className="home-intro-content">
             <div className="home-intro-copy">
-              <h1 id="home-title">{t('title')}</h1>
+              <h1 id="home-title" className="home-wordmark" aria-label={t('title')}>
+                <svg
+                  className="home-wordmark-orbit"
+                  viewBox="0 0 100 100"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    className="home-wordmark-arc"
+                    d="M28 13 A43 43 0 1 0 93 50"
+                    pathLength="1"
+                  />
+                  <path
+                    className="home-wordmark-arc home-wordmark-arc-short"
+                    d="M65 10 A43 43 0 0 1 89 31"
+                    pathLength="1"
+                  />
+                </svg>
+                <span className="home-wordmark-solid">Illya</span>
+                <span className="home-wordmark-verse">
+                  <span className="home-wordmark-outline">verse</span>
+                  <span className="home-wordmark-ink" data-letters="verse" aria-hidden="true" />
+                </span>
+              </h1>
               <p className="home-subtitle">{t('titleEnd')}</p>
             </div>
             <p className="home-description">{t('description')}</p>
@@ -81,7 +104,7 @@ export function HomePage() {
             height={1251}
             alt=""
             className="home-character-image"
-            sizes="(max-width: 360px) 220px, (max-width: 600px) 250px, (max-width: 1000px) 340px, 400px"
+            sizes="(max-width: 360px) 270px, (max-width: 600px) 300px, (max-width: 800px) 360px, (max-width: 1000px) 400px, 480px"
             loading="eager"
             fetchPriority="high"
             unoptimized

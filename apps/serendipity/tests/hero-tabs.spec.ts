@@ -114,7 +114,7 @@ async function fixture(page: Page, theme: 'dark' | 'light') {
   });
 }
 
-async function capture(page: Page, name: string, state: string) {
+async function capture(page: Page, name: string, state: string, pausedMotionMs?: number) {
   if (process.env.ILLYA_WEB_SMOKE_CAPTURE !== '1') return;
   await page.evaluate(() => document.fonts.ready);
   await expect(page.locator('.navigation-progress')).toHaveAttribute('data-pending', 'false');
@@ -139,7 +139,7 @@ async function capture(page: Page, name: string, state: string) {
   const screenshot = await page.screenshot({
     path: `${output}.png`,
     fullPage: true,
-    animations: 'disabled',
+    animations: pausedMotionMs === undefined ? 'disabled' : 'allow',
   });
   const app = path.resolve(path.dirname(__filename), '..');
   const sourceFiles = [
@@ -168,6 +168,7 @@ async function capture(page: Page, name: string, state: string) {
         reducedMotion: await page.evaluate(
           () => matchMedia('(prefers-reduced-motion: reduce)').matches,
         ),
+        pausedMotionMs,
         state,
         provenance:
           'Synthetic API fixtures intercepted in this Playwright browser; guest appearance only. The character is the original user-supplied PNG, not generated artwork. Capture is from the top after fonts and navigation settle; no real account or community data is modified.',
@@ -189,7 +190,7 @@ async function capture(page: Page, name: string, state: string) {
 }
 
 for (const theme of ['dark', 'light'] as const) {
-  for (const width of [1440, 1280, 390, 320]) {
+  for (const width of [1440, 1280, 1000, 768, 390, 320]) {
     test(`hero layering and readable wordmark at ${width}px ${theme}`, async ({ page }) => {
       await page.setViewportSize({ width, height: 1000 });
       await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -207,16 +208,32 @@ for (const theme of ['dark', 'light'] as const) {
         const art = document.querySelector('.home-hero-character')!.getBoundingClientRect();
         const image = document.querySelector<HTMLImageElement>('.home-character-image')!;
         const box = image.getBoundingClientRect();
+        const canvas = document.createElement('canvas');
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        const context = canvas.getContext('2d')!;
+        context.drawImage(image, 0, 0);
+        // Measure the actual original PNG's opaque crown rather than treating its
+        // transparent outer rectangle as a protruding character.
+        const pixels = context.getImageData(219, 0, 216, 322).data;
+        const opaque = { left: 216, right: 0, top: 322, bottom: 0 };
+        for (let y = 0; y < 322; y++) {
+          for (let x = 0; x < 216; x++) {
+            if (pixels[(y * 216 + x) * 4 + 3] < 240) continue;
+            opaque.left = Math.min(opaque.left, x);
+            opaque.right = Math.max(opaque.right, x + 1);
+            opaque.top = Math.min(opaque.top, y);
+            opaque.bottom = Math.max(opaque.bottom, y + 1);
+          }
+        }
         const head = {
-          left: box.left + (219 / 700) * box.width,
-          right: box.left + (435 / 700) * box.width,
-          top: box.top + (101 / 1251) * box.height,
-          bottom: box.top + (321 / 1251) * box.height,
+          left: box.left + ((219 + opaque.left) / image.naturalWidth) * box.width,
+          right: box.left + ((219 + opaque.right) / image.naturalWidth) * box.width,
+          top: box.top + (opaque.top / image.naturalHeight) * box.height,
+          bottom: box.top + (opaque.bottom / image.naturalHeight) * box.height,
         };
         const title = document.querySelector('.home-intro-copy h1')!;
-        const range = document.createRange();
-        range.selectNodeContents(title);
-        const text = range.getBoundingClientRect();
+        const text = title.getBoundingClientRect();
         const capabilities = document.querySelector('.home-capabilities')!.getBoundingClientRect();
         const overlaps = (first: DOMRect, second: typeof head) =>
           first.left < second.right &&
@@ -230,6 +247,12 @@ for (const theme of ['dark', 'light'] as const) {
           title: { left: text.left, right: text.right, top: text.top, bottom: text.bottom },
           titleSize: parseFloat(getComputedStyle(title).fontSize),
           titleOverlapsHead: overlaps(text, head),
+          copyOverlapsArt: [
+            ...document.querySelectorAll(
+              '.home-intro-copy h1, .home-subtitle, .home-description, .home-primary-actions a',
+            ),
+          ].some((element) => overlaps(element.getBoundingClientRect(), art)),
+          imageWidth: box.width,
           headerBottom: document.querySelector('.site-header')!.getBoundingClientRect().bottom,
           capabilitiesTop: capabilities.top,
           materialBlur: getComputedStyle(material).backdropFilter,
@@ -239,14 +262,21 @@ for (const theme of ['dark', 'light'] as const) {
           viewport: innerWidth,
         };
       });
-      expect(geometry.card.top - geometry.head.top).toBeGreaterThan(32);
+      expect(geometry.card.top - geometry.head.top).toBeGreaterThan(width <= 600 ? 78 : 94);
+      expect(geometry.card.top - geometry.head.top).toBeLessThanOrEqual(112);
       expect(geometry.head.top).toBeGreaterThanOrEqual(geometry.headerBottom);
       expect(geometry.head.top).toBeGreaterThanOrEqual(geometry.art.top);
       expect(geometry.head.bottom).toBeLessThanOrEqual(geometry.art.bottom);
       expect(geometry.head.left).toBeGreaterThanOrEqual(geometry.art.left);
       expect(geometry.head.right).toBeLessThanOrEqual(geometry.art.right);
-      expect(geometry.titleSize).toBeGreaterThanOrEqual(width <= 600 ? 32 : 64);
+      expect(geometry.titleSize).toBe(
+        width <= 360 ? 32 : width <= 600 ? 36 : width <= 800 ? 56 : width <= 1000 ? 64 : 80,
+      );
+      expect(geometry.imageWidth).toBe(
+        width <= 360 ? 270 : width <= 600 ? 300 : width <= 800 ? 360 : width <= 1000 ? 400 : 480,
+      );
       expect(geometry.titleOverlapsHead).toBe(false);
+      expect(geometry.copyOverlapsArt).toBe(false);
       expect(geometry.title.left).toBeGreaterThan(0);
       expect(geometry.title.right).toBeLessThan(geometry.viewport);
       expect(geometry.art.bottom).toBeLessThanOrEqual(geometry.capabilitiesTop);
@@ -255,15 +285,130 @@ for (const theme of ['dark', 'light'] as const) {
       expect(geometry.cornerRadius).toBe(14);
       expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.viewport);
       await expect(image).toHaveAttribute('src', '/images/home-character.png');
+      await expect(image).toHaveCSS('animation-name', 'none');
+      await expect(page.getByRole('heading', { name: 'Illyaverse', exact: true })).toBeVisible();
+      await expect(page.locator('.home-wordmark-outline')).toHaveCSS(
+        '-webkit-text-stroke-width',
+        '1.5px',
+      );
+      await expect(page.locator('.home-wordmark-arc').first()).toHaveCSS('animation-name', 'none');
+      await expect(page.locator('.home-wordmark-arc').first()).toHaveCSS(
+        'stroke-dashoffset',
+        '0px',
+      );
       await expect(page.locator('.home-primary-actions a').first()).toHaveAttribute(
         'href',
         '/register',
       );
       await capture(
         page,
-        `hero-tabs-home-${width}-${theme}`,
-        `Homepage hero at ${width}px ${theme}; empty synthetic community data; default guest accent, panel blur 8px, opacity 0.55; original character and enlarged wordmark; reduced motion for geometry inspection.`,
+        `home-wordmark-${width}-${theme}`,
+        `Homepage hero at ${width}px ${theme}; empty synthetic community data; default guest accent, panel blur 8px, opacity 0.55; original character at amplified scale, solid/outlined Illyaverse lettering and precise disc arcs; final reduced-motion composition.`,
       );
+    });
+  }
+
+  for (const width of [1280, 390]) {
+    test(`wordmark entrance draws once and rests at ${width}px ${theme}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      await fixture(page, theme);
+      await page.goto('/');
+      await page.evaluate(() => document.fonts.ready);
+      const title = page.getByRole('heading', { name: 'Illyaverse', exact: true });
+      await expect(title).toBeVisible();
+      await expect(title).toHaveText('Illyaverse');
+      await expect(title).toHaveCSS('opacity', '1');
+      await expect(page.locator('.home-wordmark-ink')).toHaveAttribute('aria-hidden', 'true');
+      const timeline = await title.evaluate((element) => {
+        const animations = element.getAnimations({ subtree: true });
+        return animations.map((animation) => {
+          animation.pause();
+          animation.currentTime = 0;
+          const timing = animation.effect!.getTiming();
+          return {
+            name: (animation as CSSAnimation).animationName,
+            duration: timing.duration,
+            iterations: timing.iterations,
+          };
+        });
+      });
+      expect(timeline).toHaveLength(3);
+      expect(
+        timeline.every((animation) => animation.duration === 680 && animation.iterations === 1),
+      ).toBe(true);
+      const arc = page.locator('.home-wordmark-arc').first();
+      await expect(arc).toHaveCSS('stroke-dashoffset', '1px');
+      await expect(page.locator('.home-character-image')).toHaveCSS('animation-name', 'none');
+      await title.evaluate((element) => {
+        for (const animation of element.getAnimations({ subtree: true }))
+          animation.currentTime = 280;
+      });
+      const moving = await page.locator('.home-wordmark-ink').evaluate((element) => ({
+        ink: Number(getComputedStyle(element).opacity),
+        arc: parseFloat(
+          getComputedStyle(document.querySelector('.home-wordmark-arc')!).strokeDashoffset,
+        ),
+      }));
+      expect(moving.arc).toBeGreaterThan(0);
+      expect(moving.arc).toBeLessThan(1);
+      expect(moving.ink).toBeGreaterThan(0.5);
+      const layers = await page.locator('.home-wordmark-verse').evaluate((element) => {
+        const outline = element.querySelector('.home-wordmark-outline')!;
+        const ink = element.querySelector('.home-wordmark-ink')!;
+        const bounds = (node: Element) => {
+          const box = node.getBoundingClientRect();
+          return { x: box.x, y: box.y, width: box.width, height: box.height };
+        };
+        return {
+          outline: bounds(outline),
+          ink: bounds(ink),
+          outlineLineHeight: getComputedStyle(outline).lineHeight,
+          inkLineHeight: getComputedStyle(ink).lineHeight,
+          outlineFont: getComputedStyle(outline).font,
+          inkFont: getComputedStyle(ink, '::before').font,
+        };
+      });
+      // Measure the actually painted ink layer's grid box and font: both glyph
+      // tracks must share a baseline at desktop and phone sizes, including mid-reveal.
+      expect(layers.ink).toEqual(layers.outline);
+      expect(layers.inkLineHeight).toBe(layers.outlineLineHeight);
+      expect(layers.inkFont).toBe(layers.outlineFont);
+      await capture(
+        page,
+        `home-wordmark-${width}-${theme}-motion-280ms`,
+        `Synthetic guest hero; actual single CSS wordmark entrance replay paused at 280ms after fonts settle, so line drawing and solid ink reveal are visible; the original character stays still.`,
+        280,
+      );
+      await title.evaluate((element) => {
+        for (const animation of element.getAnimations({ subtree: true })) {
+          animation.currentTime = 680;
+          animation.finish();
+        }
+      });
+      await expect(arc).toHaveCSS('stroke-dashoffset', '0px');
+      expect(
+        await page
+          .locator('.home-wordmark-ink')
+          .evaluate((element) => Number(getComputedStyle(element).opacity)),
+      ).toBe(0);
+      expect(
+        await title.evaluate((element) =>
+          element
+            .getAnimations({ subtree: true })
+            .every((animation) => animation.playState === 'finished'),
+        ),
+      ).toBe(true);
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await expect(arc).toHaveCSS('animation-name', 'none');
+      await expect(arc).toHaveCSS('stroke-dashoffset', '0px');
+      await expect(title).toHaveAccessibleName('Illyaverse');
+      expect(
+        await page.locator('.home-wordmark-ink').evaluate((element) => ({
+          animation: getComputedStyle(element).animationName,
+          ink: Number(getComputedStyle(element).opacity),
+        })),
+      ).toEqual({ animation: 'none', ink: 0 });
     });
   }
 
@@ -289,7 +434,7 @@ for (const theme of ['dark', 'light'] as const) {
     await expect(page.getByRole('tabpanel')).toContainText('Kaleidoscope');
     await capture(
       page,
-      `hero-tabs-connect-${theme}`,
+      `home-wordmark-regression-connect-${theme}`,
       `Connect guide in ${theme}; lazer selected through ArrowRight, retaining visible keyboard focus; both client tabs have no decorative border or shadow.`,
     );
   });
@@ -316,7 +461,7 @@ for (const theme of ['dark', 'light'] as const) {
     await expect(active).toHaveCSS('border-bottom-color', 'rgba(0, 0, 0, 0)');
     await capture(
       page,
-      `hero-tabs-profile-${theme}`,
+      `home-wordmark-regression-profile-${theme}`,
       `Synthetic profile in ${theme}; taiko selected, vanilla score variant; one 3px accent underline per selected group with no inset shadow.`,
     );
   });

@@ -1,0 +1,190 @@
+{
+  "request": "感覺那個二次元人物可以更大一點 超出更多一點 然後那個Illyaverse為啥不要做一點特別的東西 例如動畫,或是甚麼特殊文字 我不知道 反正landing那個可以有設計感一點",
+  "build_path": "code-led narrow extension of incumbent world",
+  "approved_comp": null,
+  "quality_bar": null,
+  "actual_user_viewport": {
+    "width": 1280,
+    "height": 720
+  },
+  "direction_contract": ".impeccable/surfaces/home-wordmark.md",
+  "product": "PRODUCT.md",
+  "design": "DESIGN.md",
+  "website_image": "sha256:26e5399b36300d506dfeeea8939b3605f138dd41692534b55c04050d75c433b5",
+  "retained_api_image": "sha256:4f281bf4bf8e8ee94efbf43d7f09a2fcd28672d73150a7a91003b31c4a04680f",
+  "source_hashes": {
+    "src/features/home.css": "638775ac4469109d171769217c8fa3480fe6857a7a311cf26326f19c656fd810",
+    "tests/home-community.spec.ts": "91b9940319970a8ce7648011e8ce8b6a97493bf51138abb5d5bc696147a5856a",
+    "src/features/home.tsx": "d551f738e0697d84766dead1b2a2c9665d7bbf3a3d72ab2b078d416755580acb",
+    "tests/hero-tabs.spec.ts": "593a7c976e8e235499025dfb3b16c0ef891fe19a46ac471873bf4e34824adc07"
+  },
+  "initial_checks": 28,
+  "confirmation_checks": 28,
+  "detector": {
+    "advisory": 24,
+    "primary": 0,
+    "passes": 1,
+    "path": "data-official-search-20261009/home-wordmark-detector.json"
+  },
+  "original_artwork_sha256": "d32cc7271ff33364e247c8d8988c16f61e50d7715cd500b6cbdece29c53c70e4",
+  "scope_limit": "Synthetic intercepted API fixtures in disposable PostgreSQL17 project, removed after gate. Does not certify native clients/backend protocol/real accounts. Four motion captures are actual CSS animations paused at280ms; other full-page captures are settled or reduced. All capture names are authoritative; only these26 new captures supersede first-round same names, older96 preserved.",
+  "capture_count": 26,
+  "captures": [
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-1000-dark.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-1000-dark.json",
+      "sha256": "0bc88a6fb171e93321400656fe9b9700a1608b81b8c3969ac5279a59b1270282",
+      "required": true
+    },
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-1000-light.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-1000-light.json",
+      "sha256": "27776c288b9f401574d55ce2c57647df51e31b06c6d283df7d68b0293dc9754a",
+      "required": true
+    },
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-1280-dark-motion-280ms.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-1280-dark-motion-280ms.json",
+      "sha256": "c7832b0209d5a556f176cfd3031a217f4c6047147804257abe7e3a6489cf6703",
+      "required": true
+    },
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-1280-dark.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-1280-dark.json",
+      "sha256": "4f8076943d5f552e0706d01ceb385d5b01d579e6f590974fd6169f630a79a07c",
+      "required": true
+    },
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-1280-light-motion-280ms.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-1280-light-motion-280ms.json",
+      "sha256": "33093b8f79f590cbbaf99e808826a6e46f2118f10250040a0f2b39e482d051b6",
+      "required": true
+    },
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-1280-light.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-1280-light.json",
+      "sha256": "878ea242de4cc4a7e951730e7acc5c92068761c25abf220e03e2a1373a2bca16",
+      "required": true
+    },
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-1440-dark.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-1440-dark.json",
+      "sha256": "fe6ab83bc996ed48c653ed15954ec81d5ab10368fd2a45c32daaf138709d804f",
+      "required": true
+    },
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-1440-light.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-1440-light.json",
+      "sha256": "e2ac9e398fdcc5f1cc19471e5c25a3dc4ee7ae7a7e4c2ba2761a8401b4638b00",
+      "required": true
+    },
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-320-dark.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-320-dark.json",
+      "sha256": "2dd6841b98b563059e8d8296970025a563315316a21ae39cc2c8fb21d018e0ab",
+      "required": true
+    },
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-320-light.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-320-light.json",
+      "sha256": "a4089182fd1f40bc675fb0dcb802fc7d709200cb033289d3d6a8baece35e9981",
+      "required": true
+    },
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-390-dark-motion-280ms.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-390-dark-motion-280ms.json",
+      "sha256": "4bfd19adbcb0d298b1fb53e080f5e0a454fc5b637ee9f940b38d1ec937edea49",
+      "required": true
+    },
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-390-dark.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-390-dark.json",
+      "sha256": "7bfce523dcc6e70a2b5713a785098aa4bd7ca8babb96d2ddcdb55784a0fc1a37",
+      "required": true
+    },
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-390-light-motion-280ms.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-390-light-motion-280ms.json",
+      "sha256": "2f9390faa821120566703ebc5ab4ae3e36ab35e9297dc0518154f36a6a1c52df",
+      "required": true
+    },
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-390-light.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-390-light.json",
+      "sha256": "2ac564e02819a1d49d58625b6da435a2732874bccdae23e9896c9594a34d73e9",
+      "required": true
+    },
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-768-dark.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-768-dark.json",
+      "sha256": "3cce6b9c185310adfcfa4aad3b1ba8d8bb3c4bdff6ad9590735440a5143629b0",
+      "required": true
+    },
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-768-light.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-768-light.json",
+      "sha256": "21f0b433379aa448ebeb61ee67fd182182f2cb6ad40f0e63aea5312823f00842",
+      "required": true
+    },
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-community-1254-dark-zh-TW-populated.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-community-1254-dark-zh-TW-populated.json",
+      "sha256": "6315549182d325df81441d1477ba57ce7e9e64c4e4e3eb8423400f435f6511b0",
+      "required": true
+    },
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-community-1440-dark-zh-TW-populated.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-community-1440-dark-zh-TW-populated.json",
+      "sha256": "003aee36a969b0d76fa4f1030a7367b5469d4cebc151427276dc9537e47295e4",
+      "required": true
+    },
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-community-390-dark-ja-authorized.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-community-390-dark-ja-authorized.json",
+      "sha256": "96c769c48d098f5cae74e533f3120e0611dd8d7d0809696b54348100ad2bb411",
+      "required": true
+    },
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-community-390-light-en-error-empty.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-community-390-light-en-error-empty.json",
+      "sha256": "6930d38fcdf1a7b7117ffe823bd097b30ba6b3010f8d39c373d1ebd1a0ed5ff6",
+      "required": true
+    },
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-community-hover-1254-dark-zh-TW-background.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-community-hover-1254-dark-zh-TW-background.json",
+      "sha256": "7a418fcaa55dd73b08236a94cfdd19f3215479130169e5068acebf72d6554f3e",
+      "required": true
+    },
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-community-hover-390-light-en-background.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-community-hover-390-light-en-background.json",
+      "sha256": "954c6e6caf15f2b5f38b7f09760042af60e13d83f8b823aea5ea74b61732b937",
+      "required": true
+    },
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-regression-connect-dark.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-regression-connect-dark.json",
+      "sha256": "5902d2fa600141e7a02f9537f18b38c253d127056311a23f9f868a5e57c29f4d",
+      "required": true
+    },
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-regression-connect-light.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-regression-connect-light.json",
+      "sha256": "e967e8fbdab6d844ff7b5b5bffa92c21ec100dafd3acc633aa48f0a1c8227ea9",
+      "required": true
+    },
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-regression-profile-dark.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-regression-profile-dark.json",
+      "sha256": "a541c93495506c4c2f0a7fdcff2524de7360905c911423d367ffe2222ff2eaa2",
+      "required": true
+    },
+    {
+      "path": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-regression-profile-light.png",
+      "sidecar": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.impeccable\\review\\home-wordmark-regression-profile-light.json",
+      "sha256": "bc42e4618cc965b696c153b5ecd20a53c3c516bc3a1737f1975b849d62e01d25",
+      "required": true
+    }
+  ]
+}

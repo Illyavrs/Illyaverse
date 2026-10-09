@@ -355,13 +355,13 @@ async function assertDenseHome(page: BrowserPage) {
   expect(facts.naturalSize).toEqual([700, 1251]);
   expect(facts.transparentCorner).toBe(0);
   expect(facts.headVisible).toBe(true);
-  expect(facts.headProtrusion).toBeGreaterThan(32);
-  expect(facts.wordmarkSize).toBeGreaterThanOrEqual(page.viewportSize()!.width <= 600 ? 32 : 52);
+  expect(facts.headProtrusion).toBeGreaterThan(page.viewportSize()!.width <= 600 ? 78 : 94);
+  expect(facts.wordmarkSize).toBeGreaterThanOrEqual(page.viewportSize()!.width <= 600 ? 32 : 56);
   expect(facts.copyOverlap).toBe(false);
   expect(facts.artBackdrop).toBe('none');
   expect(facts.interactiveArt).toBe(0);
-  // The enlarged character and unbroken wordmark reserve a taller phone intro;
-  // localized subtitles/descriptions and two-line action labels remain readable.
+  // The larger portrait crop ends above the full-width phone wordmark; localized
+  // descriptions/actions stay separate without loosening the adjoining rows.
   expect(facts.heroHeight).toBeLessThanOrEqual(page.viewportSize()!.width <= 600 ? 360 : 290);
   for (const height of facts.cardHeights) {
     expect(height).toBeGreaterThanOrEqual(96);
@@ -412,7 +412,7 @@ async function capture(page: BrowserPage, name: string, state: string, hoverLate
   }
   const output = path.resolve(
     '../../.impeccable/review',
-    `dense-home-${hoverLatestMap ? 'hover-' : ''}${name}`,
+    `home-wordmark-community-${hoverLatestMap ? 'hover-' : ''}${name}`,
   );
   await page.screenshot({ path: `${output}.png`, fullPage: true, animations: 'disabled' });
   const sourceFiles = [
