@@ -4,6 +4,7 @@ import { useEffect, useId, useMemo, useState, type CSSProperties, type FormEvent
 import { NavigationLink as Link, useNavigationProgress } from '@/components/navigation-motion';
 import Image from 'next/image';
 import { MapCardPreview } from './map-card-preview';
+import { OfficialMapDiscoveryPage } from './public-official-maps';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import {
@@ -242,7 +243,7 @@ export function DifficultyChip({
 }
 
 // Fresh requests make the public access boundary explicit. Responses from old keys never render.
-function usePublicData<T>(path: string) {
+export function usePublicData<T>(path: string) {
   const { beginRequest } = useNavigationProgress();
   const [attempt, setAttempt] = useState(0);
   const request = useMemo(() => ({ path, attempt }), [path, attempt]);
@@ -451,7 +452,32 @@ function SearchField({ value, onSearch }: { value: string; onSearch: (value: str
   );
 }
 
+export function CatalogueSource({ value }: { value: 'official' | 'server' }) {
+  const t = useTranslations('publicOfficialMaps');
+  return (
+    <nav className="catalogue-source" aria-label={t('sourceLabel')}>
+      <Link href="/beatmaps" aria-current={value === 'official' ? 'page' : undefined}>
+        {t('official')}
+      </Link>
+      <Link
+        href="/beatmaps?catalogue=server"
+        aria-current={value === 'server' ? 'page' : undefined}
+      >
+        {t('server')}
+      </Link>
+    </nav>
+  );
+}
+
 export function MapDiscoveryPage() {
+  const params = useSearchParams();
+  // Existing profile/uploader links continue to open the server catalogue.
+  const server =
+    params.get('catalogue') === 'server' || params.has('uploaded_by') || params.has('source');
+  return server ? <ServerMapDiscoveryPage /> : <OfficialMapDiscoveryPage />;
+}
+
+function ServerMapDiscoveryPage() {
   const t = useTranslations('mapDiscovery');
   const maps = useTranslations('maps');
   const { user } = useSession();
@@ -472,8 +498,9 @@ export function MapDiscoveryPage() {
   const page = positiveInteger(params.get('page')) ?? 1;
   const uploader = positiveInteger(params.get('uploaded_by'));
   const view = params.get('view') === 'list' ? 'list' : 'grid';
-  const returnTo =
-    safeCatalogueReturn(`/beatmaps${params.size ? `?${params}` : ''}`) ?? '/beatmaps';
+  const returnParams = new URLSearchParams(params);
+  returnParams.set('catalogue', 'server');
+  const returnTo = safeCatalogueReturn(`/beatmaps?${returnParams}`) ?? '/beatmaps?catalogue=server';
   const query = new URLSearchParams({ page: String(page), page_size: '24', sort });
   if (search) query.set('q', search);
   if (mode !== 'all') query.set('mode', mode);
@@ -485,6 +512,7 @@ export function MapDiscoveryPage() {
   );
   function update(key: string, value: string | null, resetPage = true) {
     const next = new URLSearchParams(window.location.search);
+    next.set('catalogue', 'server');
     if (resetPage) next.delete('page');
     if (value === null || value === '' || value === 'all') next.delete(key);
     else next.set(key, value);
@@ -492,6 +520,7 @@ export function MapDiscoveryPage() {
   }
   function reset() {
     const next = new URLSearchParams(window.location.search);
+    next.set('catalogue', 'server');
     filterKeys.forEach((key) => next.delete(key));
     window.history.pushState(null, '', `${window.location.pathname}${next.size ? `?${next}` : ''}`);
   }
@@ -507,6 +536,7 @@ export function MapDiscoveryPage() {
   return (
     <div className="page-container map-discovery">
       <div className="discovery-reading-ground" data-material="section">
+        <CatalogueSource value="server" />
         <PageHeading title={maps('title')} description={t('description')}>
           {user && hasPermission(user.permissions, 'beatmaps.upload') && (
             <Button asChild>

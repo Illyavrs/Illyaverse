@@ -1017,7 +1017,7 @@ html.light .profile-page .profile-score-artwork img {
 .profile-page .profile-score-replay button:hover,
 .profile-page .profile-score-replay button[data-state='open'] {
   color: var(--foreground);
-  background: var(--surface-subtle);
+  background: transparent;
 }
 
 .profile-page .profile-score-row a:focus-visible {

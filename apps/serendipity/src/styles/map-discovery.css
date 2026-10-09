@@ -173,6 +173,192 @@
   gap: 12px;
   margin: 12px 0 10px;
 }
+
+/* Official discovery inherits the catalogue, with one source choice and three filters. */
+.catalogue-source {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: 0 0 12px;
+}
+.catalogue-source a {
+  position: relative;
+  padding: 0 0 7px;
+  color: var(--secondary-text);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 800;
+}
+.catalogue-source a[aria-current='page'] {
+  color: var(--readable-accent);
+}
+.catalogue-source a[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: currentColor;
+}
+.public-official-maps .discovery-controls {
+  grid-template-columns: minmax(260px, 1.65fr) minmax(0, 2.85fr);
+}
+.public-official-maps .discovery-filter-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.public-official-header {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  margin-top: 14px;
+  overflow: hidden;
+}
+.public-official-title {
+  padding: 18px 22px;
+  min-width: 0;
+}
+.public-official-title h1 {
+  margin: 4px 0;
+  font-size: 28px;
+  line-height: 1.2;
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+.public-official-title > p:not(.hint) {
+  margin: 0 0 5px;
+  color: var(--foreground);
+  font-size: 15px;
+}
+.public-official-title > span:not(.discovery-status) {
+  color: var(--secondary-text);
+  font-size: 12px;
+}
+.public-official-title .actions {
+  margin: 16px 0 0;
+  gap: 8px;
+}
+.public-official-title .hint {
+  margin: 8px 0 0;
+}
+.public-official-difficulties {
+  margin-top: 16px;
+  padding: 16px 20px;
+}
+.public-official-difficulty-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.public-official-difficulty-heading h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+}
+.public-official-difficulty-heading > span {
+  color: var(--secondary-text);
+  font-size: 12px;
+}
+.public-official-difficulty-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 24px;
+}
+.public-official-difficulty-list {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  max-height: 440px;
+  overflow-y: auto;
+  padding: 2px 4px 2px 2px;
+}
+.public-official-difficulty-list .difficulty-chip {
+  width: 100%;
+  min-height: 48px;
+  border-color: transparent;
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+}
+.public-official-difficulty-list .difficulty-chip[aria-pressed='true'] {
+  background: var(--selection-fill);
+}
+.public-official-difficulty-list .difficulty-chip:hover {
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+.public-official-selected {
+  min-width: 0;
+}
+.public-official-selected h3 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.public-official-selected dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px 10px;
+  margin: 0 0 18px;
+  font-variant-numeric: tabular-nums;
+}
+.public-official-selected dt {
+  margin: 0 0 3px;
+  color: var(--secondary-text);
+  font-size: 11px;
+}
+.public-official-selected dd {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 16px;
+  font-weight: 800;
+}
+.public-official-selected > .text-link {
+  display: block;
+  margin-top: 12px;
+}
+@media (max-width: 1050px) {
+  .public-official-maps .discovery-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .public-official-maps .discovery-filter-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .public-official-maps .discovery-filter-row .field:last-child {
+    grid-column: 1 / -1;
+  }
+  .catalogue-source a {
+    padding-block: 7px;
+    min-height: 36px;
+  }
+  .public-official-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .public-official-header > .map-artwork {
+    height: 120px;
+  }
+  .public-official-title {
+    padding: 14px 16px;
+  }
+  .public-official-title h1 {
+    font-size: 24px;
+  }
+  .public-official-difficulties {
+    padding: 14px 16px;
+  }
+  .public-official-difficulty-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+  .public-official-difficulty-list {
+    max-height: 290px;
+  }
+  .public-official-selected dl {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
 .discovery-result-count {
   display: flex;
   align-items: baseline;
@@ -432,7 +618,7 @@
 }
 .discovery-difficulty-trigger:hover,
 .discovery-difficulty-trigger[data-state='open'] {
-  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  background: transparent;
 }
 .discovery-difficulty-ticks {
   display: inline-flex;

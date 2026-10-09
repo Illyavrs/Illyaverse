@@ -39,12 +39,14 @@ type Session = {
   user: User | null;
   loading: boolean;
   refresh: () => Promise<unknown>;
+  clear: () => Promise<unknown>;
   logout: () => Promise<void>;
 };
 const SessionContext = createContext<Session>({
   user: null,
   loading: true,
   refresh: async () => {},
+  clear: async () => {},
   logout: async () => {},
 });
 type AppearanceOperation = 'save' | 'upload';
@@ -339,7 +341,15 @@ function SessionProviders({ children }: { children: ReactNode }) {
     navigate('/', { refresh: true });
   }
   return (
-    <SessionContext.Provider value={{ user, loading: isLoading, refresh: () => mutate(), logout }}>
+    <SessionContext.Provider
+      value={{
+        user,
+        loading: isLoading,
+        refresh: () => mutate(),
+        clear: () => mutate(null, { revalidate: false }),
+        logout,
+      }}
+    >
       <SWRConfig key={user?.id ?? 'guest'} value={{ provider: () => new Map() }}>
         <AnnouncementDraftProvider
           userId={user?.id ?? null}

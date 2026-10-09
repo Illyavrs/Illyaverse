@@ -228,3 +228,38 @@ export type Status = {
   beatmap_count: number;
   compatibility: Record<string, unknown>;
 };
+
+/** Official metadata is distinct from a retained, playable server difficulty. */
+export type OfficialBeatmapDifficulty = {
+  official_id: number;
+  version: string;
+  mode: number;
+  stars: number;
+  length_seconds: number;
+  checksum?: string;
+  local_id?: number;
+  archive_available?: boolean;
+  bpm: number | null;
+  ar: number | null;
+  cs: number | null;
+  od: number | null;
+  hp: number | null;
+  max_combo: number | null;
+};
+export type OfficialBeatmapset = {
+  official_set_id: number;
+  title: string;
+  artist: string;
+  creator: string;
+  status: 'ranked' | 'approved' | 'qualified' | 'loved' | 'pending' | 'wip' | 'graveyard';
+  cover_url: string;
+  official_url: string;
+  download_disabled: boolean;
+  difficulties: OfficialBeatmapDifficulty[];
+  local: { stored_count: number; archive_available: boolean; withdrawn: boolean };
+};
+export type OfficialBeatmapSearch = {
+  items: OfficialBeatmapset[];
+  total: number;
+  cursor_string: string | null;
+};

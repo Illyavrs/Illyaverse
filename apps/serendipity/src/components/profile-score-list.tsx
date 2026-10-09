@@ -311,6 +311,7 @@ export function ProfileScoreList({ scores, best }: { scores: Score[]; best: bool
                   <Button
                     variant="ghost"
                     size="icon-sm"
+                    className="compact-record-action"
                     aria-label={p('scoreActions', { title: score.title })}
                   >
                     <MoreVertical />

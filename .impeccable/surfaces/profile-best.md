@@ -14,6 +14,8 @@ FORM: Reuse incumbent profile sections and ScoreTable. Best results use the new 
 
 FINISH: Build fully, inspect desktop dark and mobile light/dark together, apply one source fix batch if needed, confirm at most once, run one detector and fresh generic substitutes for unavailable finish-reviewer/documenter roles. Preserve DESIGN.md and its sidecar; record existing drift separately.
 
+Dense score action feedback retains a 44px hit target while painting only a 32px inset plane around the kebab. The same inset treatment applies to catalogue difficulty summaries. Hover uses a thin foreground veil, open/pressed uses a slightly stronger veil, and keyboard focus draws an accent outline around that plane; there is no scaling or opaque block. Pointer-only hover is restricted to fine hover devices. Final assembled desktop/light/mobile verification is part of the shared image review, not a separate polishing round.
+
 ## Evidence boundaries
 
 Owned PostgreSQL request tests establish actual eligibility, privacy, deterministic ties, pagination and consistency with profile pp statistics. Browser fixtures establish assembled requests, URL/history, numeric presentation, recovery and privacy clearing. Separate final-image regressions cover retained website behavior. These checks do not certify real stable/lazer gameplay or solve the pending human-reported native submission problem.

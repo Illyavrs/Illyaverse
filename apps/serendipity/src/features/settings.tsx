@@ -15,6 +15,7 @@ import { api } from '@/lib/api';
 import { isLocale } from '@/i18n/config';
 import { RelationshipList } from './social';
 import { EmailVerificationControls } from './recovery';
+import { AccountSessionControls } from './account-sessions';
 
 export function AppearanceControls({ compact = false }: { compact?: boolean }) {
   const t = useTranslations('settings');
@@ -695,6 +696,7 @@ function SettingsContent() {
             </div>
             <Protected>
               <PasswordControls />
+              <AccountSessionControls key={user?.id} />
             </Protected>
           </section>
         </TabsContent>

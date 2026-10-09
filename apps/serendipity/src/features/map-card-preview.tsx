@@ -8,6 +8,7 @@ import { api, ApiError } from '@/lib/api';
 import { useNavigationProgress } from '@/components/navigation-motion';
 import { Button } from '@/components/ui/button';
 import { difficultyLevel, type DiscoverySet } from './map-discovery';
+import type { OfficialBeatmapset } from '@/lib/types';
 
 type PreviewDifficulty = {
   id: number | null;
@@ -20,14 +21,16 @@ type Preview = { items: PreviewDifficulty[]; total: number; stored_count: number
 const modes = ['osu!', 'taiko', 'catch', 'mania'];
 
 /** A card preview is read-only. Opening it never imports missing difficulties. */
-export function MapCardPreview({ set }: { set: DiscoverySet }) {
+export function MapCardPreview(props: { set: DiscoverySet } | { official: OfficialBeatmapset }) {
+  const set = 'set' in props ? props.set : null;
+  const official = 'official' in props ? props.official : null;
   const t = useTranslations('mapDiscovery');
   const headingId = useId();
   const { beginRequest } = useNavigationProgress();
   const [open, setOpen] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const anchorId = set.representative.id;
+  const anchorId = set?.representative.id ?? null;
   const request = useMemo(() => ({ open, anchorId, attempt }), [open, anchorId, attempt]);
   const [result, setResult] = useState<{
     request: typeof request;
@@ -49,7 +52,7 @@ export function MapCardPreview({ set }: { set: DiscoverySet }) {
     [],
   );
   useEffect(() => {
-    if (!request.open) return;
+    if (!request.open || request.anchorId === null) return;
     const controller = new AbortController();
     const finish = beginRequest();
     api<Preview>(`/beatmaps/${request.anchorId}/set/preview`, { signal: controller.signal })
@@ -72,17 +75,21 @@ export function MapCardPreview({ set }: { set: DiscoverySet }) {
   const current = result?.request === request ? result : null;
   const response = current?.data;
   const error = current?.error;
-  const loading = open && !current;
+  const loading = !official && open && !current;
   const withdrawn = error instanceof ApiError && [404, 410].includes(error.status);
-  const items: PreviewDifficulty[] = response?.items ?? (withdrawn ? [] : set.preview);
-  const count = response?.total ?? set.stored_count;
+  const initial: PreviewDifficulty[] = official
+    ? official.difficulties.map((map) => ({ ...map, id: map.local_id ?? null }))
+    : (set?.preview ?? []);
+  const items: PreviewDifficulty[] = response?.items ?? (withdrawn ? [] : initial);
+  const count = response?.total ?? official?.difficulties.length ?? set?.stored_count ?? 0;
+  const title = official?.title ?? set?.representative.title ?? '';
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
         <button
           type="button"
-          className="discovery-difficulty-trigger"
-          aria-label={`${t('difficultyPreview')}: ${set.representative.title}. ${t('storedPreviewCount', { count: set.stored_count })}`}
+          className="discovery-difficulty-trigger compact-record-action"
+          aria-label={`${t('difficultyPreview')}: ${title}. ${t(official ? 'fullPreviewCount' : 'storedPreviewCount', { count })}`}
           onPointerEnter={(event) => {
             if (event.pointerType === 'mouse') {
               keepOpen();
@@ -102,10 +109,10 @@ export function MapCardPreview({ set }: { set: DiscoverySet }) {
           }}
         >
           <span className="discovery-difficulty-ticks" aria-hidden="true">
-            {set.preview.slice(0, 8).map((map) => (
+            {initial.slice(0, 8).map((map, index) => (
               <span
                 className="difficulty-marker"
-                key={map.id}
+                key={map.official_id ?? map.id ?? index}
                 style={
                   {
                     '--difficulty-color': `var(--difficulty-${difficultyLevel(map.stars)})`,
@@ -115,7 +122,7 @@ export function MapCardPreview({ set }: { set: DiscoverySet }) {
             ))}
           </span>
           <span className="discovery-difficulty-count" aria-hidden="true">
-            {response?.total ?? set.stored_count}
+            {count}
           </span>
         </button>
       </Popover.Trigger>
@@ -139,7 +146,7 @@ export function MapCardPreview({ set }: { set: DiscoverySet }) {
             <div>
               <h3 id={headingId}>{t('difficultyPreview')}</h3>
               <p aria-live="polite">
-                {t(response ? 'fullPreviewCount' : 'storedPreviewCount', { count })}
+                {t(response || official ? 'fullPreviewCount' : 'storedPreviewCount', { count })}
               </p>
             </div>
           </div>

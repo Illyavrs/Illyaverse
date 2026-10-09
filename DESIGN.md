@@ -74,67 +74,67 @@ colors:
   light-difficulty-extreme: "#9c4436"
 typography:
   display:
-    fontFamily: "'Nunito Variable', 'Noto Sans TC', sans-serif"
+    fontFamily: "'Nunito Variable', var(--font-ui-cjk), sans-serif"
     fontSize: "32px"
     fontWeight: 800
     lineHeight: 1.2
     letterSpacing: "-0.025em"
   display-mobile:
-    fontFamily: "'Nunito Variable', 'Noto Sans TC', sans-serif"
+    fontFamily: "'Nunito Variable', var(--font-ui-cjk), sans-serif"
     fontSize: "26px"
     fontWeight: 800
     lineHeight: 1.2
     letterSpacing: "-0.025em"
   headline:
-    fontFamily: "'Nunito Variable', 'Noto Sans TC', sans-serif"
+    fontFamily: "'Nunito Variable', var(--font-ui-cjk), sans-serif"
     fontSize: "30px"
     fontWeight: 800
     lineHeight: 1.3
     letterSpacing: "-0.025em"
   headline-mobile:
-    fontFamily: "'Nunito Variable', 'Noto Sans TC', sans-serif"
+    fontFamily: "'Nunito Variable', var(--font-ui-cjk), sans-serif"
     fontSize: "26px"
     fontWeight: 800
     lineHeight: 1.3
     letterSpacing: "-0.025em"
   title:
-    fontFamily: "'Nunito Variable', 'Noto Sans TC', sans-serif"
+    fontFamily: "'Nunito Variable', var(--font-ui-cjk), sans-serif"
     fontSize: "19px"
     fontWeight: 900
     lineHeight: 1.3
     letterSpacing: "-0.025em"
   section:
-    fontFamily: "'Nunito Variable', 'Noto Sans TC', sans-serif"
+    fontFamily: "'Nunito Variable', var(--font-ui-cjk), sans-serif"
     fontSize: "17px"
     fontWeight: 800
     lineHeight: 1.4
     letterSpacing: "-0.025em"
   body:
-    fontFamily: "'Nunito Variable', 'Noto Sans TC', sans-serif"
+    fontFamily: "'Nunito Variable', var(--font-ui-cjk), sans-serif"
     fontSize: "15px"
     fontWeight: 400
     lineHeight: 1.7
   body-mobile:
-    fontFamily: "'Nunito Variable', 'Noto Sans TC', sans-serif"
+    fontFamily: "'Nunito Variable', var(--font-ui-cjk), sans-serif"
     fontSize: "14px"
     fontWeight: 400
     lineHeight: 1.7
   label:
-    fontFamily: "'Nunito Variable', 'Noto Sans TC', sans-serif"
+    fontFamily: "'Nunito Variable', var(--font-ui-cjk), sans-serif"
     fontSize: "13px"
     fontWeight: 800
     lineHeight: 1.7
   metadata:
-    fontFamily: "'Nunito Variable', 'Noto Sans TC', sans-serif"
+    fontFamily: "'Nunito Variable', var(--font-ui-cjk), sans-serif"
     fontSize: "12px"
     lineHeight: 1.7
   performance:
-    fontFamily: "'Nunito Variable', 'Noto Sans TC', sans-serif"
+    fontFamily: "'Nunito Variable', var(--font-ui-cjk), sans-serif"
     fontSize: "24px"
     fontWeight: 900
     lineHeight: 1.25
   read-body:
-    fontFamily: "'Nunito Variable', 'Noto Sans TC', sans-serif"
+    fontFamily: "'Nunito Variable', var(--font-ui-cjk), sans-serif"
     fontSize: "14px"
     fontWeight: 400
     lineHeight: 1.95
@@ -272,7 +272,7 @@ The source composition studies of osu-web and Sunset inform recognizable communi
 
 - Pure-black default canvas with adjustable thin neutral glass and solid counterparts.
 - Joined heading, toolbar, identity and record surfaces.
-- Rounded Nunito Variable and Noto Sans TC typography.
+- Rounded Nunito Variable, TaiwanPearl and Zen Maru Gothic typography.
 - Personal accent underlines, readable highlights and aligned performance facts.
 - Real covers and player uploads with useful missing-image fallbacks.
 - Paired light/dark semantic colors, meaningful labels and bounded overflow.
@@ -318,9 +318,9 @@ A pale raspberry personal accent sits over black and neutral glass; light mode r
 
 ## Typography
 
-**Display and Body Font:** locally bundled Nunito Variable, with Noto Sans TC and generic sans-serif fallbacks. Nunito is variable; the layout bundles Noto Sans TC at weights 400 and 600.
+**Display and Body Font:** locally bundled Nunito Variable for Latin lettering, TaiwanPearl for Traditional Chinese and Zen Maru Gothic for Japanese. OFL-safe subset family names are `Illya Pearl` and `Illya Maru`; the locale selects their fallback order through `--font-ui-cjk`. TaiwanPearl uses weights 400 and 600, Zen Maru Gothic uses 400 and 700. Unicode-range WOFF2 subsets retain the eligible source repertoire for player names and dynamic content; the browser requests only the subsets needed on that page. Licensed source versions, full coverage and rebuild instructions are in [fonts.md](docs/fonts.md).
 
-Rounded Latin lettering and the Traditional Chinese fallback carry a compact, readable community interface. Use native monospace for code and commands; comparable numeric data uses tabular figures where its component requests them.
+Rounded Latin, Traditional Chinese and Japanese lettering carry a compact, readable community interface. Keep Nunito for the Latin wordmark. Use native monospace for code and commands; comparable numeric data uses tabular figures where its component requests them.
 
 ### Hierarchy
 

@@ -439,7 +439,7 @@ async function capture(
 
 test('set results show complete read-only hover previews and server pages', async ({ page }) => {
   const state = await fixture(page);
-  await page.goto('/beatmaps');
+  await page.goto('/beatmaps?catalogue=server');
   await expect(page.locator('.discovery-set')).toHaveCount(24);
   await expect(page.locator('.discovery-result-count')).toHaveText(
     /^30 beatmap sets\s*Showing 1–24$/,
@@ -490,7 +490,7 @@ test('dense catalogue cards keep one compact height and complete read-only previ
   for (const width of [1440, 1254, 1024, 800, 780, 600, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
     for (const view of ['grid', 'list']) {
-      await page.goto(`/beatmaps?view=${view}`);
+      await page.goto(`/beatmaps?catalogue=server&view=${view}`);
       const cards = page.locator('.discovery-set');
       await expect(cards).toHaveCount(4);
       await page.evaluate(() => document.fonts.ready);
@@ -568,7 +568,7 @@ test('read-only difficulty previews open on keyboard focus and keep catalogue na
 }) => {
   const state = await fixture(page);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/beatmaps?source=official&view=grid&sort=stars');
+  await page.goto('/beatmaps?catalogue=server&source=official&view=grid&sort=stars');
   await expect(page.locator('.discovery-set')).toHaveCount(15);
   const card = page.locator('.discovery-set').first();
   const trigger = card.locator('.discovery-difficulty-trigger');
@@ -594,7 +594,7 @@ test('read-only difficulty previews open on keyboard focus and keep catalogue na
   await expect(page).toHaveURL(/\/beatmaps\/980000\?/);
   await expect(page.locator('.back-link')).toHaveAttribute(
     'href',
-    '/beatmaps?source=official&view=grid&sort=stars',
+    '/beatmaps?catalogue=server&source=official&view=grid&sort=stars',
   );
   await page.locator('.back-link').click();
   await expect(page.locator('.discovery-results')).toHaveClass(/view-grid/);
@@ -615,7 +615,7 @@ test('read-only difficulty previews open by touch, ignore row taps and close out
   try {
     const page = await context.newPage();
     await fixture(page);
-    await page.goto('/beatmaps?source=official&view=list');
+    await page.goto('/beatmaps?catalogue=server&source=official&view=list');
     await expect(page.locator('.discovery-set')).toHaveCount(15);
     const card = page.locator('.discovery-set').first();
     await card.locator('.discovery-difficulty-trigger').tap();
@@ -632,7 +632,7 @@ test('read-only difficulty previews open by touch, ignore row taps and close out
     await expect(page).toHaveURL(/\/beatmaps\/980000\?/);
     await expect(page.locator('.back-link')).toHaveAttribute(
       'href',
-      '/beatmaps?source=official&view=list',
+      '/beatmaps?catalogue=server&source=official&view=list',
     );
     await noOverflow(page);
   } finally {
@@ -646,7 +646,7 @@ test('a partial stored set shows all 28 metadata difficulties without importing 
   const state = await fixture(page);
   partialStoredSet(state);
   state.holdPreview = true;
-  await page.goto('/beatmaps');
+  await page.goto('/beatmaps?catalogue=server');
   const card = page.locator('.discovery-set').first();
   const trigger = card.locator('.discovery-difficulty-trigger');
   await expect(trigger).toHaveAccessibleName(/2 stored difficulties/);
@@ -677,7 +677,7 @@ test('preview failures label the stored fallback and retry loads the complete li
   const state = await fixture(page);
   partialStoredSet(state);
   state.failPreview = 503;
-  await page.goto('/beatmaps');
+  await page.goto('/beatmaps?catalogue=server');
   await page.locator('.discovery-set').first().locator('.discovery-difficulty-trigger').click();
   const popup = page.locator('.discovery-difficulty-popover');
   await expect(popup.getByRole('status')).toContainText(
@@ -700,7 +700,7 @@ for (const status of [404, 410])
     page,
   }) => {
     const state = await fixture(page);
-    await page.goto('/beatmaps');
+    await page.goto('/beatmaps?catalogue=server');
     const trigger = page.locator('.discovery-set').first().locator('.discovery-difficulty-trigger');
     await trigger.click();
     const popup = page.locator('.discovery-difficulty-popover');
@@ -733,7 +733,7 @@ test('closing a preview aborts its request and a late response cannot replace a 
   page.on('requestfailed', (request) => {
     if (request.url().endsWith('/beatmaps/980000/set/preview')) aborted.push(request.url());
   });
-  await page.goto('/beatmaps');
+  await page.goto('/beatmaps?catalogue=server');
   const trigger = page.locator('.discovery-set').first().locator('.discovery-difficulty-trigger');
   await trigger.click();
   const popup = page.locator('.discovery-difficulty-popover');
@@ -780,7 +780,7 @@ test('catalogue toolbar uses one transparent material layer with readable fields
   ] as const) {
     await page.setViewportSize({ width, height: 1000 });
     state.appearance.mode = theme;
-    await page.goto('/beatmaps');
+    await page.goto('/beatmaps?catalogue=server');
     await expect(page.locator('.global-scene')).toHaveCSS(
       'background-image',
       /material-control-fixture\.png/,
@@ -904,7 +904,7 @@ test('filter URLs restore through history; uploader clearing and layout keep oth
 }) => {
   const state = await fixture(page);
   await page.goto(
-    '/beatmaps?q=fixture&mode=1&status=loved&source=official&sort=title&uploaded_by=990501&page=2&view=list&context=profile',
+    '/beatmaps?catalogue=server&q=fixture&mode=1&status=loved&source=official&sort=title&uploaded_by=990501&page=2&view=list&context=profile',
   );
   await expect(page.getByLabel('Search', { exact: true })).toHaveValue('fixture');
   await expect(page.getByLabel('Game mode', { exact: true })).toHaveAttribute('data-value', '1');
@@ -944,7 +944,7 @@ test('search is bounded in UTF-8 and pending, error, empty and invalid-page stat
   page,
 }) => {
   const state = await fixture(page);
-  await page.goto('/beatmaps');
+  await page.goto('/beatmaps?catalogue=server');
   await expect(page.locator('.discovery-set')).toHaveCount(24);
   state.holdSets = true;
   await page.getByLabel('Search', { exact: true }).fill('曲'.repeat(60));
@@ -966,7 +966,7 @@ test('search is bounded in UTF-8 and pending, error, empty and invalid-page stat
   await expect(page.getByRole('heading', { name: 'No matching beatmap sets' })).toBeVisible();
   await page.getByRole('button', { name: 'Reset filters', exact: true }).first().click();
   await expect(page.locator('.discovery-set')).toHaveCount(24);
-  await page.goto('/beatmaps?page=999');
+  await page.goto('/beatmaps?catalogue=server&page=999');
   await expect(
     page.getByRole('heading', { name: 'This result page is no longer available' }),
   ).toBeVisible();
@@ -1066,7 +1066,7 @@ test('returning to an earlier URL while requests are pending waits for fresh dat
   page,
 }) => {
   const state = await fixture(page);
-  await page.goto('/beatmaps');
+  await page.goto('/beatmaps?catalogue=server');
   await expect(page.locator('.discovery-set')).toHaveCount(24);
   state.holdSets = true;
   await selectField(page.getByLabel('Game mode', { exact: true }), '1');
@@ -1089,7 +1089,7 @@ test('difficulty navigation retains catalogue filters and RX; native mania force
 }) => {
   const state = await fixture(page);
   await page.goto(
-    '/beatmaps?q=fixture&mode=0&status=ranked&source=official&sort=stars&uploaded_by=990501&view=list&context=profile',
+    '/beatmaps?catalogue=server&q=fixture&mode=0&status=ranked&source=official&sort=stars&uploaded_by=990501&view=list&context=profile',
   );
   await expect(page.locator('.discovery-set')).toHaveCount(15);
   const catalogue = new URL(page.url());
@@ -1178,7 +1178,7 @@ test('official cover failures and local namespace fallbacks stay readable with l
   // An official source with an invalid/local native set ID must never request upstream art.
   state.maps.find((map) => map.native_set_id === 1030380)!.native_set_id = 2_100_000_000;
   await page.setViewportSize({ width: 320, height: 800 });
-  await page.goto('/beatmaps');
+  await page.goto('/beatmaps?catalogue=server');
   await expect(page.locator('.discovery-set')).toHaveCount(24);
   await expect(page.locator('.map-artwork-fallback').first()).toBeVisible();
   expect(state.coverRequests.every((url) => !url.includes('/2100000000/'))).toBe(true);
@@ -1335,7 +1335,7 @@ for (const { locale, theme, width, height, view, name, popup = false } of denseM
     state.maps[0].creator = 'A long mapper identity for the compact catalogue fixture';
     state.maps.find((map) => map.id === 980300)!.title = 'One';
     await page.setViewportSize({ width, height });
-    await page.goto(`/beatmaps?view=${view}`);
+    await page.goto(`/beatmaps?catalogue=server&view=${view}`);
     await expect(page.locator('.discovery-set')).toHaveCount(4);
     if (popup) {
       await page.locator('.discovery-set').first().locator('.discovery-difficulty-trigger').click();
