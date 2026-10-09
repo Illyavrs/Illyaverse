@@ -9,8 +9,10 @@ use axum::{
     routing::get,
 };
 use serde_json::{Value, json};
-use sqlx::{Postgres, Row, Transaction};
-use std::collections::{BTreeMap, HashMap};
+use sqlx::{
+    PgConnection, Postgres, Row, Transaction, postgres::PgArguments, query::Query as SqlQuery,
+};
+use std::collections::HashMap;
 
 pub(crate) fn router() -> Router<AppState> {
     Router::new()
@@ -37,7 +39,29 @@ fn overflow() -> ApiError {
     ApiError(StatusCode::INTERNAL_SERVER_ERROR, "room_score_overflow")
 }
 
-fn native_count(value: usize) -> Result<i32, ApiError> {
+fn result_error(error: sqlx::Error) -> ApiError {
+    if error
+        .as_database_error()
+        .is_some_and(|error| error.code().as_deref() == Some("22003"))
+    {
+        overflow()
+    } else {
+        error.into()
+    }
+}
+
+// The complete native arrays need a single MVCC snapshot across their bounded
+// SQL chunks: concurrent best replacement/rejection must not move a user across
+// the internal cursor and make a one-shot leaderboard omit or repeat that user.
+async fn results_snapshot(state: &AppState) -> Result<Transaction<'static, Postgres>, ApiError> {
+    let mut tx = state.pool.begin().await?;
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        .execute(&mut *tx)
+        .await?;
+    Ok(tx)
+}
+
+fn native_count(value: i64) -> Result<i32, ApiError> {
     i32::try_from(value).map_err(|_| overflow())
 }
 
@@ -110,74 +134,52 @@ pub(crate) async fn round_history_authorized(
 #[derive(Clone, Debug)]
 struct Score {
     id: i64,
-    user: i64,
-    item: i64,
     total: i64,
-    accuracy: f64,
-    passed: bool,
-}
-
-#[derive(Debug)]
-struct Attempt {
-    user: i64,
-    item: i64,
-    score: Option<Score>,
+    position: i32,
 }
 
 // SQL aliases are local to this module. Besides the FK triple, validate the
 // token/participant and score identities so a corrupt link cannot be rendered.
-const ATTEMPTS_SQL: &str = "SELECT t.user_id,t.playlist_item_id,s.id score_id,s.score total_score,s.accuracy,s.passed \
+// All derived queries share this exact viewer-specific frozen-round predicate.
+// Attempts (including quit/revoked/rejected attempts) are counted, while only
+// structurally valid, processed, non-rejected scores can become highs/stats.
+// PostgreSQL evaluates the complete history; callers retrieve only scalars,
+// aggregates or explicitly limited result windows, never all attempt rows.
+const RESULTS_CTE: &str = "WITH attempts AS (SELECT t.user_id,t.playlist_item_id,s.id score_id,s.score total_score,s.accuracy/100.0 accuracy,s.passed \
     FROM lazer_score_tokens t \
     JOIN lazer_room_rounds r ON r.id=t.round_id AND r.room_id=t.room_id AND r.playlist_item_id=t.playlist_item_id \
     JOIN lazer_room_round_participants p ON p.round_id=r.id AND p.user_id=t.user_id AND p.beatmap_id=t.beatmap_id AND p.ruleset_id=t.ruleset_id \
     JOIN users u ON u.id=t.user_id AND NOT u.is_restricted \
     JOIN users v ON v.id=$3 AND NOT v.is_restricted \
-    LEFT JOIN scores s ON s.id=t.score_id AND s.user_id=t.user_id AND s.beatmap_id=p.beatmap_id AND s.mode=p.ruleset_id AND s.client='lazer' AND s.ingestion_key='lazer:'||t.id::text AND s.verification<>'rejected' AND t.processing_status='processed' AND t.revoked_at IS NULL \
+    LEFT JOIN scores s ON s.id=t.score_id AND s.user_id=t.user_id AND s.beatmap_id=p.beatmap_id AND s.mode=p.ruleset_id AND s.client='lazer' AND s.ingestion_key='lazer:'||t.id::text AND s.verification<>'rejected' AND t.processing_status='processed' AND t.revoked_at IS NULL AND s.score>=0 AND s.accuracy BETWEEN 0 AND 100 \
     WHERE t.scope='room' AND t.room_id=$1 AND ($2::bigint IS NULL OR t.playlist_item_id=$2) \
     AND ($4 OR t.user_id=$3 OR EXISTS(SELECT 1 FROM lazer_room_round_participants vp WHERE vp.round_id=r.id AND vp.user_id=$3)) \
-    ORDER BY t.id";
+    ), highs AS (SELECT DISTINCT ON(user_id,playlist_item_id) user_id,playlist_item_id,score_id,total_score,accuracy,passed \
+    FROM attempts WHERE score_id IS NOT NULL AND ($5 OR passed) \
+    ORDER BY user_id,playlist_item_id,total_score DESC,score_id), \
+    ranked AS (SELECT *,row_number() OVER(ORDER BY total_score DESC,score_id) position FROM highs)";
 
-async fn load_attempts(
-    state: &AppState,
+fn results_query<'a>(
+    sql: &'a str,
     viewer: &Account,
     room: i64,
     item: Option<i64>,
-) -> Result<Vec<Attempt>, ApiError> {
-    let rows = sqlx::query(ATTEMPTS_SQL)
+    head_to_head: bool,
+) -> SqlQuery<'a, Postgres, PgArguments> {
+    sqlx::query(sql)
         .bind(room)
         .bind(item)
         .bind(viewer.id)
         .bind(viewer.can("scores.moderate"))
-        .fetch_all(&state.pool)
-        .await?;
-    rows.into_iter()
-        .map(|row| {
-            let user = row.try_get("user_id")?;
-            let item = row.try_get("playlist_item_id")?;
-            let score = row
-                .try_get::<Option<i64>, _>("score_id")?
-                .map(|id| -> Result<Score, ApiError> {
-                    let total = row.try_get("total_score")?;
-                    let accuracy: f64 = row.try_get("accuracy")?;
-                    if total < 0 || !accuracy.is_finite() || !(0.0..=100.0).contains(&accuracy) {
-                        return Err(ApiError(
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            "invalid_room_score",
-                        ));
-                    }
-                    Ok(Score {
-                        id,
-                        user,
-                        item,
-                        total,
-                        accuracy: accuracy / 100.0,
-                        passed: row.try_get("passed")?,
-                    })
-                })
-                .transpose()?;
-            Ok(Attempt { user, item, score })
-        })
-        .collect()
+        .bind(head_to_head)
+}
+
+fn score_from_row(row: sqlx::postgres::PgRow) -> Result<Score, ApiError> {
+    Ok(Score {
+        id: row.try_get("score_id")?,
+        total: row.try_get("total_score")?,
+        position: native_count(row.try_get("position")?)?,
+    })
 }
 
 async fn head_to_head(state: &AppState, room: i64) -> Result<bool, ApiError> {
@@ -192,23 +194,13 @@ async fn head_to_head(state: &AppState, room: i64) -> Result<bool, ApiError> {
         || settings["matchType"].as_str() == Some("head_to_head"))
 }
 
-fn selected_highs(attempts: &[Attempt], head_to_head: bool) -> Vec<Score> {
-    let mut selected: HashMap<(i64, i64), &Score> = HashMap::new();
-    for score in attempts.iter().filter_map(|attempt| attempt.score.as_ref()) {
-        if !head_to_head && !score.passed {
-            continue;
-        }
-        let key = (score.user, score.item);
-        if selected.get(&key).is_none_or(|old| {
-            score.total > old.total || (score.total == old.total && score.id < old.id)
-        }) {
-            selected.insert(key, score);
-        }
-    }
-    let mut scores: Vec<_> = selected.into_values().cloned().collect();
-    scores.sort_by(|a, b| b.total.cmp(&a.total).then(a.id.cmp(&b.id)));
-    scores
-}
+// A response may contain every user/item because the native contracts are
+// unpaged arrays. SQL fetches stay bounded even for those complete responses.
+const AGGREGATE_BATCH: i64 = 100;
+const AGGREGATES_CTE: &str = ", attempt_counts AS (SELECT user_id,count(*)::bigint attempts FROM attempts GROUP BY user_id), \
+    totals AS (SELECT h.user_id,c.attempts,count(*)::bigint completed,sum(h.total_score)::bigint total_score,avg(h.accuracy)::double precision accuracy,max(h.score_id) last_high \
+    FROM highs h JOIN attempt_counts c ON c.user_id=h.user_id GROUP BY h.user_id,c.attempts), \
+    aggregates AS (SELECT *,row_number() OVER(ORDER BY total_score DESC,last_high) position FROM totals)";
 
 #[derive(Debug)]
 struct Aggregate {
@@ -218,56 +210,53 @@ struct Aggregate {
     total: i64,
     accuracy: f64,
     last_high: i64,
+    position: i32,
 }
 
-fn aggregate_scores(attempts: &[Attempt], highs: &[Score]) -> Result<Vec<Aggregate>, ApiError> {
-    let mut attempts_by_user: HashMap<i64, i32> = HashMap::new();
-    for attempt in attempts {
-        let count = attempts_by_user.entry(attempt.user).or_default();
-        *count = count.checked_add(1).ok_or_else(overflow)?;
+fn aggregate_from_row(row: sqlx::postgres::PgRow) -> Result<Aggregate, ApiError> {
+    let accuracy: f64 = row.try_get("accuracy")?;
+    if !accuracy.is_finite() || !(0.0..=1.0).contains(&accuracy) {
+        return Err(overflow());
     }
-    let mut aggregates: HashMap<i64, Aggregate> = HashMap::new();
-    for high in highs {
-        let aggregate = aggregates.entry(high.user).or_insert(Aggregate {
-            user: high.user,
-            attempts: attempts_by_user.get(&high.user).copied().unwrap_or(0),
-            completed: 0,
-            total: 0,
-            accuracy: 0.0,
-            last_high: 0,
-        });
-        aggregate.total = aggregate
-            .total
-            .checked_add(high.total)
-            .ok_or_else(overflow)?;
-        aggregate.completed = aggregate.completed.checked_add(1).ok_or_else(overflow)?;
-        aggregate.accuracy += high.accuracy;
-        aggregate.last_high = aggregate.last_high.max(high.id);
-    }
-    let mut aggregates: Vec<_> = aggregates.into_values().collect();
-    for aggregate in &mut aggregates {
-        aggregate.accuracy /= f64::from(aggregate.completed);
-        if !aggregate.accuracy.is_finite() {
-            return Err(overflow());
-        }
-    }
-    aggregates.sort_by(|a, b| b.total.cmp(&a.total).then(a.last_high.cmp(&b.last_high)));
-    Ok(aggregates)
+    Ok(Aggregate {
+        user: row.try_get("user_id")?,
+        attempts: native_count(row.try_get("attempts")?)?,
+        completed: native_count(row.try_get("completed")?)?,
+        total: row.try_get("total_score")?,
+        accuracy,
+        last_high: row.try_get("last_high")?,
+        position: native_count(row.try_get("position")?)?,
+    })
 }
 
 async fn aggregate_json(
-    state: &AppState,
+    db: &mut PgConnection,
     room: i64,
     aggregate: &Aggregate,
-    position: i32,
 ) -> Result<Value, ApiError> {
-    let owner = common::account(state, aggregate.user).await?;
+    let owner = common::account_on_connection(db, aggregate.user).await?;
     Ok(json!({
         "room_id": room, "user_id": aggregate.user, "user": crate::lazer::user_json(&owner),
         "attempts": aggregate.attempts, "completed": aggregate.completed,
         "total_score": aggregate.total, "accuracy": aggregate.accuracy,
-        "pp": null, "position": position,
+        "pp": null, "position": aggregate.position,
     }))
+}
+
+async fn own_aggregate(
+    db: &mut PgConnection,
+    viewer: &Account,
+    room: i64,
+    head_to_head: bool,
+) -> Result<Option<Aggregate>, ApiError> {
+    let sql =
+        format!("{RESULTS_CTE}{AGGREGATES_CTE} SELECT * FROM aggregates WHERE user_id=$3 LIMIT 1");
+    results_query(&sql, viewer, room, None, head_to_head)
+        .fetch_optional(db)
+        .await
+        .map_err(result_error)?
+        .map(aggregate_from_row)
+        .transpose()
 }
 
 /// The native Room.current_user_score contract is PlaylistAggregateScore, whose
@@ -280,49 +269,47 @@ pub(crate) async fn room_summary(
     if !room_history_authorized(state, viewer, room).await? {
         return Ok(Value::Null);
     }
-    let attempts = load_attempts(state, viewer, room, None).await?;
-    let own: Vec<_> = attempts
-        .iter()
-        .filter(|attempt| attempt.user == viewer.id)
-        .collect();
-    if own.is_empty() {
+    let head_to_head = head_to_head(state, room).await?;
+    let mut tx = results_snapshot(state).await?;
+    let sql =
+        format!("{RESULTS_CTE} SELECT count(*)::bigint attempts FROM attempts WHERE user_id=$3");
+    let row = results_query(&sql, viewer, room, None, head_to_head)
+        .fetch_one(&mut *tx)
+        .await?;
+    let attempt_count = native_count(row.try_get("attempts")?)?;
+    if attempt_count == 0 {
         return Ok(Value::Null);
     }
-    let mut by_item: BTreeMap<i64, (i32, bool)> = BTreeMap::new();
-    for attempt in own {
-        let value = by_item.entry(attempt.item).or_default();
-        value.0 = value.0.checked_add(1).ok_or_else(overflow)?;
-        value.1 |= attempt.score.as_ref().is_some_and(|score| score.passed);
+    let mut items = Vec::new();
+    let mut after = 0_i64;
+    let sql = format!(
+        "{RESULTS_CTE} SELECT playlist_item_id,count(*)::bigint attempts,coalesce(bool_or(passed),false) passed FROM attempts WHERE user_id=$3 AND playlist_item_id>$6 GROUP BY playlist_item_id ORDER BY playlist_item_id LIMIT $7"
+    );
+    loop {
+        let rows = results_query(&sql, viewer, room, None, head_to_head)
+            .bind(after)
+            .bind(AGGREGATE_BATCH)
+            .fetch_all(&mut *tx)
+            .await?;
+        let complete = rows.len() < AGGREGATE_BATCH as usize;
+        for row in rows {
+            let item: i64 = row.try_get("playlist_item_id")?;
+            after = item;
+            items.push(json!({"id":native_count(item)?,"attempts":native_count(row.try_get("attempts")?)?,"passed":row.try_get::<bool,_>("passed")?}));
+        }
+        if complete {
+            break;
+        }
     }
-    let items: Result<Vec<_>, ApiError> = by_item
-        .into_iter()
-        .map(|(id, (attempts, passed))| {
-            let id = i32::try_from(id).map_err(|_| overflow())?;
-            Ok(json!({"id": id, "attempts": attempts, "passed": passed}))
-        })
-        .collect();
-    let highs = selected_highs(&attempts, head_to_head(state, room).await?);
-    let aggregates = aggregate_scores(&attempts, &highs)?;
-    let own_aggregate = aggregates
-        .iter()
-        .enumerate()
-        .find(|(_, aggregate)| aggregate.user == viewer.id);
-    let mut result = if let Some((index, aggregate)) = own_aggregate {
-        aggregate_json(state, room, aggregate, native_count(index + 1)?).await?
+    let aggregate = own_aggregate(&mut tx, viewer, room, head_to_head).await?;
+    let mut result = if let Some(aggregate) = aggregate {
+        aggregate_json(&mut tx, room, &aggregate).await?
     } else {
-        json!({"room_id": room, "user_id": viewer.id, "attempts": by_item_count(&attempts, viewer.id)?, "completed":0, "total_score":0, "accuracy":0.0, "pp":null, "position":null})
+        json!({"room_id":room,"user_id":viewer.id,"attempts":attempt_count,"completed":0,"total_score":0,"accuracy":0.0,"pp":null,"position":null})
     };
-    result["playlist_item_attempts"] = json!(items?);
+    tx.commit().await?;
+    result["playlist_item_attempts"] = json!(items);
     Ok(result)
-}
-
-fn by_item_count(attempts: &[Attempt], user: i64) -> Result<i32, ApiError> {
-    native_count(
-        attempts
-            .iter()
-            .filter(|attempt| attempt.user == user)
-            .count(),
-    )
 }
 
 pub(crate) async fn item_attempts(
@@ -334,33 +321,15 @@ pub(crate) async fn item_attempts(
     if !item_history_authorized(state, viewer, room, item).await? {
         return Ok(json!({"attempts":0,"completed":false,"passed":false}));
     }
-    let attempts = load_attempts(state, viewer, room, Some(item)).await?;
-    let passed = attempts.iter().any(|attempt| {
-        attempt.user == viewer.id && attempt.score.as_ref().is_some_and(|score| score.passed)
-    });
-    Ok(json!({"attempts":by_item_count(&attempts, viewer.id)?,"completed":passed,"passed":passed}))
-}
-
-#[derive(Default)]
-struct ItemStats {
-    bins: [i64; 13],
-    cumulative: i64,
-    last_processed: i64,
-}
-
-impl ItemStats {
-    fn add(&mut self, score: &Score) -> Result<(), ApiError> {
-        self.last_processed = self.last_processed.max(score.id);
-        if score.passed {
-            let bin = usize::try_from((score.total / 100_000).min(12)).map_err(|_| overflow())?;
-            self.bins[bin] = self.bins[bin].checked_add(1).ok_or_else(overflow)?;
-            self.cumulative = self
-                .cumulative
-                .checked_add(score.total)
-                .ok_or_else(overflow)?;
-        }
-        Ok(())
-    }
+    let sql = format!(
+        "{RESULTS_CTE} SELECT count(*)::bigint attempts,coalesce(bool_or(passed),false) passed FROM attempts WHERE user_id=$3"
+    );
+    let row = results_query(&sql, viewer, room, Some(item), false)
+        .fetch_one(&state.pool)
+        .await?;
+    let attempts = native_count(row.try_get("attempts")?)?;
+    let passed: bool = row.try_get("passed")?;
+    Ok(json!({"attempts":attempts,"completed":passed,"passed":passed}))
 }
 
 pub(crate) async fn playlist_stats(
@@ -371,23 +340,44 @@ pub(crate) async fn playlist_stats(
     if !room_history_authorized(state, viewer, room).await? {
         return Err(not_found());
     }
-    let items = sqlx::query_scalar::<_, i64>(
-        "SELECT DISTINCT playlist_item_id FROM lazer_room_playlist_versions WHERE room_id=$1 ORDER BY playlist_item_id",
-    ).bind(room).fetch_all(&state.pool).await?;
-    let mut stats: BTreeMap<i64, ItemStats> = items
-        .into_iter()
-        .map(|item| (item, ItemStats::default()))
-        .collect();
-    for attempt in load_attempts(state, viewer, room, None).await? {
-        if let Some(score) = attempt.score {
-            stats.entry(score.item).or_default().add(&score)?;
+    let mut tx = results_snapshot(state).await?;
+    // The bins are SQL aggregates of every eligible passing attempt, rather
+    // than selected highs. Invalid/rejected/failed attempts cannot enter bins.
+    let sql = format!(
+        "{RESULTS_CTE}, items AS (SELECT DISTINCT playlist_item_id FROM lazer_room_playlist_versions WHERE room_id=$1 AND playlist_item_id>$6 ORDER BY playlist_item_id LIMIT $7), \
+        stats AS (SELECT a.playlist_item_id,coalesce(sum(a.total_score) FILTER(WHERE a.passed),0)::bigint cumulative_score,max(a.score_id) last_processed, \
+        array[{}] bins FROM attempts a JOIN items i ON i.playlist_item_id=a.playlist_item_id WHERE a.score_id IS NOT NULL GROUP BY a.playlist_item_id) \
+        SELECT i.playlist_item_id,coalesce(s.cumulative_score,0) cumulative_score,coalesce(s.last_processed,0) last_processed,coalesce(s.bins,array_fill(0::bigint,ARRAY[13])) bins \
+        FROM items i LEFT JOIN stats s ON s.playlist_item_id=i.playlist_item_id ORDER BY i.playlist_item_id",
+        (0..13)
+            .map(|bin| format!(
+                "count(*) FILTER(WHERE a.passed AND least(a.total_score/100000,12)={bin})"
+            ))
+            .collect::<Vec<_>>()
+            .join(",")
+    );
+    let mut stats = Vec::new();
+    let mut after = 0_i64;
+    loop {
+        let rows = results_query(&sql, viewer, room, None, false)
+            .bind(after)
+            .bind(AGGREGATE_BATCH)
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(result_error)?;
+        let complete = rows.len() < AGGREGATE_BATCH as usize;
+        for row in rows {
+            let item: i64 = row.try_get("playlist_item_id")?;
+            after = item;
+            stats.push(json!({"playlistItemID":item,"totalScoreDistribution":row.try_get::<Vec<i64>,_>("bins")?,"cumulativeScore":row.try_get::<i64,_>("cumulative_score")?,"lastProcessedScoreID":row.try_get::<i64,_>("last_processed")?}));
+        }
+        if complete {
+            break;
         }
     }
-    Ok(json!(stats.into_iter().map(|(item, stats)| {
-        json!({"playlistItemID":item,"totalScoreDistribution":stats.bins,"cumulativeScore":stats.cumulative,"lastProcessedScoreID":stats.last_processed})
-    }).collect::<Vec<_>>()))
+    tx.commit().await?;
+    Ok(json!(stats))
 }
-
 const SCORE_SQL: &str = "SELECT s.*,b.native_id native_map_id,b.status map_status,t.id room_token_id \
     FROM lazer_score_tokens t \
     JOIN lazer_room_rounds r ON r.id=t.round_id AND r.room_id=t.room_id AND r.playlist_item_id=t.playlist_item_id \
@@ -402,7 +392,7 @@ const SCORE_SQL: &str = "SELECT s.*,b.native_id native_map_id,b.status map_statu
     AND (s.verification<>'rejected' OR s.user_id=$4 OR $5)";
 
 async fn render_score(
-    state: &AppState,
+    db: &mut PgConnection,
     viewer: &Account,
     room: i64,
     item: i64,
@@ -417,14 +407,14 @@ async fn render_score(
         .bind(viewer.id)
         .bind(viewer.can("scores.moderate"))
         .bind(by_token)
-        .fetch_optional(&state.pool)
+        .fetch_optional(&mut *db)
         .await?
         .ok_or_else(not_found)?;
     // Preserve the native gameplay total even when common-score caches or PP
     // context are unavailable (including per-participant Relax choices).
     let total: i64 = row.try_get("score")?;
     let native: Option<Value> = row.try_get("native_submission")?;
-    let mut value = crate::lazer::score_json_from_row(state, row).await?;
+    let mut value = crate::lazer::score_json_from_row_on_connection(db, row).await?;
     value["total_score"] = json!(total);
     value["position"] = json!(position);
     value["processed"] = json!(true);
@@ -444,15 +434,12 @@ pub(crate) async fn score_for_token(
     item: i64,
     token: i64,
 ) -> Result<Value, ApiError> {
-    let value = render_score(state, viewer, room, item, token, true, None).await?;
+    let value = {
+        let mut db = state.pool.acquire().await?;
+        render_score(&mut db, viewer, room, item, token, true, None).await?
+    };
     let id = value["id"].as_i64().ok_or_else(not_found)?;
-    let attempts = load_attempts(state, viewer, room, Some(item)).await?;
-    let highs = selected_highs(&attempts, head_to_head(state, room).await?);
-    let position = highs
-        .iter()
-        .position(|score| score.id == id)
-        .map(|index| native_count(index + 1))
-        .transpose()?;
+    let position = event_rank(state, viewer, room, item, id).await?;
     let mut value = value;
     value["position"] = json!(position);
     Ok(value)
@@ -467,12 +454,31 @@ pub(crate) async fn event_rank(
     item: i64,
     score: i64,
 ) -> Result<Option<i32>, ApiError> {
-    let attempts = load_attempts(state, viewer, room, Some(item)).await?;
-    let highs = selected_highs(&attempts, head_to_head(state, room).await?);
-    highs
-        .iter()
-        .position(|high| high.id == score)
-        .map(|index| native_count(index + 1))
+    let head_to_head = head_to_head(state, room).await?;
+    let mut tx = results_snapshot(state).await?;
+    let high = high_score(&mut tx, viewer, room, item, Some(score), None, head_to_head).await?;
+    tx.commit().await?;
+    Ok(high.map(|high| high.position))
+}
+
+async fn high_score(
+    db: &mut PgConnection,
+    viewer: &Account,
+    room: i64,
+    item: i64,
+    score: Option<i64>,
+    user: Option<i64>,
+    head_to_head: bool,
+) -> Result<Option<Score>, ApiError> {
+    let sql = format!(
+        "{RESULTS_CTE} SELECT * FROM ranked WHERE ($6::bigint IS NULL OR score_id=$6) AND ($7::bigint IS NULL OR user_id=$7) LIMIT 1"
+    );
+    results_query(&sql, viewer, room, Some(item), head_to_head)
+        .bind(score)
+        .bind(user)
+        .fetch_optional(db)
+        .await?
+        .map(score_from_row)
         .transpose()
 }
 
@@ -494,13 +500,22 @@ impl Sort {
         }
     }
 
-    fn order(self, scores: &mut [Score]) {
-        scores.sort_by(|a, b| match self {
-            Self::ScoreDesc => b.total.cmp(&a.total).then(a.id.cmp(&b.id)),
-            Self::ScoreAsc => a.total.cmp(&b.total).then(b.id.cmp(&a.id)),
-            Self::IdDesc => b.id.cmp(&a.id),
-            Self::IdAsc => a.id.cmp(&b.id),
-        });
+    fn sql_order(self) -> &'static str {
+        match self {
+            Self::ScoreDesc => "total_score DESC,score_id ASC",
+            Self::ScoreAsc => "total_score ASC,score_id DESC",
+            Self::IdDesc => "score_id DESC",
+            Self::IdAsc => "score_id ASC",
+        }
+    }
+
+    fn sql_after(self) -> &'static str {
+        match self {
+            Self::ScoreDesc => "(total_score<$6 OR (total_score=$6 AND score_id>$7))",
+            Self::ScoreAsc => "(total_score>$6 OR (total_score=$6 AND score_id<$7))",
+            Self::IdDesc => "score_id<$7",
+            Self::IdAsc => "score_id>$7",
+        }
     }
 
     fn reverse(self) -> Self {
@@ -587,18 +602,6 @@ impl IndexParams {
     fn json(&self) -> Value {
         json!({"sort":self.sort.name(),"limit":self.limit})
     }
-
-    fn after(&self, score: &Score) -> bool {
-        let Some((total, id)) = self.cursor else {
-            return true;
-        };
-        match self.sort {
-            Sort::ScoreDesc => score.total < total || (score.total == total && score.id > id),
-            Sort::ScoreAsc => score.total > total || (score.total == total && score.id < id),
-            Sort::IdDesc => score.id < id,
-            Sort::IdAsc => score.id > id,
-        }
-    }
 }
 
 fn cursor(score: &Score, sort: Sort) -> Value {
@@ -609,24 +612,23 @@ fn cursor(score: &Score, sort: Sort) -> Value {
 }
 
 async fn render_list(
-    state: &AppState,
+    db: &mut PgConnection,
     viewer: &Account,
     room: i64,
     item: i64,
     scores: &[Score],
-    positions: &HashMap<i64, i32>,
 ) -> Result<Vec<Value>, ApiError> {
     let mut output = Vec::with_capacity(scores.len());
     for score in scores {
         output.push(
             render_score(
-                state,
+                db,
                 viewer,
                 room,
                 item,
                 score.id,
                 false,
-                positions.get(&score.id).copied(),
+                Some(score.position),
             )
             .await?,
         );
@@ -634,49 +636,75 @@ async fn render_list(
     Ok(output)
 }
 
-fn positions(highs: &[Score]) -> Result<HashMap<i64, i32>, ApiError> {
-    highs
-        .iter()
-        .enumerate()
-        .map(|(index, score)| Ok((score.id, native_count(index + 1)?)))
-        .collect()
+struct ScorePage {
+    scores: Vec<Score>,
+    has_more: bool,
 }
 
-async fn scores_around(
-    state: &AppState,
+/// Window ranks/counts consider every eligible high before keyset filtering.
+/// The result transfer is bounded by the validated limit plus one sentinel.
+async fn high_page(
+    db: &mut PgConnection,
     viewer: &Account,
     room: i64,
     item: i64,
-    score: i64,
-    highs: &[Score],
     params: &IndexParams,
+    head_to_head: bool,
+) -> Result<ScorePage, ApiError> {
+    let sql = format!(
+        "{RESULTS_CTE} SELECT * FROM ranked WHERE ($6::bigint IS NULL OR {}) ORDER BY {} LIMIT $8",
+        params.sort.sql_after(),
+        params.sort.sql_order()
+    );
+    let rows = results_query(&sql, viewer, room, Some(item), head_to_head)
+        .bind(params.cursor.map(|(total, _)| total))
+        .bind(params.cursor.map(|(_, id)| id))
+        .bind(i64::try_from(params.limit + 1).map_err(|_| overflow())?)
+        .fetch_all(db)
+        .await?;
+    let has_more = rows.len() > params.limit;
+    let scores = rows
+        .into_iter()
+        .take(params.limit)
+        .map(score_from_row)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(ScorePage { scores, has_more })
+}
+
+async fn scores_around(
+    db: &mut PgConnection,
+    viewer: &Account,
+    binding: (i64, i64),
+    score: i64,
+    params: &IndexParams,
+    head_to_head: bool,
 ) -> Result<Value, ApiError> {
-    let positions = positions(highs)?;
-    let mut ordered = highs.to_vec();
-    params.sort.order(&mut ordered);
-    let Some(index) = ordered.iter().position(|candidate| candidate.id == score) else {
+    let (room, item) = binding;
+    let Some(pivot) = high_score(db, viewer, room, item, Some(score), None, head_to_head).await?
+    else {
         return Ok(Value::Null);
     };
-    let higher_start = index.saturating_sub(params.limit);
-    // The native result screen assigns positions by stepping away from the
-    // pivot. Higher scores therefore start with the immediately preceding row.
-    let higher: Vec<_> = ordered[higher_start..index].iter().rev().cloned().collect();
+    // The native result screen steps away from the pivot: preceding rows are
+    // returned in reversed sort order, beginning with the immediate neighbor.
     let higher_params = IndexParams {
         sort: params.sort.reverse(),
         limit: params.limit,
-        cursor: None,
+        cursor: Some((pivot.total, pivot.id)),
         around: false,
     };
-    let lower_end = index
-        .saturating_add(1)
-        .saturating_add(params.limit)
-        .min(ordered.len());
-    let lower = &ordered[index + 1..lower_end];
-    let higher_scores = render_list(state, viewer, room, item, &higher, &positions).await?;
-    let lower_scores = render_list(state, viewer, room, item, lower, &positions).await?;
+    let lower_params = IndexParams {
+        sort: params.sort,
+        limit: params.limit,
+        cursor: Some((pivot.total, pivot.id)),
+        around: false,
+    };
+    let higher = high_page(db, viewer, room, item, &higher_params, head_to_head).await?;
+    let lower = high_page(db, viewer, room, item, &lower_params, head_to_head).await?;
+    let higher_scores = render_list(db, viewer, room, item, &higher.scores).await?;
+    let lower_scores = render_list(db, viewer, room, item, &lower.scores).await?;
     Ok(json!({
-        "higher":{"scores":higher_scores,"params":higher_params.json(),"cursor":if higher_start>0{higher.last().map(|score|cursor(score,higher_params.sort))}else{None}},
-        "lower":{"scores":lower_scores,"params":params.json(),"cursor":if lower_end<ordered.len(){lower.last().map(|score|cursor(score,params.sort))}else{None}},
+        "higher":{"scores":higher_scores,"params":higher_params.json(),"cursor":if higher.has_more {higher.scores.last().map(|score|cursor(score,higher_params.sort))}else{None}},
+        "lower":{"scores":lower_scores,"params":params.json(),"cursor":if lower.has_more {lower.scores.last().map(|score|cursor(score,params.sort))}else{None}},
     }))
 }
 
@@ -692,34 +720,39 @@ async fn index_scores(
     if !item_history_authorized(&state, &viewer, room, item).await? {
         return Err(not_found());
     }
-    let attempts = load_attempts(&state, &viewer, room, Some(item)).await?;
-    let highs = selected_highs(&attempts, head_to_head(&state, room).await?);
-    let positions = positions(&highs)?;
-    let total = i64::try_from(highs.len()).map_err(|_| overflow())?;
-    let mut ordered = highs.clone();
-    params.sort.order(&mut ordered);
-    let mut page: Vec<_> = ordered
-        .into_iter()
-        .filter(|score| params.after(score))
-        .take(params.limit + 1)
-        .collect();
-    let has_more = page.len() > params.limit;
-    page.truncate(params.limit);
-    let next = if has_more {
-        page.last().map(|score| cursor(score, params.sort))
+    let head_to_head = head_to_head(&state, room).await?;
+    let mut tx = results_snapshot(&state).await?;
+    let page = high_page(&mut tx, &viewer, room, item, &params, head_to_head).await?;
+    let next = if page.has_more {
+        page.scores.last().map(|score| cursor(score, params.sort))
     } else {
         None
     };
-    let scores = render_list(&state, &viewer, room, item, &page, &positions).await?;
-    let mut user_score = if let Some(score) = highs.iter().find(|score| score.user == viewer.id) {
+    let sql = format!("{RESULTS_CTE} SELECT count(*)::bigint total FROM highs");
+    let total: i64 = results_query(&sql, &viewer, room, Some(item), head_to_head)
+        .fetch_one(&mut *tx)
+        .await?
+        .try_get("total")?;
+    let scores = render_list(&mut tx, &viewer, room, item, &page.scores).await?;
+    let mut user_score = if let Some(score) = high_score(
+        &mut tx,
+        &viewer,
+        room,
+        item,
+        None,
+        Some(viewer.id),
+        head_to_head,
+    )
+    .await?
+    {
         render_score(
-            &state,
+            &mut tx,
             &viewer,
             room,
             item,
             score.id,
             false,
-            positions.get(&score.id).copied(),
+            Some(score.position),
         )
         .await?
     } else {
@@ -727,16 +760,16 @@ async fn index_scores(
     };
     if params.around && !user_score.is_null() {
         user_score["scores_around"] = scores_around(
-            &state,
+            &mut tx,
             &viewer,
-            room,
-            item,
+            (room, item),
             user_score["id"].as_i64().ok_or_else(not_found)?,
-            &highs,
             &params,
+            head_to_head,
         )
         .await?;
     }
+    tx.commit().await?;
     Ok(Json(
         json!({"scores":scores,"params":params.json(),"cursor":next,"total":total,"user_score":user_score}),
     ))
@@ -756,25 +789,25 @@ async fn show_score(
     if !query.contains_key("scores_around") {
         params.around = true;
     }
-    let highs = selected_highs(
-        &load_attempts(&state, &viewer, room, Some(item)).await?,
-        head_to_head(&state, room).await?,
-    );
-    let positions = positions(&highs)?;
-    let mut value = render_score(
-        &state,
+    let head_to_head = head_to_head(&state, room).await?;
+    let mut tx = results_snapshot(&state).await?;
+    let position = high_score(
+        &mut tx,
         &viewer,
         room,
         item,
-        score,
-        false,
-        positions.get(&score).copied(),
+        Some(score),
+        None,
+        head_to_head,
     )
-    .await?;
+    .await?
+    .map(|score| score.position);
+    let mut value = render_score(&mut tx, &viewer, room, item, score, false, position).await?;
     if params.around {
         value["scores_around"] =
-            scores_around(&state, &viewer, room, item, score, &highs, &params).await?;
+            scores_around(&mut tx, &viewer, (room, item), score, &params, head_to_head).await?;
     }
+    tx.commit().await?;
     Ok(Json(value))
 }
 
@@ -793,29 +826,33 @@ async fn show_user_score(
     if !item_history_authorized(&state, &viewer, room, item).await? {
         return Err(not_found());
     }
-    let highs = selected_highs(
-        &load_attempts(&state, &viewer, room, Some(item)).await?,
-        head_to_head(&state, room).await?,
-    );
-    let positions = positions(&highs)?;
-    let score = highs
-        .iter()
-        .find(|score| score.user == user)
+    let head_to_head = head_to_head(&state, room).await?;
+    let mut tx = results_snapshot(&state).await?;
+    let score = high_score(&mut tx, &viewer, room, item, None, Some(user), head_to_head)
+        .await?
         .ok_or_else(not_found)?;
     let mut value = render_score(
-        &state,
+        &mut tx,
         &viewer,
         room,
         item,
         score.id,
         false,
-        positions.get(&score.id).copied(),
+        Some(score.position),
     )
     .await?;
     if params.around {
-        value["scores_around"] =
-            scores_around(&state, &viewer, room, item, score.id, &highs, &params).await?;
+        value["scores_around"] = scores_around(
+            &mut tx,
+            &viewer,
+            (room, item),
+            score.id,
+            &params,
+            head_to_head,
+        )
+        .await?;
     }
+    tx.commit().await?;
     Ok(Json(value))
 }
 
@@ -826,26 +863,51 @@ async fn leaderboard(
 ) -> Result<Json<Value>, ApiError> {
     check_ids(room, None)?;
     let viewer = common::bearer(&state, &headers).await?;
-    if !room_history_authorized(&state, &viewer, room).await? {
-        return Err(not_found());
-    }
-    let attempts = load_attempts(&state, &viewer, room, None).await?;
-    let highs = selected_highs(&attempts, head_to_head(&state, room).await?);
-    let aggregates = aggregate_scores(&attempts, &highs)?;
-    let mut leaderboard = Vec::with_capacity(aggregates.len());
-    let mut user_score = Value::Null;
-    for (index, aggregate) in aggregates.iter().enumerate() {
-        let value = aggregate_json(&state, room, aggregate, native_count(index + 1)?).await?;
-        if aggregate.user == viewer.id {
-            user_score = value.clone();
-        }
-        leaderboard.push(value);
-    }
-    Ok(Json(
-        json!({"leaderboard":leaderboard,"user_score":user_score}),
-    ))
+    Ok(Json(room_leaderboard(&state, &viewer, room).await?))
 }
 
+pub(crate) async fn room_leaderboard(
+    state: &AppState,
+    viewer: &Account,
+    room: i64,
+) -> Result<Value, ApiError> {
+    if !room_history_authorized(state, viewer, room).await? {
+        return Err(not_found());
+    }
+    let head_to_head = head_to_head(state, room).await?;
+    let mut tx = results_snapshot(state).await?;
+    let sql = format!(
+        "{RESULTS_CTE}{AGGREGATES_CTE} SELECT * FROM aggregates WHERE ($6::bigint IS NULL OR total_score<$6 OR (total_score=$6 AND last_high>$7)) ORDER BY total_score DESC,last_high LIMIT $8"
+    );
+    let mut leaderboard = Vec::new();
+    let mut after = None;
+    loop {
+        let rows = results_query(&sql, viewer, room, None, head_to_head)
+            .bind(after.map(|(total, _)| total))
+            .bind(after.map(|(_, id)| id))
+            .bind(AGGREGATE_BATCH)
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(result_error)?;
+        let complete = rows.len() < AGGREGATE_BATCH as usize;
+        for row in rows {
+            let aggregate = aggregate_from_row(row)?;
+            after = Some((aggregate.total, aggregate.last_high));
+            leaderboard.push(aggregate_json(&mut tx, room, &aggregate).await?);
+        }
+        if complete {
+            break;
+        }
+    }
+    let aggregate = own_aggregate(&mut tx, viewer, room, head_to_head).await?;
+    let user_score = if let Some(aggregate) = aggregate {
+        aggregate_json(&mut tx, room, &aggregate).await?
+    } else {
+        Value::Null
+    };
+    tx.commit().await?;
+    Ok(json!({"leaderboard":leaderboard,"user_score":user_score}))
+}
 /// Called after durable linking in the same transaction. Return a rank only for
 /// the selected non-rejected item high; failed scores can qualify in HTH rooms.
 pub(crate) async fn new_best_rank(
@@ -867,176 +929,56 @@ pub(crate) async fn new_best_rank(
 mod tests {
     use super::*;
 
-    fn attempt(id: i64, user: i64, item: i64, total: i64, passed: bool) -> Attempt {
-        Attempt {
-            user,
-            item,
-            score: Some(Score {
-                id,
-                user,
-                item,
-                total,
-                accuracy: 0.9,
-                passed,
-            }),
-        }
-    }
-
     #[test]
-    fn highs_keep_earlier_ties_and_head_to_head_failed_highs() {
-        let attempts = vec![
-            attempt(9, 1, 1, 900_000, true),
-            attempt(8, 1, 1, 900_000, true),
-            attempt(10, 1, 1, 950_000, false),
-            attempt(11, 2, 1, 800_000, true),
-        ];
-        let hth = selected_highs(&attempts, true);
-        assert_eq!(
-            hth.iter().map(|score| score.id).collect::<Vec<_>>(),
-            [10, 11]
-        );
-        let playlist = selected_highs(&attempts, false);
-        assert_eq!(
-            playlist.iter().map(|score| score.id).collect::<Vec<_>>(),
-            [8, 11]
-        );
-    }
-
-    #[test]
-    fn aggregate_rank_uses_max_selected_id_and_counts_issued_attempts() {
-        let mut attempts = vec![
-            attempt(2, 1, 1, 500_000, true),
-            attempt(7, 1, 2, 500_000, true),
-            attempt(4, 2, 1, 1_000_000, true),
-        ];
-        attempts.push(Attempt {
-            user: 1,
-            item: 2,
-            score: None,
-        });
-        let highs = selected_highs(&attempts, true);
-        let aggregates = aggregate_scores(&attempts, &highs).unwrap();
-        assert_eq!(aggregates[0].user, 2);
-        assert_eq!(aggregates[1].user, 1);
-        assert_eq!(aggregates[1].attempts, 3);
-        assert_eq!(aggregates[1].completed, 2);
-        assert_eq!(aggregates[1].accuracy, 0.9);
-    }
-
-    #[test]
-    fn distribution_has_all_thirteen_bins_and_all_passing_attempts() {
-        let mut stats = ItemStats::default();
-        for bin in 0..13 {
-            for total in [bin * 100_000, bin * 100_000 + 99_999] {
-                stats
-                    .add(&Score {
-                        id: total + 1,
-                        user: 1,
-                        item: 1,
-                        total,
-                        accuracy: 1.0,
-                        passed: true,
-                    })
-                    .unwrap();
-            }
-        }
-        stats
-            .add(&Score {
-                id: 2_000_000,
-                user: 1,
-                item: 1,
-                total: 3_000_000,
-                accuracy: 0.5,
-                passed: false,
-            })
-            .unwrap();
-        assert_eq!(stats.bins, [2; 13]);
-        assert_eq!(stats.cumulative, 16_899_987);
-        assert_eq!(stats.last_processed, 2_000_000);
-        assert!(
-            stats
-                .add(&Score {
-                    id: 2_000_001,
-                    user: 1,
-                    item: 1,
-                    total: i64::MAX,
-                    accuracy: 1.0,
-                    passed: true
-                })
-                .is_err()
-        );
-    }
-
-    #[test]
-    fn aggregate_overflow_is_an_error() {
-        let attempts = vec![attempt(1, 1, 1, i64::MAX, true), attempt(2, 1, 2, 1, true)];
-        assert!(aggregate_scores(&attempts, &selected_highs(&attempts, true)).is_err());
-    }
-
-    #[test]
-    fn native_cursor_uses_stable_total_and_id_order() {
+    fn native_cursor_requires_complete_nonnegative_total_and_positive_id() {
         let query = HashMap::from([
             ("cursor[total_score]".into(), "900000".into()),
             ("cursor[id]".into(), "10".into()),
             ("limit".into(), "2".into()),
         ]);
         let params = IndexParams::parse(&query).unwrap();
-        assert!(params.after(&Score {
-            id: 11,
-            user: 2,
-            item: 1,
-            total: 900000,
-            accuracy: 1.0,
-            passed: true
-        }));
-        assert!(!params.after(&Score {
-            id: 9,
-            user: 2,
-            item: 1,
-            total: 900000,
-            accuracy: 1.0,
-            passed: true
-        }));
-        assert!(params.after(&Score {
-            id: 8,
-            user: 2,
-            item: 1,
-            total: 800000,
-            accuracy: 1.0,
-            passed: true
-        }));
-        assert!(IndexParams::parse(&HashMap::from([("cursor[id]".into(), "10".into())])).is_err());
+        assert_eq!(params.cursor, Some((900000, 10)));
         assert_eq!(params.json(), json!({"sort":"score_desc","limit":2}));
+        for invalid in [
+            HashMap::from([("cursor[id]".into(), "10".into())]),
+            HashMap::from([("cursor[total_score]".into(), "10".into())]),
+            HashMap::from([
+                ("cursor[id]".into(), "0".into()),
+                ("cursor[total_score]".into(), "1".into()),
+            ]),
+            HashMap::from([
+                ("cursor[id]".into(), "1".into()),
+                ("cursor[total_score]".into(), "-1".into()),
+            ]),
+            HashMap::from([("sort".into(), "score_desc;select 1".into())]),
+            HashMap::from([("limit".into(), "101".into())]),
+            HashMap::from([("limit".into(), "0".into())]),
+        ] {
+            assert!(IndexParams::parse(&invalid).is_err());
+        }
+        let ids = IndexParams::parse(&HashMap::from([
+            ("sort".into(), "id_desc".into()),
+            ("cursor[id]".into(), "10".into()),
+        ]))
+        .unwrap();
+        assert_eq!(ids.cursor, Some((0, 10)));
     }
 
     #[test]
-    fn higher_pages_reverse_total_and_tie_order_without_repeating_pivot() {
-        let attempts = vec![
-            attempt(8, 1, 1, 900_000, true),
-            attempt(9, 2, 1, 900_000, true),
-            attempt(10, 3, 1, 800_000, true),
-        ];
-        let mut scores = selected_highs(&attempts, true);
-        let canonical: Vec<_> = scores.iter().map(|score| score.id).collect();
-        Sort::ScoreDesc.reverse().order(&mut scores);
-        assert_eq!(canonical, [8, 9, 10]);
-        assert_eq!(
-            scores.iter().map(|score| score.id).collect::<Vec<_>>(),
-            [10, 9, 8]
-        );
-        let params = IndexParams {
-            sort: Sort::ScoreAsc,
-            limit: 2,
-            cursor: Some((900_000, 9)),
-            around: false,
+    fn higher_pages_reverse_both_total_and_tie_direction() {
+        assert_eq!(Sort::ScoreDesc.reverse(), Sort::ScoreAsc);
+        assert_eq!(Sort::ScoreAsc.reverse(), Sort::ScoreDesc);
+        assert_eq!(Sort::IdDesc.reverse(), Sort::IdAsc);
+        assert_eq!(Sort::IdAsc.reverse(), Sort::IdDesc);
+        let score = Score {
+            id: 10,
+            total: 900000,
+            position: 1,
         };
         assert_eq!(
-            scores
-                .iter()
-                .filter(|score| params.after(score))
-                .map(|score| score.id)
-                .collect::<Vec<_>>(),
-            [8]
+            cursor(&score, Sort::ScoreDesc),
+            json!({"total_score":900000,"id":10})
         );
+        assert_eq!(cursor(&score, Sort::IdAsc), json!({"id":10}));
     }
 }

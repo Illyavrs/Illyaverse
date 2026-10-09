@@ -404,6 +404,26 @@ impl Fixture {
         (token, score)
     }
 
+    // Bulk retained-history fixture only: production result queries must never
+    // retrieve these raw attempts. Each token still has a separate frozen round.
+    async fn seed_retained_history(&self, room: i64, attempts: i32, processed: usize) -> Vec<i64> {
+        let rounds: Vec<i64> = sqlx::query_scalar("INSERT INTO lazer_room_rounds(room_id,playlist_item_id,playlist_version_id,status,finished_at) SELECT $1,1,(SELECT id FROM lazer_room_playlist_versions WHERE room_id=$1 AND playlist_item_id=1 ORDER BY id DESC LIMIT 1),'finished',now() FROM generate_series(1,$2) RETURNING id")
+            .bind(room).bind(attempts).fetch_all(&self.state.pool).await.unwrap();
+        sqlx::query("INSERT INTO lazer_room_round_participants(round_id,user_id,beatmap_id,beatmap_checksum,ruleset_id,mods) SELECT r,u,$3,$4,0,'[]' FROM unnest($1::bigint[]) r CROSS JOIN unnest($2::bigint[]) u")
+            .bind(&rounds).bind(&self.users[..2]).bind(self.map).bind(HASH).execute(&self.state.pool).await.unwrap();
+        let tokens: Vec<i64> = sqlx::query_scalar("INSERT INTO lazer_score_tokens(user_id,beatmap_id,ruleset_id,version_hash,expires_at,scope,room_id,playlist_item_id,round_id) SELECT $1,$2,0,$3,now()+interval '1 hour','room',$4,1,r FROM unnest($5::bigint[]) r RETURNING id")
+            .bind(self.users[0]).bind(self.map).bind(VERSION).bind(room).bind(&rounds).fetch_all(&self.state.pool).await.unwrap();
+        let mut input = submission(350_000);
+        input["accuracy"] = json!(0.95);
+        let typed: SoloScoreSubmission = serde_json::from_value(input.clone()).unwrap();
+        let scores = sqlx::query_scalar("INSERT INTO scores(user_id,beatmap_id,mode,score,accuracy,max_combo,mods,pp,passed,hit_counts,client,ingestion_key,api_mods,native_submission) SELECT $1,$2,0,350000,95,2,0,0,true,$3,'lazer','lazer:'||t::text,'[]',$4 FROM unnest($5::bigint[]) t RETURNING id")
+            .bind(self.users[0]).bind(self.map).bind(typed.legacy_hit_counts()).bind(json!(typed)).bind(&tokens[..processed]).fetch_all(&self.state.pool).await.unwrap();
+        let sha = format!("{:x}", Sha256::digest(serde_json::to_vec(&input).unwrap()));
+        sqlx::query("UPDATE lazer_score_tokens t SET score_id=s.id,consumed_at=now(),processing_status='processed',submission=$2,submission_sha256=$3,received_at=now() FROM scores s WHERE t.id=ANY($1) AND s.ingestion_key='lazer:'||t.id::text")
+            .bind(&tokens[..processed]).bind(input).bind(sha).execute(&self.state.pool).await.unwrap();
+        scores
+    }
+
     async fn cleanup(self) {
         for task in self.tasks {
             task.abort();
@@ -1157,5 +1177,314 @@ async fn room_withdrawal_blocks_admission_defers_unsaved_intents_and_links_persi
     f.cleanup().await;
     if let Err(panic) = result {
         std::panic::resume_unwind(panic);
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires ILLYA_TEST_DATABASE_URL pointing at disposable local PostgreSQL"]
+async fn room_results_large_history_preserves_complete_aggregates_and_bounded_windows() {
+    let mut f = Fixture::new().await;
+    let result = std::panic::AssertUnwindSafe(async {
+        let room = f.room(&[0, 1, 2]).await;
+        let old = f.seed_retained_history(room, 950, 850).await;
+        assert_eq!(old.len(), 850);
+        let first = *old.iter().min().unwrap();
+        let failed_round = f.round(room, 1, &[0, 1]).await;
+        let (_, failed) = f.seed_processed((room, 1, failed_round), 1, 1_400_000, false, 0.5).await;
+        f.finish(failed_round).await;
+        let mut extra = Vec::new();
+        for index in 0..122 {
+            let user: i64 = sqlx::query_scalar("INSERT INTO users(username,email,password_hash,password_md5_hash) VALUES($1,$2,'fixture-unused','fixture-unused') RETURNING id")
+                .bind(format!("RetainedPlayer{index}")).bind(format!("retained{index}@invalid.test")).fetch_one(&f.state.pool).await.unwrap();
+            sqlx::query("INSERT INTO user_roles SELECT $1,id FROM roles WHERE name='player'").bind(user).execute(&f.state.pool).await.unwrap();
+            let credential = common::secret();
+            session(&f.state.pool, user, &credential).await;
+            f.users.push(user);
+            f.tokens.push(credential);
+            // Each distinct historical player shares a two-person frozen round
+            // with A, never B. Current membership does not reveal these scores.
+            let mut round = f.round(room, 1, &[0]).await;
+            sqlx::query("INSERT INTO lazer_room_round_participants(round_id,user_id,beatmap_id,beatmap_checksum,ruleset_id,mods) VALUES($1,$2,$3,$4,0,'[]')")
+                .bind(round).bind(user).bind(f.map).bind(HASH).execute(&f.state.pool).await.unwrap();
+            if index == 0 {
+                f.seed_processed((room, 1, round), index + 4, 600_000, false, 0.5).await;
+                f.finish(round).await;
+                round = f.round(room, 1, &[0]).await;
+                sqlx::query("INSERT INTO lazer_room_round_participants(round_id,user_id,beatmap_id,beatmap_checksum,ruleset_id,mods) VALUES($1,$2,$3,$4,0,'[]')")
+                    .bind(round).bind(user).bind(f.map).bind(HASH).execute(&f.state.pool).await.unwrap();
+            }
+            let (_, score) = f.seed_processed((room, 1, round), index + 4, 900_000, true, 0.8).await;
+            extra.push(score);
+            f.finish(round).await;
+        }
+        assert_eq!(f.count("SELECT count(*) FROM lazer_score_tokens WHERE scope='room'").await, 1074);
+        assert_eq!(f.count("SELECT count(*) FROM scores").await, 974);
+        let mut canonical = vec![failed];
+        canonical.extend(extra.iter().copied());
+        canonical.push(first);
+        let positions: std::collections::HashMap<_, _> = canonical.iter().enumerate().map(|(n, id)| (*id, n + 1)).collect();
+        for sort in ["score_desc", "score_asc", "id_desc", "id_asc"] {
+            let mut expected = canonical.clone();
+            match sort {
+                "score_asc" => expected.reverse(),
+                "id_desc" => expected.sort_unstable_by(|a, b| b.cmp(a)),
+                "id_asc" => expected.sort_unstable(),
+                _ => {}
+            }
+            let mut actual = Vec::new();
+            let mut suffix = String::new();
+            loop {
+                let page = f.get(0, &format!("/api/v2/rooms/{room}/playlist/1/scores?sort={sort}&limit=31{suffix}"), 200).await;
+                assert_eq!(page["total"], 124);
+                assert_eq!(page["user_score"]["id"], first);
+                assert_eq!(page["user_score"]["position"], 124);
+                let scores = page["scores"].as_array().unwrap();
+                assert!(scores.len() <= 31);
+                for score in scores {
+                    let id = score["id"].as_i64().unwrap();
+                    assert_eq!(score["position"], positions[&id]);
+                    actual.push(id);
+                }
+                let cursor = &page["cursor"];
+                if cursor.is_null() { break; }
+                assert!(!scores.is_empty());
+                suffix = format!("&cursor[id]={}", cursor["id"]);
+                if sort.starts_with("score_") {
+                    suffix.push_str(&format!("&cursor[total_score]={}", cursor["total_score"]));
+                }
+            }
+            assert_eq!(actual, expected, "full native keyset ordering: {sort}");
+            let pivot = extra[60];
+            let index = expected.iter().position(|id| *id == pivot).unwrap();
+            let value = f.get(0, &format!("/api/v2/rooms/{room}/playlist/1/scores/{pivot}?sort={sort}&limit=2"), 200).await;
+            let higher = value["scores_around"]["higher"]["scores"].as_array().unwrap();
+            let lower = value["scores_around"]["lower"]["scores"].as_array().unwrap();
+            assert_eq!(higher.iter().map(|row| row["id"].as_i64().unwrap()).collect::<Vec<_>>(), expected[index - 2..index].iter().rev().copied().collect::<Vec<_>>());
+            assert_eq!(lower.iter().map(|row| row["id"].as_i64().unwrap()).collect::<Vec<_>>(), expected[index + 1..index + 3]);
+            assert!(!value["scores_around"]["higher"]["cursor"].is_null());
+            assert!(!value["scores_around"]["lower"]["cursor"].is_null());
+        }
+        let maximum = f.get(0, &format!("/api/v2/rooms/{room}/playlist/1/scores?limit=100"), 200).await;
+        assert_eq!(maximum["scores"].as_array().unwrap().len(), 100);
+        assert!(!maximum["cursor"].is_null());
+        let board = f.get(0, &format!("/api/v2/rooms/{room}/leaderboard"), 200).await;
+        assert_eq!(board["leaderboard"].as_array().unwrap().len(), 124);
+        assert_eq!(board["leaderboard"][0]["user_id"], f.users[1]);
+        assert_eq!(board["leaderboard"][0]["total_score"], 1_400_000);
+        assert_eq!(board["leaderboard"][123]["user_id"], f.users[0]);
+        assert_eq!(board["user_score"]["attempts"], 950);
+        assert_eq!(board["user_score"]["position"], 124);
+        assert_eq!(board["user_score"]["total_score"], 350_000);
+        let viewer = common::account(&f.state, f.users[0]).await.unwrap();
+        let summary = room_results::room_summary(&f.state, &viewer, room).await.unwrap();
+        assert_eq!(summary["attempts"], 950);
+        assert_eq!(summary["playlist_item_attempts"], json!([{"id":1,"attempts":950,"passed":true}]));
+        let attempts = room_results::item_attempts(&f.state, &viewer, room, 1).await.unwrap();
+        assert_eq!(attempts, json!({"attempts":950,"completed":true,"passed":true}));
+        let stats = room_results::playlist_stats(&f.state, &viewer, room).await.unwrap();
+        assert_eq!(stats[0]["totalScoreDistribution"], json!([0,0,0,850,0,0,0,0,0,122,0,0,0]));
+        assert_eq!(stats[0]["cumulativeScore"], 407_300_000);
+        assert_eq!(stats[0]["lastProcessedScoreID"], *extra.last().unwrap());
+        assert_eq!(stats[1]["totalScoreDistribution"], json!(vec![0_i64; 13]));
+        let other = common::account(&f.state, f.users[1]).await.unwrap();
+        let private = f.get(1, &format!("/api/v2/rooms/{room}/playlist/1/scores?limit=100"), 200).await;
+        assert_eq!(private["total"], 2);
+        assert_eq!(private["scores"].as_array().unwrap().len(), 2);
+        f.get(1, &format!("/api/v2/rooms/{room}/playlist/1/scores/{}", extra[0]), 404).await;
+        assert_eq!(room_results::event_rank(&f.state, &other, room, 1, extra[0]).await.unwrap(), None);
+        assert_eq!(room_results::event_rank(&f.state, &viewer, room, 1, extra[0]).await.unwrap(), Some(2));
+        let other_stats = room_results::playlist_stats(&f.state, &other, room).await.unwrap();
+        assert_eq!(other_stats[0]["cumulativeScore"], 297_500_000);
+        // Every reader must work with one pooled connection. Nesting an
+        // acquisition during snapshot formatting would fail this positive gate.
+        let options = PgConnectOptions::from_str(&std::env::var("ILLYA_TEST_DATABASE_URL").unwrap()).unwrap()
+            .application_name(&f.schema).options([("search_path", f.schema.as_str())]);
+        let single = PgPoolOptions::new().max_connections(1).acquire_timeout(Duration::from_secs(2)).connect_with(options).await.unwrap();
+        let mut single_state = f.state.clone();
+        single_state.pool = single.clone();
+        let single_board = tokio::time::timeout(Duration::from_secs(10), room_results::room_leaderboard(&single_state, &viewer, room)).await.unwrap().unwrap();
+        assert_eq!(single_board, board);
+        assert_eq!(room_results::room_summary(&single_state, &viewer, room).await.unwrap(), summary);
+        assert_eq!(room_results::playlist_stats(&single_state, &viewer, room).await.unwrap(), stats);
+        let (single_base, single_task) = serve(room_results::router().with_state(single_state)).await;
+        f.tasks.push(single_task);
+        for path in [
+            format!("/api/v2/rooms/{room}/playlist/1/scores?limit=1&scores_around=1"),
+            format!("/api/v2/rooms/{room}/playlist/1/scores/{first}?limit=1"),
+            format!("/api/v2/rooms/{room}/playlist/1/scores/users/{}?limit=1", f.users[0]),
+        ] {
+            let response = tokio::time::timeout(Duration::from_secs(10), f.http.get(format!("{single_base}{path}")).bearer_auth(&f.tokens[0]).send()).await.unwrap().unwrap();
+            let output = body(response, 200).await;
+            if output.get("scores").is_some() { assert_eq!(output["total"], 124); }
+            else { assert_eq!(output["id"], first); assert_eq!(output["position"], 124); }
+        }
+        single.close().await;
+        // Pause the production leaderboard reader after its first SQL chunk.
+        // The account formatter reads bancho_sessions; the result-query CTE
+        // does not, so this lock reaches the true between-chunks boundary.
+        let mut blocker = f.state.pool.begin().await.unwrap();
+        sqlx::query("LOCK TABLE bancho_sessions IN ACCESS EXCLUSIVE MODE").execute(&mut *blocker).await.unwrap();
+        let snapshot_state = f.state.clone();
+        let snapshot_viewer = viewer.clone();
+        let paused = tokio::spawn(async move { room_results::room_leaderboard(&snapshot_state, &snapshot_viewer, room).await.unwrap() });
+        f.wait_lock("%FROM users WHERE id=%").await;
+        // One emitted user falls behind the cursor by selecting its failed
+        // backup. One not-yet-emitted user moves before it with a new best.
+        sqlx::query("UPDATE scores SET verification='rejected' WHERE id=$1").bind(extra[0]).execute(&f.state.pool).await.unwrap();
+        let replacement_round = f.round(room, 1, &[0]).await;
+        let (replacement_token, _) = f.seed_processed((room, 1, replacement_round), 0, 2_000_000, true, 1.0).await;
+        f.finish(replacement_round).await;
+        blocker.commit().await.unwrap();
+        let snapshot_board = paused.await.unwrap();
+        assert_eq!(snapshot_board, board, "one complete response retains one history snapshot across concurrent highs/rejections");
+        let updated = f.get(0, &format!("/api/v2/rooms/{room}/leaderboard"), 200).await;
+        assert_eq!(updated["leaderboard"].as_array().unwrap().len(), 124);
+        assert_eq!(updated["user_score"]["total_score"], 2_000_000);
+        assert_eq!(updated["user_score"]["attempts"], 951);
+        assert_eq!(updated["user_score"]["position"], 1);
+        assert_eq!(updated["leaderboard"].as_array().unwrap().iter().filter(|row| row["user_id"] == f.users[4]).count(), 1);
+        sqlx::query("UPDATE lazer_score_tokens SET revoked_at=now() WHERE id=$1").bind(replacement_token).execute(&f.state.pool).await.unwrap();
+        sqlx::query("UPDATE scores SET verification='pending' WHERE id=$1").bind(extra[0]).execute(&f.state.pool).await.unwrap();
+        sqlx::query("UPDATE scores SET verification='rejected' WHERE id=$1").bind(extra[0]).execute(&f.state.pool).await.unwrap();
+        f.get(0, &format!("/api/v2/rooms/{room}/playlist/1/scores/{}", extra[0]), 404).await;
+        let rejected = f.get(4, &format!("/api/v2/rooms/{room}/playlist/1/scores/{}", extra[0]), 200).await;
+        assert!(rejected["position"].is_null());
+        assert!(rejected["scores_around"].is_null());
+        sqlx::query("UPDATE users SET is_restricted=true WHERE id=$1").bind(f.users[5]).execute(&f.state.pool).await.unwrap();
+        let reduced = f.get(0, &format!("/api/v2/rooms/{room}/playlist/1/scores?limit=1"), 200).await;
+        assert_eq!(reduced["total"], 123);
+        let reduced_stats = room_results::playlist_stats(&f.state, &viewer, room).await.unwrap();
+        assert_eq!(reduced_stats[0]["totalScoreDistribution"][9], 120);
+        assert_eq!(reduced_stats[0]["cumulativeScore"], 405_500_000);
+        // A later live member sees only empty snapshots, never private retained
+        // histories, and the moderator exception remains server-authorized.
+        sqlx::query("INSERT INTO lazer_room_members(room_id,user_id) VALUES($1,$2)").bind(room).bind(f.users[3]).execute(&f.state.pool).await.unwrap();
+        let newcomer = f.get(3, &format!("/api/v2/rooms/{room}/playlist/1/scores"), 200).await;
+        assert_eq!(newcomer["total"], 0);
+        assert!(newcomer["user_score"].is_null());
+        let empty_board = f.get(3, &format!("/api/v2/rooms/{room}/leaderboard"), 200).await;
+        assert!(empty_board["leaderboard"].as_array().unwrap().is_empty());
+        sqlx::query("INSERT INTO user_roles SELECT $1,id FROM roles WHERE name='moderator'").bind(f.users[3]).execute(&f.state.pool).await.unwrap();
+        let moderator = f.get(3, &format!("/api/v2/rooms/{room}/playlist/1/scores?limit=100"), 200).await;
+        assert_eq!(moderator["total"], 123);
+        f.get(3, &format!("/api/v2/rooms/{room}/playlist/1/scores/{}?scores_around=0", extra[0]), 200).await;
+        sqlx::query("UPDATE lazer_rooms SET settings=jsonb_set(settings,'{matchType}','0') WHERE id=$1").bind(room).execute(&f.state.pool).await.unwrap();
+        let playlist = f.get(0, &format!("/api/v2/rooms/{room}/playlist/1/scores?limit=1"), 200).await;
+        assert_eq!(playlist["total"], 121);
+        assert_ne!(playlist["scores"][0]["id"], failed);
+    }).catch_unwind().await;
+    f.cleanup().await;
+    if let Err(error) = result {
+        std::panic::resume_unwind(error);
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires ILLYA_TEST_DATABASE_URL pointing at disposable local PostgreSQL"]
+async fn room_results_keep_all_retained_item_aggregates_across_sql_batches() {
+    let f = Fixture::new().await;
+    let result = std::panic::AssertUnwindSafe(async {
+        let room = f.room(&[0, 1, 2]).await;
+        for item in 1..=123 {
+            let round = f.round(room, item, &[0, 1]).await;
+            f.seed_processed((room, item, round), 0, item * 1000, true, 0.9)
+                .await;
+            f.finish(round).await;
+        }
+        let viewer = common::account(&f.state, f.users[0]).await.unwrap();
+        let summary = room_results::room_summary(&f.state, &viewer, room)
+            .await
+            .unwrap();
+        assert_eq!(summary["attempts"], 123);
+        assert_eq!(summary["completed"], 123);
+        assert_eq!(summary["total_score"], 7_626_000);
+        let items = summary["playlist_item_attempts"].as_array().unwrap();
+        assert_eq!(items.len(), 123);
+        assert_eq!(items[0], json!({"id":1,"attempts":1,"passed":true}));
+        assert_eq!(items[122], json!({"id":123,"attempts":1,"passed":true}));
+        let stats = room_results::playlist_stats(&f.state, &viewer, room)
+            .await
+            .unwrap();
+        assert_eq!(stats.as_array().unwrap().len(), 123);
+        for (index, item) in stats.as_array().unwrap().iter().enumerate() {
+            assert_eq!(item["playlistItemID"], index + 1);
+            assert_eq!(item["cumulativeScore"], (index + 1) * 1000);
+            assert_eq!(
+                item["totalScoreDistribution"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|value| value.as_i64().unwrap())
+                    .sum::<i64>(),
+                1
+            );
+        }
+        // C joined before these rounds, but never shared their frozen roster.
+        let stranger = common::account(&f.state, f.users[2]).await.unwrap();
+        assert!(
+            room_results::room_summary(&f.state, &stranger, room)
+                .await
+                .unwrap()
+                .is_null()
+        );
+        let hidden = room_results::playlist_stats(&f.state, &stranger, room)
+            .await
+            .unwrap();
+        assert_eq!(hidden.as_array().unwrap().len(), 123);
+        assert!(
+            hidden
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|item| item["cumulativeScore"] == 0 && item["lastProcessedScoreID"] == 0)
+        );
+        let first_score: i64 = sqlx::query_scalar("SELECT score_id FROM lazer_score_tokens WHERE room_id=$1 AND playlist_item_id=1 AND user_id=$2").bind(room).bind(f.users[0]).fetch_one(&f.state.pool).await.unwrap();
+        sqlx::query("UPDATE scores SET score=$2 WHERE id=$1").bind(first_score).bind(i64::MAX).execute(&f.state.pool).await.unwrap();
+        let overflow = room_results::room_summary(&f.state, &viewer, room).await.unwrap_err();
+        assert_eq!(overflow.0, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(overflow.1, "room_score_overflow");
+        let overflow_round = f.round(room, 1, &[0, 1]).await;
+        let (overflow_token, _) = f.seed_processed((room, 1, overflow_round), 0, 1, true, 1.0).await;
+        f.finish(overflow_round).await;
+        let overflow = room_results::playlist_stats(&f.state, &viewer, room).await.unwrap_err();
+        assert_eq!(overflow.0, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(overflow.1, "room_score_overflow");
+        sqlx::query("UPDATE scores SET score=1000 WHERE id=$1").bind(first_score).execute(&f.state.pool).await.unwrap();
+        sqlx::query("UPDATE lazer_score_tokens SET revoked_at=now() WHERE id=$1").bind(overflow_token).execute(&f.state.pool).await.unwrap();
+        sqlx::query("DELETE FROM lazer_room_members")
+            .execute(&f.state.pool)
+            .await
+            .unwrap();
+        let other_room = f.room(&[0, 1]).await;
+        let round = f.round(other_room, 1, &[0, 1]).await;
+        let (_, foreign) = f
+            .seed_processed((other_room, 1, round), 0, 9_000_000, true, 1.0)
+            .await;
+        f.finish(round).await;
+        f.get(
+            0,
+            &format!("/api/v2/rooms/{room}/playlist/1/scores/{foreign}"),
+            404,
+        )
+        .await;
+        assert_eq!(
+            room_results::event_rank(&f.state, &viewer, room, 1, foreign)
+                .await
+                .unwrap(),
+            None
+        );
+        // Leaving the room does not erase or widen its immutable history.
+        assert_eq!(
+            room_results::room_summary(&f.state, &viewer, room)
+                .await
+                .unwrap()["total_score"],
+            7_626_000
+        );
+    })
+    .catch_unwind()
+    .await;
+    f.cleanup().await;
+    if let Err(error) = result {
+        std::panic::resume_unwind(error);
     }
 }

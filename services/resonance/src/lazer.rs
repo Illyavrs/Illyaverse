@@ -67,6 +67,7 @@ async fn oauth(
         None
     };
     let mut tx = state.pool.begin().await?;
+    let mut refreshed_session = false;
     let player = match grant {
         OAuthGrant::Password { .. } => {
             common::lock_authenticated(
@@ -82,7 +83,7 @@ async fn oauth(
             // Discover without locking, then use the same users -> sessions lock
             // order as password reset. Re-read the token after acquiring the user
             // lock so a revoked token cannot rotate itself back into existence.
-            let user_id = sqlx::query_scalar::<_, i64>("SELECT user_id FROM lazer_sessions WHERE refresh_hash=$1 AND refresh_expires_at>now()")
+            let user_id = sqlx::query_scalar::<_, i64>("SELECT user_id FROM lazer_sessions WHERE refresh_hash=$1 AND refresh_expires_at>clock_timestamp()")
                 .bind(&refresh_hash).fetch_optional(&mut *tx).await?
                 .ok_or(ApiError(StatusCode::UNAUTHORIZED, "invalid_grant"))?;
             sqlx::query("SELECT id FROM users WHERE id=$1 AND NOT is_restricted FOR UPDATE")
@@ -90,19 +91,33 @@ async fn oauth(
                 .fetch_optional(&mut *tx)
                 .await?
                 .ok_or(ApiError(StatusCode::UNAUTHORIZED, "invalid_grant"))?;
-            let row=sqlx::query("SELECT id FROM lazer_sessions WHERE refresh_hash=$1 AND user_id=$2 AND refresh_expires_at>now() FOR UPDATE").bind(&refresh_hash).bind(user_id).fetch_optional(&mut *tx).await?.ok_or(ApiError(StatusCode::UNAUTHORIZED,"invalid_grant"))?;
-            sqlx::query("DELETE FROM lazer_sessions WHERE id=$1")
+            let row=sqlx::query("SELECT id FROM lazer_sessions WHERE refresh_hash=$1 AND user_id=$2 AND refresh_expires_at>clock_timestamp() FOR UPDATE").bind(&refresh_hash).bind(user_id).fetch_optional(&mut *tx).await?.ok_or(ApiError(StatusCode::UNAUTHORIZED,"invalid_grant"))?;
+            // Rotation changes credentials, not the logical login identity shown
+            // in account settings. Keep its UUID so revoking that listed session
+            // also revokes every later access/refresh generation. The final
+            // predicate rechecks expiry after either row-lock wait.
+            sqlx::query("UPDATE lazer_sessions SET access_hash=$3,refresh_hash=$4,access_expires_at=clock_timestamp()+interval '1 hour',refresh_expires_at=clock_timestamp()+interval '30 days' WHERE id=$1 AND user_id=$2 AND refresh_hash=$5 AND refresh_expires_at>clock_timestamp() RETURNING id")
                 .bind(row.get::<uuid::Uuid, _>("id"))
-                .execute(&mut *tx)
-                .await?;
+                .bind(user_id)
+                .bind(common::token_hash(&access))
+                .bind(common::token_hash(&refresh))
+                .bind(&refresh_hash)
+                .fetch_optional(&mut *tx)
+                .await?
+                .ok_or(ApiError(StatusCode::UNAUTHORIZED, "invalid_grant"))?;
+            refreshed_session = true;
             common::account_in_tx(&mut tx, user_id).await?
         }
     };
-    sqlx::query("DELETE FROM lazer_sessions WHERE user_id=$1 AND refresh_expires_at<now()")
-        .bind(player.id)
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query("INSERT INTO lazer_sessions(id,user_id,access_hash,refresh_hash,access_expires_at,refresh_expires_at) VALUES($1,$2,$3,$4,$5,$6)").bind(uuid::Uuid::new_v4()).bind(player.id).bind(common::token_hash(&access)).bind(common::token_hash(&refresh)).bind(Utc::now()+Duration::hours(1)).bind(Utc::now()+Duration::days(30)).execute(&mut *tx).await?;
+    sqlx::query(
+        "DELETE FROM lazer_sessions WHERE user_id=$1 AND refresh_expires_at<clock_timestamp()",
+    )
+    .bind(player.id)
+    .execute(&mut *tx)
+    .await?;
+    if !refreshed_session {
+        sqlx::query("INSERT INTO lazer_sessions(id,user_id,access_hash,refresh_hash,access_expires_at,refresh_expires_at) VALUES($1,$2,$3,$4,$5,$6)").bind(uuid::Uuid::new_v4()).bind(player.id).bind(common::token_hash(&access)).bind(common::token_hash(&refresh)).bind(Utc::now()+Duration::hours(1)).bind(Utc::now()+Duration::days(30)).execute(&mut *tx).await?;
+    }
     tx.commit().await?;
     Ok(Json(OAuthToken {
         token_type: "Bearer".into(),
@@ -704,8 +719,18 @@ pub(crate) async fn score_json_from_row(
     state: &AppState,
     row: sqlx::postgres::PgRow,
 ) -> Result<Value, ApiError> {
+    let mut db = state.pool.acquire().await?;
+    score_json_from_row_on_connection(&mut db, row).await
+}
+
+/// A room result snapshot already owns a connection. Reuse it for every
+/// formatter lookup rather than acquiring another pooled connection mid-read.
+pub(crate) async fn score_json_from_row_on_connection(
+    db: &mut sqlx::PgConnection,
+    row: sqlx::postgres::PgRow,
+) -> Result<Value, ApiError> {
     let id: i64 = row.get("id");
-    let owner = common::account(state, row.get("user_id")).await?;
+    let owner = common::account_on_connection(db, row.get("user_id")).await?;
     let verified = row.get::<String, _>("verification") == "verified";
     let stable = row.get::<String, _>("client") == "stable";
     let submission: Value = if let Some(value) = row.get::<Option<Value>, _>("native_submission") {
@@ -715,12 +740,12 @@ pub(crate) async fn score_json_from_row(
             "SELECT submission FROM lazer_score_tokens WHERE score_id=$1 ORDER BY id DESC LIMIT 1",
         )
         .bind(id)
-        .fetch_optional(&state.pool)
+        .fetch_optional(&mut *db)
         .await?
         .flatten()
         .unwrap_or_else(|| json!({}))
     };
-    let audit:Value=sqlx::query_scalar("SELECT details FROM audit_events WHERE action='scores.stable_ingest' AND target_id=$1 ORDER BY id DESC LIMIT 1").bind(id.to_string()).fetch_optional(&state.pool).await?.unwrap_or_else(||json!({}));
+    let audit:Value=sqlx::query_scalar("SELECT details FROM audit_events WHERE action='scores.stable_ingest' AND target_id=$1 ORDER BY id DESC LIMIT 1").bind(id.to_string()).fetch_optional(&mut *db).await?.unwrap_or_else(||json!({}));
     let grade = submission.get("rank").or_else(|| audit.get("rank"));
     let bits = row.get::<i64, _>("mods") as u32;
     let legacy_mods = rosu_mods::GameModsIntermode::from_bits(bits)
@@ -739,7 +764,7 @@ pub(crate) async fn score_json_from_row(
         "SELECT illya_beatmapset_active(native_set_id) FROM beatmaps WHERE id=$1",
     )
     .bind(row.get::<i64, _>("beatmap_id"))
-    .fetch_one(&state.pool)
+    .fetch_one(&mut *db)
     .await?;
     if !active {
         output["ranked"] = json!(false);
@@ -899,6 +924,10 @@ async fn news() -> Json<Value> {
         json!({"news_posts":[],"news_sidebar":{"current_year":2026,"years":[],"news_posts":[]},"cursor":null,"search":{"limit":12,"sort":"published_desc"}}),
     )
 }
+
+#[cfg(test)]
+#[path = "lazer_refresh_tests.rs"]
+mod refresh_tests;
 
 #[cfg(test)]
 mod tests {
