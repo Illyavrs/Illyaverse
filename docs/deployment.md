@@ -39,7 +39,9 @@ docker compose ps
 
 ## 正式網域與 HTTPS
 
-以下設定屬於伺服器部署。目前 Kaleidoscope 測試包的固定端點是 `illya.test`；正式網域上線還需要開發者更新並驗證啟動器與 Transfiguration 的固定端點，再發布對應套件。更改 `.env` 不會同步改寫玩家已安裝的啟動器，也不會提供玩家選服功能。
+以下設定屬於伺服器部署。玩家可在新版 [Kaleidoscope GUI 的「設定」](kaleidoscope-launcher.md) 保存部署的 HTTPS 基底網址，例如 `https://<ILLYA_DOMAIN>`，於下一次啟動套用；變更有效部署網址不需要重新建置啟動器或 Transfiguration。目前執行的遊戲保留啟動時的網址，更改伺服器 `.env` 也不會自動改寫玩家已保存的設定。
+
+啟動器只接受完整 ASCII DNS 名稱的 HTTPS origin，不接受帳密、路徑、查詢參數、fragment、IP、單段主機名稱、尾端句點或官方 `ppy.sh` 及其子網域。lazer 可指定 HTTPS 連接埠，stable 的 `-devserver` 使用 443。DNS 與受信任 TLS 仍由營運者配置；連線失敗時不會切回官方伺服器。客戶端檔案與執行環境仍須符合配套的相容性檢查，網址可設定不代表任意 lazer 版本都能使用。
 
 在 `.env` 設定真實 `ILLYA_DOMAIN` 與 `ACME_EMAIL`。營運者應把根網域與 `osu`、`c`、`ce`、`c4`、`api`、`spectator`、`bss`、`a`、`b` 子域名的 A／AAAA 指向部署主機；只發布確實能到達主機的 IPv6。防火牆允許 TCP 80／443，HTTP/3 可用 UDP 443。
 

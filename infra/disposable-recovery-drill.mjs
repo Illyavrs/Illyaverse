@@ -162,6 +162,43 @@ UPDATE scores SET verification='verified' WHERE user_id=(SELECT id FROM users WH
 INSERT INTO audit_events(actor_id,action,target_type,target_id,details,created_at) SELECT a.id,'chat.silence','user',u.id::text,jsonb_build_object('previous',jsonb_build_object('chat_silenced_until',u.chat_silenced_until-interval '1 hour','chat_silence_revision',1),'new',jsonb_build_object('chat_silenced_until',u.chat_silenced_until,'chat_silence_revision',u.chat_silence_revision),'reason','Private synthetic recovery reason'),'2026-01-01T00:00:00Z' FROM users a CROSS JOIN users u WHERE a.username='recovery_moderator' AND u.username='recovery_fixture';
 INSERT INTO audit_events(actor_id,action,target_type,target_id,details,created_at) SELECT a.id,'scores.verify','score',s.id::text,'{"previous":{"verification":"rejected","moderation_revision":1},"new":{"verification":"verified","moderation_revision":2}}'::jsonb,'2026-01-01T00:00:00Z' FROM users a CROSS JOIN scores s JOIN users u ON s.user_id=u.id WHERE a.username='recovery_moderator' AND u.username='recovery_fixture';
 INSERT INTO chat_messages(channel_id,user_id,content,created_at) SELECT c.id,u.id,'Synthetic recovery fixture','2026-01-01T00:00:00Z' FROM users u CROSS JOIN channels c WHERE u.username='recovery_fixture' AND c.name='general';
+-- Original synthetic official identities exercise per-difficulty decisions without
+-- fetching an upstream map or touching a retained deployment. The original
+-- nomination includes both difficulties; approval selects only the first.
+INSERT INTO beatmaps(official_id,official_set_id,uploaded_by,title,artist,creator,version,mode,status,source,stars,md5,osu_path,created_at)
+    SELECT f.native_id,1900000010,u.id,'Recovery ranking fixture','Synthetic','Operator',f.version,0,'graveyard','official',1,f.md5,'recovery.osu','2026-01-01T00:00:00Z'
+    FROM users u CROSS JOIN (VALUES (1900000001::bigint,'Selected','11111111111111111111111111111111'),(1900000002::bigint,'Sibling','22222222222222222222222222222222')) f(native_id,version,md5)
+    WHERE u.username='recovery_fixture';
+INSERT INTO beatmap_rank_requests(native_set_id,source,requester_id,reason,metadata)
+    SELECT 1900000010,'official',u.id,'Private synthetic approved nomination',
+        jsonb_build_object('title','Recovery ranking fixture','artist','Synthetic','creator','Operator','difficulty_count',2,'official_url',null,'upstream_status','graveyard',
+            'manifest',(SELECT jsonb_agg(jsonb_build_object('native_id',b.native_id,'md5',b.md5,'version',b.version,'mode',b.mode,'stars',b.stars,'status',b.status) ORDER BY b.native_id) FROM beatmaps b WHERE b.native_set_id=1900000010))
+    FROM users u WHERE u.username='recovery_fixture';
+INSERT INTO audit_events(actor_id,action,target_type,target_id,details)
+    SELECT r.requester_id,'beatmaps.rank_request.create','beatmap_rank_request',r.id::text,jsonb_build_object('native_set_id',r.native_set_id,'source',r.source,'reason',r.reason)
+    FROM beatmap_rank_requests r WHERE r.reason='Private synthetic approved nomination';
+INSERT INTO beatmap_status_overrides(native_id,native_set_id,status,actor_id,reason)
+    SELECT 1900000001,1900000010,'pending',u.id,'Private synthetic preliminary difficulty decision' FROM users u WHERE u.username='recovery_moderator';
+UPDATE beatmap_status_overrides SET status='ranked',reason='Private synthetic ranked difficulty decision' WHERE native_id=1900000001;
+UPDATE beatmaps SET status='ranked' WHERE native_id=1900000001;
+UPDATE beatmap_rank_requests SET status='approved',review_reason='Private synthetic selected approval',reviewed_by=(SELECT id FROM users WHERE username='recovery_moderator'),
+    approved_difficulty_ids=ARRAY[1900000001::bigint],reviewed_at=clock_timestamp() WHERE reason='Private synthetic approved nomination';
+INSERT INTO audit_events(actor_id,action,target_type,target_id,details)
+    SELECT o.actor_id,'beatmaps.status','beatmap',b.id::text,jsonb_build_object('native_id',o.native_id,'native_set_id',o.native_set_id,'status',o.status,'reason',o.reason,'previous',jsonb_build_object('status','graveyard','status_revision',0))
+    FROM beatmap_status_overrides o JOIN beatmaps b ON b.native_id=o.native_id WHERE o.native_id=1900000001;
+INSERT INTO audit_events(actor_id,action,target_type,target_id,details)
+    SELECT r.reviewed_by,'beatmaps.rank_request.review','beatmap_rank_request',r.id::text,jsonb_build_object('native_set_id',r.native_set_id,'decision',r.status,'difficulty_ids',r.approved_difficulty_ids,'reason',r.review_reason,'previous_revision',0)
+    FROM beatmap_rank_requests r WHERE r.reason='Private synthetic approved nomination';
+-- A later nomination stores only the still-unpublished sibling in its immutable
+-- submission snapshot. It does not inherit the earlier approval's selection.
+INSERT INTO beatmap_rank_requests(native_set_id,source,requester_id,reason,metadata)
+    SELECT 1900000010,'official',u.id,'Private synthetic pending nomination',
+        jsonb_build_object('title','Recovery ranking fixture','artist','Synthetic','creator','Operator','difficulty_count',1,'official_url',null,'upstream_status','graveyard',
+            'manifest',(SELECT jsonb_agg(jsonb_build_object('native_id',b.native_id,'md5',b.md5,'version',b.version,'mode',b.mode,'stars',b.stars,'status',b.status) ORDER BY b.native_id) FROM beatmaps b WHERE b.native_id=1900000002))
+    FROM users u WHERE u.username='recovery_fixture';
+INSERT INTO audit_events(actor_id,action,target_type,target_id,details)
+    SELECT r.requester_id,'beatmaps.rank_request.create','beatmap_rank_request',r.id::text,jsonb_build_object('native_set_id',r.native_set_id,'source',r.source,'reason',r.reason)
+    FROM beatmap_rank_requests r WHERE r.reason='Private synthetic pending nomination';
 COMMIT;`;
 
 // Exercise the restored trigger behavior in one connection and always roll the
@@ -219,6 +256,140 @@ export async function verifyRestoredModeration(docker, base, { owner } = {}) {
   if (result.trim() !== 'recovery-moderation-probe-passed') throw new Error('Restored moderation behavior probe did not complete its rollback.');
   return { activeSilence: true, nativeSilenceCursor: true, privateAudit: true, durableUserRevision: 2, durableScoreRevision: 2,
     unchangedRevisionWritesIgnored: true, changesAdvanceRevisions: true, abaAdvancesRevisions: true };
+}
+
+// Updates to requests and overrides do not allocate sequences. To exercise a
+// stored map's override/status revision, use a metadata refresh: the restored
+// BEFORE triggers apply its override, while the notification trigger (UPDATE OF
+// status) is not selected. Every probe write remains inside the rolled-back
+// transaction, including failed immutable-identity attempts in subtransactions.
+const rankingProbeSql = `BEGIN;
+DO $$
+DECLARE
+    approved_id bigint;
+    pending_id bigint;
+    approved_metadata jsonb;
+    pending_metadata jsonb;
+    original_created timestamptz;
+    original_updated timestamptz;
+    actual_revision bigint;
+    map_revision bigint;
+    changed_rows integer;
+    rejected boolean;
+BEGIN
+    SELECT id,metadata,created_at,updated_at INTO STRICT approved_id,approved_metadata,original_created,original_updated
+        FROM beatmap_rank_requests WHERE reason='Private synthetic approved nomination';
+    SELECT id,metadata INTO STRICT pending_id,pending_metadata FROM beatmap_rank_requests WHERE reason='Private synthetic pending nomination';
+    IF NOT EXISTS(SELECT 1 FROM beatmap_status_overrides WHERE native_id=1900000001 AND native_set_id=1900000010 AND status='ranked' AND revision=2 AND reason='Private synthetic ranked difficulty decision')
+        OR NOT EXISTS(SELECT 1 FROM beatmaps WHERE native_id=1900000001 AND native_set_id=1900000010 AND status='ranked' AND status_revision=1)
+        OR NOT EXISTS(SELECT 1 FROM beatmaps WHERE native_id=1900000002 AND native_set_id=1900000010 AND status='graveyard' AND status_revision=0)
+        OR EXISTS(SELECT 1 FROM beatmap_status_overrides WHERE native_id=1900000002)
+        OR NOT EXISTS(SELECT 1 FROM beatmap_rank_requests WHERE id=approved_id AND status='approved' AND revision=1 AND approved_difficulty_ids=ARRAY[1900000001::bigint] AND review_reason='Private synthetic selected approval' AND reviewed_by=(SELECT id FROM users WHERE username='recovery_moderator') AND reviewed_at IS NOT NULL)
+        OR NOT EXISTS(SELECT 1 FROM beatmap_rank_requests WHERE id=pending_id AND status='pending' AND revision=0 AND approved_difficulty_ids IS NULL AND reviewed_by IS NULL)
+        OR approved_metadata->>'difficulty_count' IS DISTINCT FROM '2'
+        OR approved_metadata->'manifest' IS DISTINCT FROM '[{"native_id":1900000001,"md5":"11111111111111111111111111111111","version":"Selected","mode":0,"stars":1,"status":"graveyard"},{"native_id":1900000002,"md5":"22222222222222222222222222222222","version":"Sibling","mode":0,"stars":1,"status":"graveyard"}]'::jsonb
+        OR pending_metadata->>'difficulty_count' IS DISTINCT FROM '1'
+        OR pending_metadata->'manifest' IS DISTINCT FROM '[{"native_id":1900000002,"md5":"22222222222222222222222222222222","version":"Sibling","mode":0,"stars":1,"status":"graveyard"}]'::jsonb THEN
+        RAISE EXCEPTION 'Restored per-difficulty ranking state or immutable selected manifest is incomplete';
+    END IF;
+    IF NOT EXISTS(SELECT 1 FROM audit_events e JOIN users a ON a.id=e.actor_id WHERE a.username='recovery_fixture' AND e.action='beatmaps.rank_request.create' AND e.target_type='beatmap_rank_request' AND e.target_id=approved_id::text AND e.details->>'reason'='Private synthetic approved nomination')
+        OR NOT EXISTS(SELECT 1 FROM audit_events e JOIN users a ON a.id=e.actor_id WHERE a.username='recovery_fixture' AND e.action='beatmaps.rank_request.create' AND e.target_type='beatmap_rank_request' AND e.target_id=pending_id::text AND e.details->>'reason'='Private synthetic pending nomination')
+        OR NOT EXISTS(SELECT 1 FROM audit_events e JOIN users a ON a.id=e.actor_id WHERE a.username='recovery_moderator' AND e.action='beatmaps.rank_request.review' AND e.target_type='beatmap_rank_request' AND e.target_id=approved_id::text AND e.details->>'reason'='Private synthetic selected approval' AND e.details->>'decision'='approved' AND e.details->'difficulty_ids'='[1900000001]'::jsonb AND e.details->>'previous_revision'='0')
+        OR NOT EXISTS(SELECT 1 FROM audit_events e JOIN users a ON a.id=e.actor_id JOIN beatmaps b ON b.id::text=e.target_id WHERE a.username='recovery_moderator' AND e.action='beatmaps.status' AND e.target_type='beatmap' AND b.native_id=1900000001 AND e.details->>'reason'='Private synthetic ranked difficulty decision' AND e.details->>'native_set_id'='1900000010' AND e.details->'previous'->>'status_revision'='0') THEN
+        RAISE EXCEPTION 'Restored private ranking audit is incomplete';
+    END IF;
+    rejected := false;
+    BEGIN
+        UPDATE beatmap_status_overrides SET native_set_id=1900000011 WHERE native_id=1900000001;
+    EXCEPTION WHEN check_violation THEN rejected := true;
+    END;
+    IF NOT rejected THEN RAISE EXCEPTION 'Difficulty override set identity accepted a mutation'; END IF;
+    rejected := false;
+    BEGIN
+        DELETE FROM beatmap_status_overrides WHERE native_id=1900000001;
+    EXCEPTION WHEN check_violation THEN rejected := true;
+    END;
+    IF NOT rejected THEN RAISE EXCEPTION 'Difficulty override accepted silent deletion'; END IF;
+    rejected := false;
+    BEGIN
+        UPDATE beatmap_rank_requests SET metadata=jsonb_set(metadata,'{manifest}','[]'::jsonb) WHERE id=pending_id;
+    EXCEPTION WHEN check_violation THEN rejected := true;
+    END;
+    IF NOT rejected THEN RAISE EXCEPTION 'Pending request accepted replacement of its selected manifest'; END IF;
+    rejected := false;
+    BEGIN
+        UPDATE beatmap_rank_requests SET metadata=jsonb_set(metadata,'{manifest}','[]'::jsonb) WHERE id=approved_id;
+    EXCEPTION WHEN check_violation THEN rejected := true;
+    END;
+    IF NOT rejected THEN RAISE EXCEPTION 'Approved request accepted replacement of its nominated manifest'; END IF;
+    rejected := false;
+    BEGIN
+        UPDATE beatmap_rank_requests SET native_set_id=1900000011 WHERE id=pending_id;
+    EXCEPTION WHEN check_violation THEN rejected := true;
+    END;
+    IF NOT rejected THEN RAISE EXCEPTION 'Request accepted a changed set identity'; END IF;
+    UPDATE beatmap_status_overrides SET revision=0 WHERE native_id=1900000001 RETURNING revision INTO actual_revision;
+    IF actual_revision<>2 THEN RAISE EXCEPTION 'Unchanged difficulty override accepted a revision reset'; END IF;
+    UPDATE beatmaps SET stars=stars,status_revision=99 WHERE native_id=1900000001 RETURNING status_revision INTO map_revision;
+    IF map_revision<>1 THEN RAISE EXCEPTION 'Unchanged stored map accepted a forged status revision'; END IF;
+    UPDATE beatmap_status_overrides SET status='loved',revision=99 WHERE native_id=1900000001 RETURNING revision INTO actual_revision;
+    IF actual_revision<>3 THEN RAISE EXCEPTION 'Changed difficulty override did not advance its revision'; END IF;
+    UPDATE beatmaps SET stars=stars,status_revision=0 WHERE native_id=1900000001 RETURNING status_revision INTO map_revision;
+    IF map_revision<>2 OR (SELECT status FROM beatmaps WHERE native_id=1900000001)<>'loved' THEN RAISE EXCEPTION 'Metadata refresh did not apply the restored override and advance the stored status revision'; END IF;
+    UPDATE beatmap_status_overrides SET status='ranked',revision=0 WHERE native_id=1900000001 RETURNING revision INTO actual_revision;
+    IF actual_revision<>4 THEN RAISE EXCEPTION 'Difficulty override ABA did not advance its revision'; END IF;
+    UPDATE beatmaps SET stars=stars,status_revision=99 WHERE native_id=1900000001 RETURNING status_revision INTO map_revision;
+    IF map_revision<>3 OR (SELECT status FROM beatmaps WHERE native_id=1900000001)<>'ranked' THEN RAISE EXCEPTION 'Stored status ABA did not advance its revision'; END IF;
+    UPDATE beatmap_status_overrides SET revision=99 WHERE native_id=1900000001 RETURNING revision INTO actual_revision;
+    IF actual_revision<>4 THEN RAISE EXCEPTION 'Unchanged difficulty override accepted a forged revision'; END IF;
+    UPDATE beatmap_status_overrides SET status='loved' WHERE native_id=1900000001 AND revision=2 AND EXISTS(SELECT 1 FROM beatmaps WHERE native_id=1900000001 AND status_revision=3);
+    GET DIAGNOSTICS changed_rows=ROW_COUNT;
+    IF changed_rows<>0 THEN RAISE EXCEPTION 'Stale override revision passed the restored CAS predicate after ABA'; END IF;
+    UPDATE beatmap_status_overrides SET status='loved' WHERE native_id=1900000001 AND revision=4 AND EXISTS(SELECT 1 FROM beatmaps WHERE native_id=1900000001 AND status_revision=1);
+    GET DIAGNOSTICS changed_rows=ROW_COUNT;
+    IF changed_rows<>0 THEN RAISE EXCEPTION 'Stale stored-map revision passed the restored CAS predicate after ABA'; END IF;
+    UPDATE beatmap_status_overrides SET status='loved' WHERE native_id=1900000001 AND revision=4 AND EXISTS(SELECT 1 FROM beatmaps WHERE native_id=1900000001 AND status_revision=3) RETURNING revision INTO actual_revision;
+    GET DIAGNOSTICS changed_rows=ROW_COUNT;
+    IF changed_rows<>1 OR actual_revision<>5 THEN RAISE EXCEPTION 'Fresh dual-revision difficulty CAS did not advance the override'; END IF;
+    UPDATE beatmap_rank_requests SET revision=0,created_at=original_created,updated_at=clock_timestamp() WHERE id=approved_id RETURNING revision INTO actual_revision;
+    IF actual_revision<>1 OR (SELECT updated_at FROM beatmap_rank_requests WHERE id=approved_id) IS DISTINCT FROM original_updated THEN RAISE EXCEPTION 'Unchanged approved request accepted a revision or timestamp reset'; END IF;
+    UPDATE beatmap_rank_requests SET approved_difficulty_ids=ARRAY[1900000002::bigint],revision=99 WHERE id=approved_id RETURNING revision INTO actual_revision;
+    IF actual_revision<>2 THEN RAISE EXCEPTION 'Changed approval selection did not advance its revision'; END IF;
+    UPDATE beatmap_rank_requests SET approved_difficulty_ids=ARRAY[1900000001::bigint],revision=0 WHERE id=approved_id RETURNING revision INTO actual_revision;
+    IF actual_revision<>3 THEN RAISE EXCEPTION 'Approval selection ABA did not advance its revision'; END IF;
+    UPDATE beatmap_rank_requests SET review_reason='Stale probe decision' WHERE id=approved_id AND revision=1;
+    GET DIAGNOSTICS changed_rows=ROW_COUNT;
+    IF changed_rows<>0 THEN RAISE EXCEPTION 'Stale approval selection passed the restored CAS predicate after ABA'; END IF;
+    UPDATE beatmap_rank_requests SET status='rejected',revision=99 WHERE id=pending_id RETURNING revision INTO actual_revision;
+    IF actual_revision<>1 THEN RAISE EXCEPTION 'Changed pending request did not advance its revision'; END IF;
+    UPDATE beatmap_rank_requests SET status='pending',revision=0 WHERE id=pending_id RETURNING revision INTO actual_revision;
+    IF actual_revision<>2 THEN RAISE EXCEPTION 'Pending request ABA did not advance its revision'; END IF;
+    UPDATE beatmap_rank_requests SET status='withdrawn' WHERE id=pending_id AND status='pending' AND revision=0;
+    GET DIAGNOSTICS changed_rows=ROW_COUNT;
+    IF changed_rows<>0 THEN RAISE EXCEPTION 'Stale pending request passed the restored CAS predicate after ABA'; END IF;
+    UPDATE beatmap_rank_requests SET status='withdrawn' WHERE id=pending_id AND status='pending' AND revision=2 RETURNING revision INTO actual_revision;
+    GET DIAGNOSTICS changed_rows=ROW_COUNT;
+    IF changed_rows<>1 OR actual_revision<>3 THEN RAISE EXCEPTION 'Fresh pending request CAS did not advance its revision'; END IF;
+    IF (SELECT metadata FROM beatmap_rank_requests WHERE id=approved_id) IS DISTINCT FROM approved_metadata
+        OR (SELECT metadata FROM beatmap_rank_requests WHERE id=pending_id) IS DISTINCT FROM pending_metadata
+        OR NOT EXISTS(SELECT 1 FROM beatmaps WHERE native_id=1900000002 AND status='graveyard' AND status_revision=0)
+        OR EXISTS(SELECT 1 FROM beatmap_status_overrides WHERE native_id=1900000002) THEN
+        RAISE EXCEPTION 'Selected difficulty probe changed a submission snapshot or its sibling';
+    END IF;
+END;
+$$;
+ROLLBACK;
+SELECT 'recovery-ranking-probe-passed';`;
+
+export async function verifyRestoredRanking(docker, base, { owner } = {}) {
+  const project = ownedProject(base[base.indexOf('--project-name') + 1], owner);
+  if (!project.endsWith('-restore')) throw new Error('Ranking behavior may be probed only in this owned restore project.');
+  const result = await docker([...base, 'exec', '-T', 'postgres', 'psql', '-X', '-q', '-At', '--set', 'ON_ERROR_STOP=1', '-U', 'illya', '-d', 'illyaverse', '-c', rankingProbeSql]);
+  if (result.trim() !== 'recovery-ranking-probe-passed') throw new Error('Restored ranking behavior probe did not complete its rollback.');
+  return { selectedApproval: true, pendingSelectedManifest: true, privateAudit: true, immutableSubmissionSnapshots: true,
+    durableOverrideRevision: 2, durableStoredStatusRevision: 1, durableApprovedRequestRevision: 1, durablePendingRequestRevision: 0,
+    unchangedRevisionWritesIgnored: true, abaAdvancesRevisions: true, staleCasRejected: true, freshCasAccepted: true, siblingUnchanged: true,
+    scope: 'Restored database state, triggers and CAS predicates; HTTP authorization and review enforcement are covered by separate integration tests.' };
 }
 
 export async function databaseSnapshot(docker, base, { canonicalizeSchema = false, owner } = {}) {
@@ -293,7 +464,7 @@ async function fileSnapshot(docker, base) {
 
 export async function recoveryDrill({ dryRun = false, environment = process.env, runner, sanctuaryImage } = {}) {
   if (dryRun) {
-    console.log('Recovery drill dry run: no Docker calls or files created. Live mode generates two nonce-owned fresh Compose projects/volumes, pins existing postgres:17-alpine and illyaverse/sanctuary:local image IDs, derives every expected migration version and exact SHA-384 checksum from current SQL files, creates synthetic DB/media/maps/replays and durable moderation state, invokes the guarded deployment backup helper with all owned writers stopped, checks binary backup + SHA manifest, restores into fresh volumes, compares schema/all rows/sequences/file hashes/UID:GID, probes restored moderation triggers in a rollback-only transaction and verifies unchanged snapshots, verifies readiness, then audits ownership and removes only its two projects and exact temporary files.');
+    console.log('Recovery drill dry run: no Docker calls or files created. Live mode generates two nonce-owned fresh Compose projects/volumes, pins existing postgres:17-alpine and illyaverse/sanctuary:local image IDs, derives every expected migration version and exact SHA-384 checksum from current SQL files, creates synthetic DB/media/maps/replays, durable moderation state and selected per-difficulty ranking requests, invokes the guarded deployment backup helper with all owned writers stopped, checks binary backup + SHA manifest, restores into fresh volumes, compares schema/all rows/sequences/file hashes/UID:GID, probes restored moderation and ranking triggers/CAS predicates in rollback-only transactions and verifies unchanged snapshots, verifies readiness, then audits ownership and removes only its two projects and exact temporary files.');
     return;
   }
   requireDisposable(environment);
@@ -386,6 +557,14 @@ export async function recoveryDrill({ dryRun = false, environment = process.env,
     report.checks.moderationState = true;
     report.checks.moderationTriggers = true;
     report.checks.moderationRollback = true;
+    report.ranking = await verifyRestoredRanking(docker, restore, { owner });
+    const afterRankingProbe = await databaseSnapshot(docker, restore);
+    if (!sameDatabase(restoredDb, afterRankingProbe)) throw new Error('Rollback-only ranking probe changed restored schema/rows/sequences/migrations.');
+    report.ranking.rollbackUnchanged = true;
+    report.ranking.afterProbe = afterRankingProbe;
+    report.checks.rankingState = true;
+    report.checks.rankingTriggers = true;
+    report.checks.rankingRollback = true;
     await docker([...restore, 'up', '-d', '--no-build', '--pull', 'never', '--wait', '--wait-timeout', '120', 'sanctuary']);
     await docker([...restore, 'exec', '-T', 'sanctuary', 'curl', '--fail', '--silent', 'http://127.0.0.1:8080/health/ready']);
     await docker([...restore, 'stop', '--timeout', '10', 'sanctuary']);

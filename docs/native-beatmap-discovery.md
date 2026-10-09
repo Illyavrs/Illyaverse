@@ -4,7 +4,27 @@ Stable 選擇圖譜後，登入玩家的 `/web/osu-osz2-getscores.php` 請求會
 
 設定 `OSU_CLIENT_ID`、`OSU_CLIENT_SECRET` 及兩個服務共用、至少 32 bytes 的 `INTERNAL_SERVICE_KEY`。本機原生測試使用 `.env.client-test.local`，修改後需重新建立 Sanctuary 容器。密鑰留在私有環境檔，不要放入提交、網站或遊戲客戶端。正式服務的上游固定為 `https://osu.ppy.sh`；測試用 loopback fixture 只存在於 Rust test build。
 
-Lazer 的已認證 checksum lookup、difficulty ID 查詢、以 difficulty 查詢圖譜集，以及單人成績 token 建立也使用同一 resolver。Lookup 同時帶 checksum、ID、filename 時先依 checksum 取得圖譜，並要求已提供的正整數 ID 與回傳的原生 ID 一致；filename 不會覆蓋 checksum。只有 filename 的 lookup 新增本機精確檔名對照，未命中才透過官方 filename lookup 查詢並驗證內容。以官方圖譜集 ID 查詢現在可取得完整原始 difficulty 的 metadata；搜尋仍只使用本機已收錄資料。
+Lazer 的已認證 checksum lookup、difficulty ID 查詢、以 difficulty 查詢圖譜集，以及單人成績 token 建立也使用同一 resolver。Lookup 同時帶 checksum、ID、filename 時先依 checksum 取得圖譜，並要求已提供的正整數 ID 與回傳的原生 ID 一致；filename 不會覆蓋 checksum。只有 filename 的 lookup 新增本機精確檔名對照，未命中才透過官方 filename lookup 查詢並驗證內容。以官方圖譜集 ID 查詢可取得完整原始 difficulty 的 metadata；新的官方搜尋行為見下節。
+
+## Lazer 官方圖譜搜尋
+
+`GET /api/v2/beatmapsets/search` 的預設來源改為官方目錄，與網站共用 Sanctuary 的官方搜尋快取、OAuth token、併發合併、上游請求間隔與 429 backoff。舊行為只搜尋本站資料庫，並把 cursor 當數字 offset，會漏掉尚未收錄的官方圖譜，也無法接續 stock lazer 的分頁。搜尋不自動匯入圖譜、封包或檔案，亦不把本站圖譜混進官方排序及分頁。
+
+Gateway 先驗證登入 bearer，再透過既有 service key 呼叫內部搜尋路由；內部路由要求有效且未受限制的本站帳號。等待快取或上游回覆後，兩邊再次檢查帳號／session。搜尋的主要工作預算為 Sanctuary 6 秒、Gateway 8 秒，回覆最多 4 MiB。網站與 lazer 共用 60 秒正向快取、最多 16 個 key／8 MiB 的快取，以及公開搜尋最多兩個工作槽、每分鐘 30 次 cache miss 的預算；整體 resolver 的既有全域請求限制仍生效。
+
+支援 stock 的 `q`、`m`、`s`、`sort`、`nsfw`、`g`、`l`、非個人化的 `c`／`e`，包括 Featured Artists、Spotlights、Video、Storyboard。保留官方不透明 `cursor_string`，也實作 stock 真正使用的 `cursor[...]` 物件分頁。排序、狀態及 ruleset 不再被忽略。回覆使用 canonical 官方 set／difficulty ID，包含整個 set 的所有原始 difficulties、checksum、星數及實際提供的難度資料，並給出固定官方 cover／preview 路徑。上游帳號 ID 不推論為本站 mapper 帳號；身分欄位採 0／空集合。
+
+官方服務帳號不代表本站玩家，故 `mine`、`favourites`、`follows`、`recommended`、`played` 及成績 rank 篩選目前明確拒絕。這些個人化功能需要獨立的本站資料對應，不能使用官方 OAuth 應用程式的身分假裝玩家。lazer 的初始介面本身常帶 `leaderboard`／`featured_artists`；網站目前的 Ranked 預設與此不同，選擇相同非個人化篩選時才會對應相同官方結果。
+
+本站的 withdrawal 與個別難度的狀態決定會在每次回覆時重新套用，包含已快取頁面。每個 difficulty 有自己的 `status`，核准一張 Ranked 不會改變同組其他難度；原生 JSON 的 `ranked` 數字也依各難度狀態對應（Graveyard -2、WIP -1、Pending 0、Ranked 1、Loved 4）。官方搜尋遇到混合狀態仍保留原官方 set 標籤；有本站決定且所有難度同狀態時才彙總為共用標籤。本機套件遇到混合狀態以 Pending 作為 set 摘要，個別狀態仍完整列出。
+
+搜尋的 `total`、cursor、成員及排序仍使用官方目錄；例如官方 Pending 中一張難度被本站核准，不會令官方 `s=ranked` 查詢自行加入這組。本站已收錄圖譜的狀態篩選使用本機目錄。完整下載仍使用實際保存的 `.osz`，`availability.download_disabled` 不會因 metadata 已找到就變成 false。官方 `public` client-credentials token 並不授權整包下載，沒有已驗證封包的圖譜目前可以搜尋與辨識，但不能透過此路由下載；不以單張 `.osu` 代替完整 archive。詳見[官方封包契約](official-beatmap-archives.md)。
+
+保留 `source=local` 的明確擴充，供本站目錄搜尋／原有協定工具使用。它接受 `q`、`m`、`s` 與數字 `cursor_string`，狀態包含 Pending、Ranked、Loved、unranked、Graveyard 與 WIP，直接讀取目前 active catalogue；stock lazer 預設不會送出這個擴充。
+
+參考 pinned stock [搜尋請求](https://github.com/ppy/osu/blob/6cbcae7fbb764839a66c1adf564c2e1679242072/osu.Game/Online/API/Requests/SearchBeatmapSetsRequest.cs)、[回覆及分頁物件](https://github.com/ppy/osu/blob/6cbcae7fbb764839a66c1adf564c2e1679242072/osu.Game/Online/API/Requests/SearchBeatmapSetsResponse.cs) 與 [cursor 序列化](https://github.com/ppy/osu/blob/6cbcae7fbb764839a66c1adf564c2e1679242072/osu.Game/Extensions/WebRequestExtensions.cs)。這些資料僅作契約參考，未複製其程式碼。來源實作、隔離整合測試、已部署映像與真人畫面測試分別記錄；來源完成不代表 retained 服務已更新。
+
+最終搜尋來源通過 67 個 Resonance 單元測試、6 個隔離 PostgreSQL／HTTP 測試及 Clippy／格式檢查，涵蓋 bearer 撤銷、withdrawal、真實 cursor、個別狀態與無匯入讀取。Graveyard／WIP 同時驗證 lazer JSON 的 -2／-1，以及實際 stable getscores 路由的已提交狀態 0 與 canonical IDs。另有 13 個圖譜及 17 個直接 set 回歸測試；[完整收據](../.artifacts/tests/lazer-official-search-20261009T155720Z-cf12e3114b5f40cb949540442559afbd/verification-confirmed.json) 分開綁定完整回歸與最後的本機篩選修正，並保留 Sanctuary 快取／上游契約驗證、失敗嘗試及獨立 review。專用 tmpfs PostgreSQL、network 與私有測試設定已清除；此批沒有啟動原生遊戲、變更玩家檔案或部署 retained 服務。
 
 具有 `beatmaps.import` 權限的帳號也可以提供完整官方 `.osz` 與 set ID，經整組官方 metadata 核對後保存原始封包與全部 difficulties。這是網站的明確匯入動作；原生 set lookup 不會自動下載整包。匯入成功後，stable osu!direct 與 lazer set download 可下載相同的完整 bytes，網站也可瀏覽同封包難度。驗證範圍、重試與版本限制見[官方封包匯入](official-beatmap-archives.md)。
 
@@ -32,7 +52,7 @@ Lazer 使用相同的 canonical difficulty／set ID。已匯入官方圖譜的�
 
 只有官方明確表示 checksum 不存在時，resolver 回覆 404 `beatmap_not_found`，stable 才得到原有的未知圖譜回應。未設定 API、授權失敗、上游服務失敗或限流分別回覆 503、502 或 429，不會假造 Ranked，也不會把這些失敗快取成永久的不存在。
 
-同一官方 ID 已有另一個 checksum 時回覆 409 `official_version_conflict`。目前一個官方 ID 僅保存一個版本；不會改寫既有 checksum、分數或 replay 的圖譜身分。官方 Qualified 狀態目前映射為 unranked，資料庫仍只有 pending、ranked、loved、unranked 四種狀態。
+同一官方 ID 已有另一個 checksum 時回覆 409 `official_version_conflict`。目前一個官方 ID 僅保存一個版本；不會改寫既有 checksum、分數或 replay 的圖譜身分。官方 Qualified 狀態目前映射為 unranked；資料庫支援 pending、ranked、loved、unranked、graveyard 與 wip，個別難度的本站決定優先。
 
 Lazer 的 `BeatmapOnlineStatus` 沒有 `Unranked` 成員。本站資料庫的 unranked 在原生 JSON 使用 `pending`、數值 rank 0，保存狀態不變；它不會被宣告為 Ranked 或 Qualified。此 wire 標籤規則同樣用於本機 set、difficulty 與 playlist serializer。第一手 enum：[BeatmapOnlineStatus](https://github.com/ppy/osu/blob/d98369a4d17039f8abd6308f173ada1e26e22d5f/osu.Game/Beatmaps/BeatmapOnlineStatus.cs)。
 

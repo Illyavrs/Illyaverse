@@ -4,7 +4,7 @@ Kaleidoscope 是 Illyaverse 的 Windows 圖形啟動器，負責啟動 stable／
 
 ## 目前測試包狀態
 
-新版 [GUI 測試 ZIP](../.artifacts/packages/kaleidoscope-gui-test-20261009-141323-4ae3b865e72a4f75a7d1010d10e73040.zip) 已建置，含伺服器網址設定、沿用遊戲偏好及私服帳號隔離。SHA-256：`4dc11a2f7a87fddcc0b50d945b2610504d5643d422a6637f588845f60881bdec`。此包是 Debug 原生建置，內嵌 production 網頁介面；完整目錄、ZIP 及內嵌介面檢查通過。先前使用整份獨立遊戲設定的 CLI 包只保留為[歷史整合證據](current-integration-20261009.md)，不適用下面的新流程。原生視窗、登入、遊玩與退出清理仍待實測。
+新版 [GUI 測試 ZIP](../.artifacts/packages/kaleidoscope-gui-test-20261009-141323-4ae3b865e72a4f75a7d1010d10e73040.zip) 已建置，含伺服器網址設定、沿用遊戲偏好及私服帳號隔離。SHA-256：`4dc11a2f7a87fddcc0b50d945b2610504d5643d422a6637f588845f60881bdec`。此包是 Debug 原生建置，內嵌 production 網頁介面；完整目錄、ZIP 及內嵌介面檢查通過。先前使用整份獨立遊戲設定的 CLI 包只保留為[歷史整合證據](current-integration-20261009.md)，不適用下面的新流程。玩家已回報使用此 GUI 能開啟 lazer 並登入 Illyaverse；這項回報尚不包含遊玩、送分、Replay、聊天、多人、重連與退出清理的完整原生驗證。
 
 ## 開始使用
 

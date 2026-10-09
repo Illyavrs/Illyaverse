@@ -7,9 +7,13 @@ node_modules
 **/node_modules
 **/.next
 **/.swc-cache
+**/__pycache__
+**/*.pyc
+**/*.tsbuildinfo
 target
 **/target
 tools/kaleidoscope/ui/out
+tools/kaleidoscope/ui/src-tauri/gen/schemas
 # Legacy ignored output from the source-only launcher move.
 apps/kaleidoscope
 tools/transfiguration/bin
@@ -24,8 +28,8 @@ data-*
 .protocol-venv
 .artifacts
 .impeccable/review
-test-results
-playwright-report
+**/test-results
+**/playwright-report
 **/.test-target
 *.log
 **/*.log

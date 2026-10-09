@@ -2,7 +2,7 @@
   "version": 1,
   "checkpoint": "integration-20261009",
   "recorded_at_utc": "2026-10-09T11:19:13Z",
-  "status": "client_test_lazer_user_path_hotfix_applied_moderation_source_verified_native_login_retest_pending",
+  "status": "frozen_migration_24_images_protocol_recovery_verified_human_lazer_login_reported_retained_schema_22",
   "git_topology": {
     "projects": [
       "Serendipity",
@@ -448,11 +448,63 @@
     "protocol_score_review_runner": {
       "path": ".artifacts/tests/protocol-score-cas-20261009T152018Z-c23e65d1f1de416e9c513687f1050cf3/verification.json",
       "sha256": "a84ce412f42fb4ed26783c11b8b2f6721b74cb1785b71d3ada120614e3688cf3"
+    },
+    "frozen_migration_24_image_set": {
+      "path": ".artifacts/builds/integration-images-20261009T153322Z-6ea175d46a6a4566ae45e77b55e95751/verification.json",
+      "sha256": "b5cf63fe8010bb12deb369290097504545e08e3269a5a649b7a2849291cfb080"
+    },
+    "frozen_migration_24_sanctuary_image": {
+      "path": ".artifacts/builds/integration-images-20261009T153322Z-6ea175d46a6a4566ae45e77b55e95751/sanctuary.verification.json",
+      "sha256": "d9c03c9590483c390872ec360b8c32c3aa4a22bfb2cef32bcd31d294d0595297"
+    },
+    "frozen_migration_24_resonance_image": {
+      "path": ".artifacts/builds/integration-images-20261009T153322Z-6ea175d46a6a4566ae45e77b55e95751/resonance.verification.json",
+      "sha256": "267b45c9d95f370a4984251e50fb825f2d83fdbeb466c4a4a890ade498985582"
+    },
+    "frozen_migration_24_serendipity_image": {
+      "path": ".artifacts/builds/integration-images-20261009T153322Z-6ea175d46a6a4566ae45e77b55e95751/serendipity.verification.json",
+      "sha256": "4fc647120ee3e315829b84f114b681feffa2e664538b3158cbc5cbee91c899cb"
+    },
+    "immutable_disposable_image_helpers_50": {
+      "path": ".artifacts/tests/disposable-image-inputs-20261009T154323Z-67b93141073c4c6286b8f8f1fd4d492f/verification.json",
+      "sha256": "612d1e714f0c90fbd9325299a37284d9f2233a8844d1df5e784f257c2bcf228a"
+    },
+    "frozen_migration_24_recovery": {
+      "path": ".artifacts/tests/recovery-moderation-live-20261009T154257Z-d84f17f72f9549ddb2718ecfe6f1c5cd/verification.json",
+      "sha256": "7430f7c98360d6d10455d138f4cefa867757b57c7379ab50d6ad212506e72a8c"
+    },
+    "frozen_migration_24_protocol_initial_callback_failure": {
+      "path": ".artifacts/tests/protocol-full-baseline-20261009T154940Z-acf945707fc748dc87aa18272a8cc94d/verification.json",
+      "sha256": "71fdcf539a8fe7e0ae8f0bf9d0ef2e06f76c35a9d7920099b6bff94f2ceaf737"
+    },
+    "frozen_migration_24_protocol_initial_cleanup_confirmed": {
+      "path": ".artifacts/tests/protocol-full-baseline-20261009T154940Z-acf945707fc748dc87aa18272a8cc94d/cleanup-verification.json",
+      "sha256": "47920a29610d24efe1b32133b85452ab5d12092c3b2bdbe596f94ae92c83b35a"
+    },
+    "frozen_migration_24_protocol_wrapper_cleanup_lag": {
+      "path": ".artifacts/tests/protocol-full-callback-20261009T1556Z-97b3ea41761b4cb484003908ee721fff/verification.json",
+      "sha256": "bdf6aa90f9f1ee7bbe1d2970735f47db7c2a0b02d405296e133e4b43cb0f88de"
+    },
+    "frozen_migration_24_protocol_cleanup_confirmed": {
+      "path": ".artifacts/tests/protocol-full-callback-20261009T1556Z-97b3ea41761b4cb484003908ee721fff/cleanup-verification.json",
+      "sha256": "3cfbe48c04b98d8049a50a1d312ffe43147821537c0ab7b9c00beabd41c05f9c"
+    },
+    "frozen_migration_24_protocol_cleanup_final": {
+      "path": ".artifacts/tests/protocol-full-callback-20261009T1556Z-97b3ea41761b4cb484003908ee721fff/cleanup-final-verification.json",
+      "sha256": "bdcd6f858a5cdd58b80c4873d702ad7ed2e1d8d7aa1bff39fdf1bab8a88587f4"
+    },
+    "frozen_migration_24_protocol_final": {
+      "path": ".artifacts/tests/protocol-full-callback-20261009T1556Z-97b3ea41761b4cb484003908ee721fff/final-verification.json",
+      "sha256": "059a892023626ac250cb3ef28007a74ef4eed1a3bbfb5247d1668e66f5ecac66"
+    },
+    "client_test_admin_grant_private_receipt": {
+      "path": ".artifacts/tests/illya-admin-grant-20261009T155331Z-5dad11a0762d48b397e5d3b256fb01e0/verification.json",
+      "sha256": "aa11efdb50faba83eaaecf19f72b29c76d0a37e137686fb2b7445d4909ac80f7"
     }
   },
   "limitations": [
     "Local ignored evidence is not included in a normal Git clone.",
-    "Actual native GUI/login/gameplay/score/replay/reconnect/cleanup remain player testing.",
+    "Player reports lazer login success with the same GUI after the route hotfix; no agent game inspection. Full native gameplay/chat/score/replay/multiplayer/reconnect/cleanup remain separate pending checks.",
     "Original broad community objective remains incomplete.",
     "Historical checkpoints and source/image scopes are preserved separately."
   ],
@@ -546,7 +598,7 @@
     "native_gameplay_verified": false,
     "retained_services_redeployed": false
   },
-  "updated_at_utc": "2026-10-09T15:29:35.878Z",
+  "updated_at_utc": "2026-10-09T16:17:35.045Z",
   "post_deployment_source_fixes": {
     "retained_services_redeployed": false,
     "serendipity": "1179315",
@@ -727,7 +779,8 @@
     "supersession_reason": "Earlier CLI packages used a separate whole game.illyaverse.ini; the new GUI package shares original game.ini preferences and isolates only account/cache fields per origin.",
     "native_gui_verified": false,
     "native_login_verified": false,
-    "native_gameplay_verified": false
+    "native_gameplay_verified": false,
+    "later_human_login_report": "human_reported_success; automated native verification flags above remain the package proof scope"
   },
   "launcher_gui_auth_endpoint_checkpoint": {
     "status": "source_checks_and_actual_debug_gui_package_verified_native_player_validation_pending",
@@ -978,10 +1031,13 @@
     "human_native": {
       "gui_and_login_attempt_reported": true,
       "initial_login": "disconnected",
-      "retest": "pending",
-      "authenticated_login_verified": false
+      "retest": "human_reported_success",
+      "authenticated_login_verified": false,
+      "human_reported_login_success": true,
+      "agent_game_inspection": false,
+      "authentication_claim_scope": "Player report only; authenticated_login_verified remains the automated verification scope."
     },
-    "limits": "401 probes establish routing parity, not authenticated native login; other services and future source remain HOLD."
+    "limits": "401 probes establish routing parity. Later player-reported login success is recorded separately; no agent native-game inspection, and no application redeploy or future migration was applied to retained services."
   },
   "moderation_source_checkpoint": {
     "evidence": {
@@ -1063,7 +1119,7 @@
     "retained_runtime": "source-only; new backend and website images not deployed; migrations23/24 not applied",
     "limits": [
       "Separate proof scopes; not native-client certification.",
-      "Full new-image protocol and migration-24 recovery deployment gates pending.",
+      "Later fixed-image protocol and migration-24 recovery gates are recorded separately in frozen_migration_24_checkpoint; retained application deployment remains HOLD.",
       "Existing native auto-publication policy preserved."
     ],
     "source_commits": {
@@ -1099,5 +1155,249 @@
       "automatic_cas_retry": false,
       "live_new_image_smoke_run": false
     }
+  },
+  "frozen_migration_24_checkpoint": {
+    "status": "fixed_images_built_protocol_and_recovery_verified_not_deployed",
+    "build_parent": "012ef18e55de60759994dae018ebca6973b735dc",
+    "child_commits": {
+      "apps/serendipity": "05a7fbffc0b907779a4abfbdc85d22c456de774a",
+      "services/resonance": "aeb72245c89dd2713f450a014ed5812119043451",
+      "services/sanctuary": "1a77c991a3d46c33b069c34e4636b43e4b13ae14",
+      "tools/kaleidoscope": "b05b56df3462efb879170f1bca0cf4782d05f08a",
+      "tools/transfiguration": "f02f8ebfe171e964336249b4bc7af7772cd3ec7c"
+    },
+    "helper_parent": "3882ca3021888b75c5a98faa8ae8d1a88d524d44",
+    "evidence": {
+      "frozen_migration_24_image_set": {
+        "path": ".artifacts/builds/integration-images-20261009T153322Z-6ea175d46a6a4566ae45e77b55e95751/verification.json",
+        "sha256": "b5cf63fe8010bb12deb369290097504545e08e3269a5a649b7a2849291cfb080"
+      },
+      "frozen_migration_24_sanctuary_image": {
+        "path": ".artifacts/builds/integration-images-20261009T153322Z-6ea175d46a6a4566ae45e77b55e95751/sanctuary.verification.json",
+        "sha256": "d9c03c9590483c390872ec360b8c32c3aa4a22bfb2cef32bcd31d294d0595297"
+      },
+      "frozen_migration_24_resonance_image": {
+        "path": ".artifacts/builds/integration-images-20261009T153322Z-6ea175d46a6a4566ae45e77b55e95751/resonance.verification.json",
+        "sha256": "267b45c9d95f370a4984251e50fb825f2d83fdbeb466c4a4a890ade498985582"
+      },
+      "frozen_migration_24_serendipity_image": {
+        "path": ".artifacts/builds/integration-images-20261009T153322Z-6ea175d46a6a4566ae45e77b55e95751/serendipity.verification.json",
+        "sha256": "4fc647120ee3e315829b84f114b681feffa2e664538b3158cbc5cbee91c899cb"
+      },
+      "immutable_disposable_image_helpers_50": {
+        "path": ".artifacts/tests/disposable-image-inputs-20261009T154323Z-67b93141073c4c6286b8f8f1fd4d492f/verification.json",
+        "sha256": "612d1e714f0c90fbd9325299a37284d9f2233a8844d1df5e784f257c2bcf228a"
+      },
+      "frozen_migration_24_recovery": {
+        "path": ".artifacts/tests/recovery-moderation-live-20261009T154257Z-d84f17f72f9549ddb2718ecfe6f1c5cd/verification.json",
+        "sha256": "7430f7c98360d6d10455d138f4cefa867757b57c7379ab50d6ad212506e72a8c"
+      },
+      "frozen_migration_24_protocol_initial_callback_failure": {
+        "path": ".artifacts/tests/protocol-full-baseline-20261009T154940Z-acf945707fc748dc87aa18272a8cc94d/verification.json",
+        "sha256": "71fdcf539a8fe7e0ae8f0bf9d0ef2e06f76c35a9d7920099b6bff94f2ceaf737"
+      },
+      "frozen_migration_24_protocol_initial_cleanup_confirmed": {
+        "path": ".artifacts/tests/protocol-full-baseline-20261009T154940Z-acf945707fc748dc87aa18272a8cc94d/cleanup-verification.json",
+        "sha256": "47920a29610d24efe1b32133b85452ab5d12092c3b2bdbe596f94ae92c83b35a"
+      },
+      "frozen_migration_24_protocol_wrapper_cleanup_lag": {
+        "path": ".artifacts/tests/protocol-full-callback-20261009T1556Z-97b3ea41761b4cb484003908ee721fff/verification.json",
+        "sha256": "bdf6aa90f9f1ee7bbe1d2970735f47db7c2a0b02d405296e133e4b43cb0f88de"
+      },
+      "frozen_migration_24_protocol_cleanup_confirmed": {
+        "path": ".artifacts/tests/protocol-full-callback-20261009T1556Z-97b3ea41761b4cb484003908ee721fff/cleanup-verification.json",
+        "sha256": "3cfbe48c04b98d8049a50a1d312ffe43147821537c0ab7b9c00beabd41c05f9c"
+      },
+      "frozen_migration_24_protocol_cleanup_final": {
+        "path": ".artifacts/tests/protocol-full-callback-20261009T1556Z-97b3ea41761b4cb484003908ee721fff/cleanup-final-verification.json",
+        "sha256": "bdcd6f858a5cdd58b80c4873d702ad7ed2e1d8d7aa1bff39fdf1bab8a88587f4"
+      },
+      "frozen_migration_24_protocol_final": {
+        "path": ".artifacts/tests/protocol-full-callback-20261009T1556Z-97b3ea41761b4cb484003908ee721fff/final-verification.json",
+        "sha256": "059a892023626ac250cb3ef28007a74ef4eed1a3bbfb5247d1668e66f5ecac66"
+      },
+      "client_test_admin_grant_private_receipt": {
+        "path": ".artifacts/tests/illya-admin-grant-20261009T155331Z-5dad11a0762d48b397e5d3b256fb01e0/verification.json",
+        "sha256": "aa11efdb50faba83eaaecf19f72b29c76d0a37e137686fb2b7445d4909ac80f7"
+      }
+    },
+    "image_build": {
+      "images": {
+        "sanctuary": "sha256:e25936877d07df06cdab818cfb1d1f9411de642c893ff0d751788ce843e5430d",
+        "resonance": "sha256:ccd36d0cf9a4869b4b46be97ca707400d8bd6621940e8998787ca7192050436f",
+        "serendipity": "sha256:2f2ecc5878b92e363b7c3ffbc2df68f5ccd6e14e2dc43b783be5b22ecaff9bbc"
+      },
+      "all_three_exit_zero": true,
+      "unique_nonce_tags": true,
+      "actual_copy_inputs": {
+        "boundary": "Dockerfile COPY paths, Dockerfiles and .dockerignore only; infra helper scripts are outside every COPY input.",
+        "matchingReference": "https://docs.docker.com/build/concepts/context/#dockerignore-files",
+        "all": {
+          "count": 934,
+          "sha256": "fcd9ce060ee22c1f9680fc314e2d0fd60f250fc75bf37820c93de5a81dcb48a8"
+        },
+        "rust": {
+          "count": 243,
+          "sha256": "779032c1bb3e00264bed5f00543243848ef2c9877ada6434eace07cda30d8377"
+        },
+        "web": {
+          "count": 693,
+          "sha256": "080e794a5fc2cf18f3676cb0bdbe6f75a0d04dcbfeca8fd82270fd30ae791edc"
+        }
+      },
+      "source_before_after_unchanged": true,
+      "generated_git_ignored_inputs_in_context": 18,
+      "clean_clone_context_equivalence_claimed": false,
+      "retained_local_aliases_unchanged": true,
+      "dockerignore_changed": false,
+      "migration_count": 24
+    },
+    "disposable_helpers": {
+      "passed": 50,
+      "failed": 0,
+      "new_helper_tests": 24,
+      "existing_guard_tests": 26,
+      "source_sha256": {
+        "infra/disposable-protocol-smoke.mjs": "03db6ff99eacc0b9e7935aaf9f66f3339192542b9b93744218236067c4d39aa6",
+        "infra/disposable-web-smoke.mjs": "95aa11f2a1d75d748df7f89be93f1bdb657d6ac0189c81f6d093b37407c24389",
+        "infra/existing-smoke-images.mjs": "4d2687cbbe4f25b1bc9934a78249dc449bfe49be87f0f5b8a0175ed2ec751ce2",
+        "infra/tests/disposable-image-inputs.test.mjs": "6f91e7056926ba1734e5b8464927fc90a87114d425e739cfcc909c0b04f8e678"
+      },
+      "boundary": "Real helper control flow and private temporary envfiles, injected command/browser runners; no Docker, deployments, game, player data, native process, builds, or Git operations.",
+      "real_docker_browser_or_native_clients_tested": false
+    },
+    "actual_recovery": {
+      "sanctuary_image": "sha256:e25936877d07df06cdab818cfb1d1f9411de642c893ff0d751788ce843e5430d",
+      "postgres_image": "sha256:1bea307dfb3ee30541a7acf7de14b58bcd6948da98e5d31a04c627c4d35ec64b",
+      "source_migrations": 24,
+      "tables": 40,
+      "synthetic_rows": 45,
+      "sequences": 18,
+      "files": 3,
+      "checks": {
+        "migrationCount": 24,
+        "schema": true,
+        "allTableRows": true,
+        "sequences": true,
+        "fileHashes": true,
+        "ownership": true,
+        "moderationState": true,
+        "moderationTriggers": true,
+        "moderationRollback": true,
+        "readiness": true
+      },
+      "moderation_checks": {
+        "activeSilence": true,
+        "nativeSilenceCursor": true,
+        "privateAudit": true,
+        "durableUserRevision": 2,
+        "durableScoreRevision": 2,
+        "unchangedRevisionWritesIgnored": true,
+        "changesAdvanceRevisions": true,
+        "abaAdvancesRevisions": true,
+        "rollbackUnchanged": true
+      },
+      "cleanup": {
+        "counts": {
+          "containers": 0,
+          "volumes": 0,
+          "networks": 0
+        },
+        "temporaryDirectoryAbsent": true
+      },
+      "retained_database_or_player_data_used": false
+    },
+    "actual_protocol": {
+      "status": "passed",
+      "cleanup_status": "complete",
+      "images": {
+        "sanctuary": "sha256:e25936877d07df06cdab818cfb1d1f9411de642c893ff0d751788ce843e5430d",
+        "resonance": "sha256:ccd36d0cf9a4869b4b46be97ca707400d8bd6621940e8998787ca7192050436f",
+        "postgres": "sha256:1bea307dfb3ee30541a7acf7de14b58bcd6948da98e5d31a04c627c4d35ec64b"
+      },
+      "migration_count": 24,
+      "all_migrations_successful": true,
+      "all_source_migration_checksums_match": true,
+      "http_requests": 591,
+      "check_categories": 68,
+      "categories_are_assertion_count": false,
+      "runner_sha256": "7f0a93c85b9cb361155ee1740728e0e3ff066067d48e71cfc55f129245b9741f",
+      "helper_source_sha256": {
+        "infra/disposable-protocol-smoke.mjs": "03db6ff99eacc0b9e7935aaf9f66f3339192542b9b93744218236067c4d39aa6",
+        "infra/protocol-smoke.mjs": "d5d39026913107e5151c9ce30800ce8f3b11dc3815c7f5158b48099084ff8e4d",
+        "infra/existing-smoke-images.mjs": "4d2687cbbe4f25b1bc9934a78249dc449bfe49be87f0f5b8a0175ed2ec751ce2",
+        "infra/compose.smoke.yaml": "453eb4c5a7d25243968f5a28c7da00b412e9c301561e8e1e6c14ef9900c92517",
+        "services/resonance/tests/protocol_smoke.py": "7f0a93c85b9cb361155ee1740728e0e3ff066067d48e71cfc55f129245b9741f"
+      },
+      "runner_delta": "Authorized solo UserScoreProcessed callback identity assertion and exact-retry no-duplicate assertion; production images unchanged.",
+      "original_callback_failure_retained": true,
+      "original_wrapper_cleanup_lag_failure_retained": true,
+      "separate_cleanup_receipts_preserved": true,
+      "final_owned_resources": {
+        "containers": 0,
+        "volumes": 0,
+        "networks": 0
+      },
+      "final_owned_ports_bind_available": true,
+      "temporary_environment_and_directory_absent": true,
+      "native_client_started": false,
+      "player_files_accessed": false,
+      "retained_services_used": false,
+      "subsequent_backend_source_tested": false
+    },
+    "human_lazer_login": {
+      "status": "human_reported_success",
+      "source": "Player confirmation in the current conversation after the client-test Caddy path hotfix.",
+      "artifact": {
+        "sha256": "4dc11a2f7a87fddcc0b50d945b2610504d5643d422a6637f588845f60881bdec",
+        "path": ".artifacts/packages/kaleidoscope-gui-test-20261009-141323-4ae3b865e72a4f75a7d1010d10e73040.zip"
+      },
+      "same_gui_package": true,
+      "agent_started_or_inspected_native_game": false,
+      "agent_accessed_player_files_for_this_confirmation": false,
+      "full_native_checklist_complete": false,
+      "pending": [
+        "full profile DTO",
+        "chat",
+        "gameplay",
+        "score/replay",
+        "multiplayer",
+        "reconnect",
+        "exit cleanup"
+      ]
+    },
+    "retained_runtime": {
+      "migration_count": 22,
+      "new_application_images_deployed": false,
+      "migrations_23_24_25_applied": false,
+      "existing_client_test_caddy_hotfix": "Previously recorded in lazer_login_route_hotfix.",
+      "authorized_client_test_role_grant": {
+        "private_receipt": {
+          "path": ".artifacts/tests/illya-admin-grant-20261009T155331Z-5dad11a0762d48b397e5d3b256fb01e0/verification.json",
+          "sha256": "aa11efdb50faba83eaaecf19f72b29c76d0a37e137686fb2b7445d4909ac80f7"
+        },
+        "applied_at_utc": "2026-10-09T15:53:32.3416788Z",
+        "public_account_id": 2,
+        "public_role_names": [
+          "player",
+          "administrator"
+        ],
+        "scope": "Authorized role grant in the client-test database only; no application redeploy or schema migration.",
+        "grant_sql_or_dump_email_session_or_secret_published": false
+      }
+    },
+    "excluded_in_progress_source": [
+      "official search",
+      "player search and management",
+      "hover changes",
+      "BN beatmap ranking requests",
+      "migration 25"
+    ],
+    "limits": [
+      "Frozen parent 012ef18e55de60759994dae018ebca6973b735dc application images and helper parent 3882ca3021888b75c5a98faa8ae8d1a88d524d44 only.",
+      "Current and future application source changes are not validated by these prebuilt-image gates.",
+      "Synthetic protocol and recovery checks do not certify the complete native-client checklist.",
+      "All 61 historical raw references and initial failed receipts remain preserved."
+    ]
   }
 }

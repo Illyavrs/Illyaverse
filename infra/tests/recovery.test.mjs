@@ -11,7 +11,7 @@ import {
 } from '../recovery-lib.mjs';
 import { backupArguments, backupDeployment, validateBackupSource } from '../recovery-backup.mjs';
 import {
-  checkMigrations, cleanupProject, databaseSnapshot, drillArguments, recoveryConfig, recoveryDrill, requireFreshProject, sameDatabase, sanctuaryImageReference, validateRecoveryConfig, verifyRestoredModeration,
+  checkMigrations, cleanupProject, databaseSnapshot, drillArguments, recoveryConfig, recoveryDrill, requireFreshProject, sameDatabase, sanctuaryImageReference, validateRecoveryConfig, verifyRestoredModeration, verifyRestoredRanking,
 } from '../disposable-recovery-drill.mjs';
 import { workspace } from '../protocol-smoke.mjs';
 
@@ -409,6 +409,43 @@ test('failed restored moderation assertions propagate without a second connectio
   const failure = new Error('Restored score ABA assertion failed');
   const fixture = recordingDocker(() => { throw failure; });
   await assert.rejects(() => verifyRestoredModeration(fixture.docker, base, { owner }), error => error === failure);
+  assert.equal(fixture.calls.length, 1);
+});
+
+test('restored ranking probe rejects foreign, source and missing-owner projects before Docker', async () => {
+  for (const [selectedProject, selectedOwner] of [
+    ['illyaverse', owner], [project, owner], [`illya-recovery-${owner}-restore`, 'f'.repeat(16)], [`illya-recovery-${owner}-restore`, undefined],
+  ]) {
+    const fixture = recordingDocker(() => assert.fail('Ranking ownership guard ran after Docker'));
+    await assert.rejects(() => verifyRestoredRanking(fixture.docker, ['compose', '--project-name', selectedProject], { owner: selectedOwner }), /nonce|owned restore/);
+    assert.deepEqual(fixture.calls, []);
+  }
+});
+
+test('restored ranking probe requires a single fail-fast connection and its post-rollback completion marker', async () => {
+  const base = ['compose', '--project-name', `illya-recovery-${owner}-restore`, '--file', 'fixture.json'];
+  const fixture = recordingDocker(() => 'recovery-ranking-probe-passed\n');
+  const result = await verifyRestoredRanking(fixture.docker, base, { owner });
+  assert.equal(fixture.calls.length, 1);
+  assert.deepEqual(fixture.calls[0].args.slice(0, -1), [...base, 'exec', '-T', 'postgres', 'psql', '-X', '-q', '-At', '--set', 'ON_ERROR_STOP=1', '-U', 'illya', '-d', 'illyaverse', '-c']);
+  assert.equal(result.durableOverrideRevision, 2);
+  assert.equal(result.durableStoredStatusRevision, 1);
+  assert.equal(result.durableApprovedRequestRevision, 1);
+  assert.equal(result.durablePendingRequestRevision, 0);
+  assert.equal(result.immutableSubmissionSnapshots, true);
+  assert.match(result.scope, /database state.*HTTP authorization.*separate integration tests/);
+  for (const output of ['', 'BEGIN\nDO\n', 'recovery-moderation-probe-passed\n', 'recovery-ranking-probe-passed\nunexpected output\n']) {
+    const incomplete = recordingDocker(() => output);
+    await assert.rejects(() => verifyRestoredRanking(incomplete.docker, base, { owner }), /did not complete its rollback/);
+    assert.equal(incomplete.calls.length, 1);
+  }
+});
+
+test('failed restored ranking assertions propagate without another connection or fallback', async () => {
+  const base = ['compose', '--project-name', `illya-recovery-${owner}-restore`];
+  const failure = new Error('Restored selected ranking manifest assertion failed');
+  const fixture = recordingDocker(() => { throw failure; });
+  await assert.rejects(() => verifyRestoredRanking(fixture.docker, base, { owner }), error => error === failure);
   assert.equal(fixture.calls.length, 1);
 });
 

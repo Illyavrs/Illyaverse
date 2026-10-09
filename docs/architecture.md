@@ -1,6 +1,6 @@
 # Illyaverse 架構
 
-Illyaverse 將玩家網站、社群 API、遊戲協定與遊戲啟動分成獨立服務。命名以伊莉雅的世界觀延伸：Serendipity 展示、Sanctuary 提供資料與權限、Resonance 接合客戶端協定、Kaleidoscope 管理固定伺服器的遊戲啟動與清理。這個 monorepo 保留共用型別與共同 migration，讓 Docker 部署保持一致。
+Illyaverse 將玩家網站、社群 API、遊戲協定與遊戲啟動分成獨立服務。命名以伊莉雅的世界觀延伸：Serendipity 展示、Sanctuary 提供資料與權限、Resonance 接合客戶端協定、Kaleidoscope 管理指定 Illyaverse 部署的遊戲啟動與清理。這個 monorepo 保留共用型別與共同 migration，讓 Docker 部署保持一致。
 
 整合 checkout 位於 `osu-ps/Illyaverse`；五個主要子專案各有 repository 邊界，Illyaverse parent 透過 submodules 固定它們的版本。五個子模組已登記；目前使用本機 bare remotes，跨電腦 clone 與 GitHub CI 需先設定真正的遠端網址。實際狀態以 `.gitmodules` 與 `git submodule status` 為準。根 `package.json` 管理 Serendipity 與 `tools/kaleidoscope/ui` 兩個 npm workspace；根 `Cargo.toml` 管理兩個服務、兩個共用 crate 與 Kaleidoscope 核心。Windows Tauri 外殼在 Kaleidoscope 的 `ui/src-tauri`，以 `../..` path dependency 使用同一核心；C# Transfiguration 有自己的 `.csproj`。共用 crates、migrations、lockfile、Compose 與整合文件留在 parent，Docker build 仍以完整 parent checkout 為 context。找程式碼與執行入口見 [資料夾導覽](repository-layout.md)。
 
@@ -48,7 +48,13 @@ lazer 房間成績的原創程式碼已加入：PostgreSQL 保存不可變的 pl
 
 Caddy 將 `/api/v1/*` 與 `/media/*` 交給 Sanctuary，`/web/*`、`/osu/*`、`/d/*`、`/oauth/*`、`/api/v2/*` 與 `/signalr/*` 交給 Resonance，其餘網站請求交給 Serendipity。`c`／`ce`／`c4` 與 `spectator` 等協定 Host 直接交給 Resonance，避免遊戲請求落進 HTML 網站。Serendipity 的內部 rewrite 在 Docker build 時固定為 `http://sanctuary:8080`；SSR 的帳號語言讀取也使用 runtime `API_INTERNAL_URL`，由 Docker bridge DNS 解析服務名稱。
 
-Resonance 與網站 Sanctuary 共用帳號／譜面／score 資料，並不代表每種客戶端協定都已完成。stable 的 encrypted submission、多人的生命週期與 spectator，以及 lazer 的 SignalR／score token／replay frames 各有獨立的實作與驗證狀態，必須逐項用真實客戶端確認。當前狀態以 [協定相容性文件](protocol-compatibility.md) 為準。玩家使用 [Kaleidoscope 啟動器](kaleidoscope-launcher.md)：stable 帶入固定 `-devserver`；lazer 在遊戲入口前載入原創 Transfiguration 橋接，沿用目前安裝實際使用的圖譜庫，包括預設、portable 或自訂路徑的 `client.realm` 與 `files`。私服的 `OsuConfigManager` 使用同一資料目錄中的 `game.illyaverse.ini`，不讀取、複製或覆寫官方 `game.ini`；這不表示所有 framework／輸入設定都已隔離。啟動器的控制與復原紀錄另存於 `%LOCALAPPDATA%\Illyaverse\Kaleidoscope`，監護程序在退出後只清理本次可核對身分的 DLL。相容性或必要修補失敗時不啟動，也沒有官方 fallback。啟動器不修改 hosts／CA；本機 DNS／CA 和營運者 CLI 的規劃方式見[連線文件](connection.md)。
+Resonance 與網站 Sanctuary 共用帳號／譜面／score 資料，並不代表每種客戶端協定都已完成。stable 的 encrypted submission、多人的生命週期與 spectator，以及 lazer 的 SignalR／score token／replay frames 各有獨立的實作與驗證狀態，必須逐項用真實客戶端確認。當前狀態以 [協定相容性文件](protocol-compatibility.md) 為準。
+
+玩家使用 [Kaleidoscope 啟動器](kaleidoscope-launcher.md)，在 GUI 設定保存 Illyaverse 部署的 HTTPS 基底網址。每次啟動會固定本次網址；之後修改設定只影響下一次啟動。stable 帶入 `-devserver <設定的網域>`，使用 HTTPS 443；lazer 在遊戲入口前載入原創 Transfiguration 橋接，支援同一部署的自訂 HTTPS 連接埠。設定與外掛都拒絕官方 `ppy.sh` 及其子網域，連線失敗時也不會切回官方。相容性或必要修補失敗時拒絕啟動。
+
+lazer 沿用目前安裝實際使用的圖譜庫，包括預設、portable 或自訂路徑的 `client.realm` 與 `files`；音訊、輸入、顯示與其他遊戲偏好從原本的 `game.ini` 載入並正常保存。只有七項登入與伺服器相關帳號快取另外存入同一資料目錄的 `auth.illyaverse.json`：`Username`、`Token`、`SaveUsername`、`SavePassword`、`WasSupporter`、`UserOnlineStatus`、`PMFriendsOnly`。私服帳號按正規化的 HTTPS origin 分開，切換網域或連接埠不會沿用另一部署的 token。官方帳號值不會載入私服 API，保存偏好時保留原有官方帳號行；舊的 `game.illyaverse.ini` 不會載入或遷移。
+
+啟動器的控制與遊戲工作階段紀錄存於 `%LOCALAPPDATA%\Illyaverse\Kaleidoscope`；DLL 安裝與清理的復原紀錄 `.illyaverse-launcher.session.json` 則保存在使用中的圖譜庫 `rulesets` 目錄。監護程序在退出後只清理本次可核對身分且未被更換的 DLL。`rulesets` 內的新舊 lock 檔會一起取得並保留，以維持啟動器版本間的互斥；lock 檔存在本身不代表遊戲仍在執行。啟動器不修改 hosts／CA；本機 DNS／CA 和營運者 CLI 的規劃方式見[連線文件](connection.md)。
 
 ## 設計來源
 

@@ -1,8 +1,8 @@
 # 2026-10-09 整合 checkpoint
 
-先前 guarded deployment 與兩次 lazer 啟動失敗的修正證據已保留。最新來源改為沿用原本 `game.ini` 遊戲偏好，只分離私服帳號，並在 GUI 設定保存每次啟動使用的 HTTPS 網址；完整 managed／Rust／合成封裝檢查已通過，新的 Debug GUI 包已建成並通過內嵌介面與目錄／ZIP 完整性驗證。玩家已使用新版 GUI 開啟 lazer；登入取得 OAuth token 後，客戶端產生的 `/api/v2/me/` 路徑收到 404。已對 client-test Caddy 套用限定路徑的內部改寫，實際登入重試、遊玩與原始社群目標仍待驗證。
+先前 guarded deployment 與兩次 lazer 啟動失敗的修正證據已保留。最新來源改為沿用原本 `game.ini` 遊戲偏好，只分離私服帳號，並在 GUI 設定保存每次啟動使用的 HTTPS 網址；完整 managed／Rust／合成封裝檢查已通過，新的 Debug GUI 包已建成並通過內嵌介面與目錄／ZIP 完整性驗證。玩家第一次登入取得 OAuth token 後，客戶端產生的 `/api/v2/me/` 路徑收到 404；client-test Caddy 套用限定路徑的內部改寫後，玩家已在本次對話回報使用相同 GUI 成功登入。這是人員回報，agent 沒有啟動或檢查玩家遊戲。另已完成固定 migration-24 映像的隔離協定與 backup／restore 檢查；後續新來源、完整真人遊玩與原始社群目標仍待驗證。
 
-兩套保留部署均維持 migration 22；後端、網站新來源與 migration 23／24 仍 HOLD，本次例外僅為指定 client-test Caddy 的同容器設定重載。下列結果各有來源與映像邊界，不能合併宣稱真人 lazer 或完整專案驗證。先前 checkpoint 保留於 [release-readiness.md](release-readiness.md)。
+兩套保留部署均維持 migration 22；新的 application images 與 migration 23／24／25 尚未部署。本次保留環境的例外為指定 client-test Caddy 的同容器設定重載，以及經玩家授權、僅在 client-test 資料庫套用的測試帳號 administrator role。下列結果各有來源與映像邊界，不能合併宣稱完整真人 lazer 或完整專案驗證。先前 checkpoint 保留於 [release-readiness.md](release-readiness.md)。
 
 ## 本輪來源與功能
 
@@ -78,7 +78,7 @@ Kaleidoscope 的 GUI 可讀取、驗證與保存部署網址，預設 `https://i
 
 2026-10-09 **15:04:16.1312462 UTC** 僅向原有 `illyaverse-client-test` Caddy `d065387aa23f7fb8447d3effe239b7ff0d242a3a45f425a6305777face91aef4` 發送 `SIGUSR1`。所選 config SHA-256 為 `06c3c30e7e93e98cabc584f9df6a2c35f0b9ee815257e9473332cfc5f0beffd6`；all-ten-container 保留檢查通過，IDs、images、StartedAt、mounts、health 與 restart state 維持原樣，兩份資料庫重載前後均為 22 migrations。沒有重建後端、網站或 Caddy，沒有套用 migration 23／24；一般 dev Caddy 仍使用先前的 active config。
 
-重載後的實際 HTTPS unauthenticated probes 確認 aliases 與 canonical paths 均取得既有 401、65-byte 錯誤回覆，沒有 `Location`，採預設 .NET hostname／chain 驗證，沒有自訂 TLS callback 或信任庫變更。[本次重載收據](../.artifacts/builds/integration-20261009/lazer-route-hotfix-20261009T145619Z-ab56370b579e45d385e2f587e12ae597/verification.json) SHA-256 為 `8080ae4511d0f490c29aa2103c401760aa1f10b53c102aa42ee78b83d395dd9e`。這證明請求已到達認證 handler；hotfix 後的真人登入、完整 profile DTO 讀取、聊天與遊玩仍待玩家重試。未重新封裝 GUI；後續 gateway direct aliases 已準備於來源，但未隨此次 proxy 修正部署。
+重載後的實際 HTTPS unauthenticated probes 確認 aliases 與 canonical paths 均取得既有 401、65-byte 錯誤回覆，沒有 `Location`，採預設 .NET hostname／chain 驗證，沒有自訂 TLS callback 或信任庫變更。[本次重載收據](../.artifacts/builds/integration-20261009/lazer-route-hotfix-20261009T145619Z-ab56370b579e45d385e2f587e12ae597/verification.json) SHA-256 為 `8080ae4511d0f490c29aa2103c401760aa1f10b53c102aa42ee78b83d395dd9e`。這份自動收據證明請求已到達認證 handler；玩家之後在本次對話回報使用同一份 GUI 成功登入。人員回報沒有被轉寫成 agent 的遊戲觀察，完整 profile DTO、聊天、遊玩、Score／Replay、多人、重連與退出清理仍需各自驗證。未重新封裝 GUI；後續 gateway direct aliases 未隨此次 proxy 修正部署。
 
 ## 後續聊天與管理來源
 
@@ -96,9 +96,31 @@ Kaleidoscope 的 GUI 可讀取、驗證與保存部署網址，預設 `https://i
 
 管理介面先通過 16 個瀏覽器案例與兩輪桌面／手機確認；後續權限競態與 staff 入口修正另外通過 9 個針對性案例。兩組是不同來源時點的證據，不合併宣稱全部案例在最終來源重跑。最後 9 個案例後只有測試檔的 Prettier 排版，application source 保持原樣。
 
-正式 Next.js source build 通過，590 份 application 檔案的雜湊已固定；974 個翻譯鍵在三個語系一致且格式通過。[source build 收據](../.artifacts/builds/moderation-web-20261009T151922Z-8ade655014e74a48ba50dce0b499eb08/verification-confirmed.json)不是新的 Docker image 或保留部署證據。成績審核的 protocol runner 已改成使用實際版本與明確的狀態轉換，2 份 Python syntax 和 8 個離線案例通過；新增 no-op／stale／ABA 的 live probes 尚未跑新的映像。[runner 收據](../.artifacts/tests/protocol-score-cas-20261009T152018Z-c23e65d1f1de416e9c513687f1050cf3/verification.json)。
+正式 Next.js source build 通過，590 份 application 檔案的雜湊已固定；974 個翻譯鍵在三個語系一致且格式通過。[source build 收據](../.artifacts/builds/moderation-web-20261009T151922Z-8ade655014e74a48ba50dce0b499eb08/verification-confirmed.json)不是新的 Docker image 或保留部署證據。成績審核的 protocol runner 已改成使用實際版本與明確的狀態轉換，2 份 Python syntax 和 8 個離線案例通過；[這份 runner 收據](../.artifacts/tests/protocol-score-cas-20261009T152018Z-c23e65d1f1de416e9c513687f1050cf3/verification.json)本身未執行新映像的 live probes，後續實跑另記於下一節。
 
-Migration 24 與新的 API／native source 必須一起部署；新的整合映像及 migration-24 recovery gate 仍待完成。目前保留資料庫為 migration 22，這些來源結果不能當作現有網站或真人聊天功能已更新的證據。
+Migration 24 與對應的 API／native source 必須一起部署。上述來源檢查之後，固定映像與 migration-24 recovery gate 已完成，範圍見下一節；目前保留資料庫仍為 migration 22，來源與隔離結果不能當作現有網站或真人聊天功能已更新的證據。
+
+## 固定來源的 migration-24 整合檢查
+
+本節只記錄 parent `012ef18e55de60759994dae018ebca6973b735dc` 與其五個 child commits 的已建成映像。測試 helper 來源為 parent `3882ca3021888b75c5a98faa8ae8d1a88d524d44`；它們不在這些 Dockerfile 的 COPY inputs 內。之後進行中的官方搜尋、玩家搜尋／管理、hover、BN 圖譜排名提案與 migration 25 都不屬於本節的 runtime 驗證範圍。
+
+| 元件 | 固定映像與個別建置收據 |
+| --- | --- |
+| Sanctuary | `sha256:e25936877d07df06cdab818cfb1d1f9411de642c893ff0d751788ce843e5430d`；[收據](../.artifacts/builds/integration-images-20261009T153322Z-6ea175d46a6a4566ae45e77b55e95751/sanctuary.verification.json)。 |
+| Resonance | `sha256:ccd36d0cf9a4869b4b46be97ca707400d8bd6621940e8998787ca7192050436f`；[收據](../.artifacts/builds/integration-images-20261009T153322Z-6ea175d46a6a4566ae45e77b55e95751/resonance.verification.json)。 |
+| Serendipity | `sha256:2f2ecc5878b92e363b7c3ffbc2df68f5ccd6e14e2dc43b783be5b22ecaff9bbc`；[收據](../.artifacts/builds/integration-images-20261009T153322Z-6ea175d46a6a4566ae45e77b55e95751/serendipity.verification.json)。 |
+
+[整組建置收據](../.artifacts/builds/integration-images-20261009T153322Z-6ea175d46a6a4566ae45e77b55e95751/verification.json) SHA-256 為 `b5cf63fe8010bb12deb369290097504545e08e3269a5a649b7a2849291cfb080`。三次建置均 exit 0，使用既有 locked BuildKit caches 與獨立 nonce tags；934 個實際輸入檔案、五個 child commits、24 份 migration checksums 前後一致，既有 `:local` aliases 保持原樣。18 個既有 Git-ignored 產物仍在這次實際 context 內，其個別 hashes 已記錄；沒有宣稱這次 context 與乾淨 clone 相同，也沒有刪除 cache 或修改 `.dockerignore`。
+
+Disposable helper 的[最終離線收據](../.artifacts/tests/disposable-image-inputs-20261009T154323Z-67b93141073c4c6286b8f8f1fd4d492f/verification.json) SHA-256 為 `612d1e714f0c90fbd9325299a37284d9f2233a8844d1df5e784f257c2bcf228a`：50 passed、0 failed（24 個新 helper cases、26 個既有 guards）。檢查 immutable image override 的嚴格驗證、inspect 身分不符拒絕、沒有 fallback／retag／pull、rendered configuration 與成功／失敗後的 temp cleanup。這些使用 injected command／browser runners，不是真實 Docker 或瀏覽器測試。
+
+固定 Sanctuary image 的[實際 backup／restore 收據](../.artifacts/tests/recovery-moderation-live-20261009T154257Z-d84f17f72f9549ddb2718ecfe6f1c5cd/verification.json) SHA-256 為 `7430f7c98360d6d10455d138f4cefa867757b57c7379ab50d6ad212506e72a8c`。自有可丟棄部署使用正式 guarded backup helper，還原後的 24 exact migration checksums、40 tables／45 synthetic rows、18 sequences、normalized schema，以及三個檔案的 bytes／ownership 全部相符。另確認 active silence、native silence cursor、私人 audit、user／score revisions、no-op／ABA trigger 行為和 rollback 保留，還原 readiness 通過。兩個自有 projects 的 containers／volumes／networks 均為零，temporary directory 已移除；沒有使用保留資料庫或玩家資料。
+
+固定兩個 backend images 的[完整隔離協定最終收據](../.artifacts/tests/protocol-full-callback-20261009T1556Z-97b3ea41761b4cb484003908ee721fff/final-verification.json) SHA-256 為 `059a892023626ac250cb3ef28007a74ef4eed1a3bbfb5247d1668e66f5ecac66`。協定 subprocess 通過 591 HTTP requests／68 check categories；category 數不是 assertion 數。涵蓋 stable／lazer synthetic auth、一般／RX 成績、server PP、Replay、聊天／多人、圖譜 package／archive、withdrawal 與 score-review no-op／stale／ABA 契約。實際自有 PostgreSQL 的 migration 1–24 均成功且 checksums 相符。此 run 的 Python runner SHA-256 為 `7f0a93c85b9cb361155ee1740728e0e3ff066067d48e71cfc55f129245b9741f`；後續 application source 不在這次驗證範圍。
+
+首次[協定失敗收據](../.artifacts/tests/protocol-full-baseline-20261009T154940Z-acf945707fc748dc87aa18272a8cc94d/verification.json)保留：fixture 對 solo completion 誤用 `no_event("UserScoreProcessed")`。僅修正 callback identity 與 exact-retry 不重複 callback 的期待後，對相同映像完整重跑，沒有藉此修改 production images。第二次[原始 wrapper 收據](../.artifacts/tests/protocol-full-callback-20261009T1556Z-97b3ea41761b4cb484003908ee721fff/verification.json)仍保留 failed，因 Docker cleanup 後 Windows loopback bind 短暫回報 `EADDRINUSE`；協定 subprocess 本身已通過。[首次清理復查](../.artifacts/tests/protocol-full-baseline-20261009T154940Z-acf945707fc748dc87aa18272a8cc94d/cleanup-verification.json)確認該次完整清理；[第二次清理復查](../.artifacts/tests/protocol-full-callback-20261009T1556Z-97b3ea41761b4cb484003908ee721fff/cleanup-verification.json)仍記錄 loopback port 尚不可 bind，`complete` 為 false。[最終清理收據](../.artifacts/tests/protocol-full-callback-20261009T1556Z-97b3ea41761b4cb484003908ee721fff/cleanup-final-verification.json)才確認 resources 為零、ports 可 bind、temporary environment／directory 已移除。原始失敗與中間清理紀錄沒有覆寫。
+
+保留 runtime 的兩套資料庫仍為 migration 22，以上三個 application images 尚未部署。玩家另已授權將 client-test 的測試帳號 id `2` 從 `player` 加入 `administrator`；2026-10-09 15:53:32 UTC 的[私人操作收據](../.artifacts/tests/illya-admin-grant-20261009T155331Z-5dad11a0762d48b397e5d3b256fb01e0/verification.json) SHA-256 為 `aa11efdb50faba83eaaecf19f72b29c76d0a37e137686fb2b7445d4909ac80f7`。本文件只摘要公開帳號 ID 與 role names；沒有公開 SQL／grant dump、email、session 或密鑰，也沒有重新部署服務或套用 migration。真人登入成功的依據仍是玩家在本次對話使用相同 GUI 的回報，這些隔離檢查沒有啟動遊戲或檢查玩家檔案。
 
 ## 部署狀態
 
