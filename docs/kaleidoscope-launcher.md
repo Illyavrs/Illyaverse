@@ -62,3 +62,5 @@ lazer 使用現有安裝、`client.realm` 和 `files` 圖譜資源，不需要�
 ```
 
 Debug 使用現有 `target/debug`，仍以 production 模式嵌入 Next.js 介面並啟用 Tauri `custom-protocol`。腳本驗證內嵌介面、配套外掛與目錄／ZIP 雜湊，不開啟遊戲；需要 Windows Rust/MSVC、.NET 10 SDK、Node.js 22 以上及相容 lazer。省略 `-BuildProfile` 時使用 Release；先前三次 Release 建置遇到 Windows error 5，原因尚未確認。建置選項或隔離測試通過都不能替代真正的 GUI、登入、Score／Replay、聊天、多人、重連與退出清理驗證，詳見[驗證記錄](verification.md)。
+
+建置快取預設使用來源工作區的 `target`。若已設定 `CARGO_TARGET_DIR`，腳本沿用該路徑；`-TargetDirectory` 可明確指定並優先於環境變數，相對路徑以來源工作區為基準解析。共用快取位於工作區外時，腳本只把成功建置後的指定 profile `kaleidoscope-desktop.exe` 複製到工作區內新的 `.artifacts/launcher-builds/` 目錄，記錄來源、複本的 SHA-256 與路徑，然後以複本驗證內嵌介面及組裝 ZIP。其餘封裝來源仍須位於工作區內；拒絕含 reparse point 的建置路徑，並保留既有快取與封裝。這項共用快取支援不代表先前的 Windows error 5 已修復。

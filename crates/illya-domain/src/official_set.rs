@@ -23,12 +23,21 @@ pub struct OfficialSetMetadata {
     pub source: String,
     pub tags: String,
     pub nsfw: bool,
+    /// Unknown upstream policy prohibits new acquisition; retained archives
+    /// keep their independent immutable-storage availability contract.
+    #[serde(default = "disabled_by_default")]
+    pub download_disabled: bool,
+    #[serde(default)]
+    pub archive_download_available: bool,
     pub submitted_date: String,
     pub last_updated: Option<String>,
     pub ranked_date: Option<String>,
     pub genre: OfficialSetClassification,
     pub language: OfficialSetClassification,
     pub beatmaps: Vec<OfficialSetDifficulty>,
+}
+fn disabled_by_default() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -219,6 +228,12 @@ impl OfficialSetMetadata {
             source: string(&value["source"], true)?,
             tags: bounded_string(&value["tags"], true, 4096)?,
             nsfw: value["nsfw"].as_bool().ok_or(INVALID)?,
+            download_disabled: value
+                .get("availability")
+                .and_then(|v| v.get("download_disabled"))
+                .and_then(Value::as_bool)
+                != Some(false),
+            archive_download_available: false,
             submitted_date: date(&value["submitted_date"])?,
             last_updated: optional_date(value.get("last_updated"))?,
             ranked_date: optional_date(value.get("ranked_date"))?,
@@ -439,6 +454,39 @@ mod tests {
                 .remove("max_combo");
             assert!(OfficialSetMetadata::from_upstream(&value, 42).is_ok());
         }
+    }
+
+    #[test]
+    fn unknown_download_policy_never_grants_new_acquisition() {
+        for policy in [
+            Value::Null,
+            json!({}),
+            json!({"download_disabled":true}),
+            json!({"download_disabled":"false"}),
+        ] {
+            let mut value = upstream();
+            value["availability"] = policy;
+            let dto = OfficialSetMetadata::from_upstream(&value, 42).unwrap();
+            assert!(dto.download_disabled);
+            assert!(!dto.archive_download_available);
+        }
+        let mut value = upstream();
+        value["availability"] = json!({"download_disabled":false});
+        let dto = OfficialSetMetadata::from_upstream(&value, 42).unwrap();
+        assert!(!dto.download_disabled);
+        assert!(
+            !dto.archive_download_available,
+            "metadata does not certify retained assets"
+        );
+        let mut encoded = serde_json::to_value(dto).unwrap();
+        encoded.as_object_mut().unwrap().remove("download_disabled");
+        encoded
+            .as_object_mut()
+            .unwrap()
+            .remove("archive_download_available");
+        let legacy: OfficialSetMetadata = serde_json::from_value(encoded).unwrap();
+        assert!(legacy.download_disabled);
+        assert!(!legacy.archive_download_available);
     }
 
     #[test]

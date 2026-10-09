@@ -2,7 +2,8 @@
   "version": 1,
   "checkpoint": "integration-20261009",
   "recorded_at_utc": "2026-10-09T11:19:13Z",
-  "status": "frozen_migration_24_images_protocol_recovery_verified_human_lazer_login_reported_retained_schema_22",
+  "status": "retained_client_schema_25_deployed_main_schema_22_source_26_27_not_live_human_native_pending",
+  "historical_checkpoint_notice": "Earlier objects retain their original source/image/time scopes, including schema22 and HOLD states. The latest retained runtime is recorded separately in retained_client_schema_25_deployment; no earlier gate certifies source26/27 or native gameplay.",
   "git_topology": {
     "projects": [
       "Serendipity",
@@ -598,7 +599,7 @@
     "native_gameplay_verified": false,
     "retained_services_redeployed": false
   },
-  "updated_at_utc": "2026-10-09T16:17:35.045Z",
+  "updated_at_utc": "2026-10-09T19:05:27.1853000Z",
   "post_deployment_source_fixes": {
     "retained_services_redeployed": false,
     "serendipity": "1179315",
@@ -1398,6 +1399,355 @@
       "Current and future application source changes are not validated by these prebuilt-image gates.",
       "Synthetic protocol and recovery checks do not certify the complete native-client checklist.",
       "All 61 historical raw references and initial failed receipts remain preserved."
+    ]
+  },
+  "retained_client_schema_25_deployment": {
+    "status": "passed",
+    "stage": "complete",
+    "project": "illyaverse-client-test",
+    "started_at_utc": "2026-10-09T18:21:49.9973732Z",
+    "finished_at_utc": "2026-10-09T18:25:08.0362119Z",
+    "source_parent": "de4653e464796d5e38af6d7caa0e710a80f9d070",
+    "source_schema": 22,
+    "target_schema": 25,
+    "main_schema": 22,
+    "images": {
+      "sanctuary": "sha256:fd8bf8d14b8dc44e1a015bd00f7ea5423f2b17ceb2a88dc4a7607738ddf8b31b",
+      "resonance": "sha256:2ca20da6acd0f00c8bd7c4931cc17e4a04d050b7b65ec0db496343ce18d80694",
+      "serendipity": "sha256:82f0bafbdb72db72d4b67e8d5e61a937fb415f55da7d271b9dad32be45ae2c80"
+    },
+    "evidence": {
+      "actual_deployment": {
+        "path": ".artifacts/builds/client-ranking-deploy-20261009T162512Z-e73784ed224b42f38e60d6a240b85445/run-deploy-20261009T182149Z-714b465ed7d1404cb3607fdae7b209d4/manifest-0010.json",
+        "sha256": "80596875067a818fe9964936fa302ad6fff13464017a8b1f9698a6e6a43ea26f"
+      },
+      "source_25_release_gates": {
+        "path": ".artifacts/builds/client-ranking-deploy-20261009T162512Z-e73784ed224b42f38e60d6a240b85445/release-checkpoint-20261009T181653Z-3cd11c3ff7b3401ebdca71f9a27f8804-release-gates-v1.json",
+        "sha256": "bb529d82ca43838d5445043f481e07d3055def75fe435ef4c0ae54b9649e14af"
+      },
+      "live_https": {
+        "path": ".artifacts/builds/client-ranking-deploy-20261009T162512Z-e73784ed224b42f38e60d6a240b85445/live-https-20261009T182533Z-02851906cfee4a5c9d0ce28a29f3d595.json",
+        "sha256": "579b189b78a5c87b04a8b68fa0439e6406ddc6cc5296a786941cc4125bc77cc4"
+      }
+    },
+    "verified_services": [
+      "sanctuary",
+      "resonance",
+      "serendipity"
+    ],
+    "preservation": {
+      "client_application_containers_replaced": 3,
+      "client_postgresql_and_caddy_preserved": true,
+      "all_main_container_ids_started_at_mounts_and_environment_preserved": true,
+      "client_postgresql_and_caddy_ids_started_at_mounts_and_environment_preserved": true,
+      "original_core_rows": true,
+      "original_stored_file_bytes_and_uid_gid_ownership": true,
+      "roles_and_sequences": true,
+      "rank_history": true,
+      "main_schema_22_unchanged": true,
+      "exact_schema_25_ledger": true,
+      "public_ca_unchanged": true,
+      "client_test_admin_account": {
+        "public_account_id": 2,
+        "public_username": "illya",
+        "administrator_role_unchanged": true
+      },
+      "retained_api_protocol_rust_log": "Private override preserves only the existing logging values against frozen Compose; every environment value remains equal before/after. No environment contents or hashes are published."
+    },
+    "private_backup": {
+      "complete": true,
+      "manifest_sha256": "664c969862c6b1aa49365226df65b32ce1bd534090331f59dfa64209141833c7",
+      "manifest_contents_read_for_documentation": false,
+      "backup_records_or_secrets_published": false
+    },
+    "actions": {
+      "application_startup_database_writes": true,
+      "manual_sql_mutations": false,
+      "automatic_rollback": false,
+      "builds": false,
+      "pulls": false,
+      "retagging": false,
+      "native_client_control": false
+    },
+    "source_25_gates": {
+      "scope": "Immutable source25 aggregate and its original gate references only; not new source26/27 evidence.",
+      "web_logical_cases": 134,
+      "web_unchanged_original_cases": 128,
+      "web_equivalent_copied_harness_corrections": 6,
+      "original_web_suites_all_passed": false,
+      "original_web_reports_preserved": true,
+      "protocol_http_requests": 593,
+      "protocol_check_categories": 68,
+      "protocol_categories_are_assertion_count": false,
+      "original_protocol_wrapper_delayed_cleanup_failure_preserved": true,
+      "final_protocol_cleanup_passed": true,
+      "exact_image_schema_25_recovery_passed": true,
+      "migration_source_rust_and_startup_fixture_scopes_preserved": true,
+      "final_offline_guards": 115,
+      "original_read_only_preflights": {
+        "failures": 2,
+        "reason": "Retained API/protocol RUST_LOG differed from frozen Compose render.",
+        "failed_before_activation": true,
+        "retained_mutations": false,
+        "receipts_preserved_in_release_aggregate": true
+      },
+      "checkpoint_serialization_correction": {
+        "reason": "Empty-root files dictionary JSON/dictionary checkpoint defect caught before Deploy.",
+        "new_coordinator_fresh_preflight_and_read_only_file_proof": true,
+        "prior_checkpoint_and_correction_receipts_preserved": true
+      }
+    },
+    "live_https": {
+      "utc": "2026-10-09T18:25:33.2502483Z",
+      "passed": 9,
+      "failed": 0,
+      "certificate_validation": "normal Windows trust; no bypass",
+      "cookies_or_credentials_used": false,
+      "users_2_status": 200,
+      "admin_page_status": 200,
+      "players_alias": {
+        "path": "/players/2?mode=0&variant=relax",
+        "status": 308,
+        "location": "/users/2?mode=0&variant=relax",
+        "exact_query_preserved": true
+      },
+      "nullable_ruleset_me_status": 401,
+      "authenticated_admin_or_native_game_behavior_verified": false,
+      "native_client_control": false
+    },
+    "human_native": {
+      "previous_lazer_login": "human_reported_success with the same GUI after the earlier client-test route hotfix",
+      "latest_schema_25_human_tests": "pending asynchronous player tests",
+      "pending": [
+        "Normal score submission",
+        "native gameplay",
+        "replay",
+        "chat",
+        "Relax",
+        "exit cleanup",
+        "multiplayer",
+        "reconnect",
+        "full native flow"
+      ],
+      "agent_native_game_started_or_inspected": false
+    },
+    "newer_source": {
+      "source_26_private_messaging": "source work; not deployed",
+      "source_27_catalogue_and_archives": "in progress; not deployed",
+      "validated_by_source_25_gates": false
+    },
+    "limits": [
+      "The deployment manifest proves the retained client-test cutover; the release aggregate itself did not execute or authorize deployment.",
+      "The main deployment remains schema22, with all retained main container and data guards preserved.",
+      "Trusted unauthenticated HTTPS status checks do not certify authenticated administration or native clients.",
+      "Previous human-reported lazer login and pending schema25 gameplay checks remain separate evidence scopes.",
+      "Historical failed browser, protocol cleanup, Preflight and checkpoint receipts remain preserved; no source26/27 runtime or native certification is claimed.",
+      "Ignored artifacts are local evidence and are not included in a normal Git clone."
+    ]
+  },
+  "source_26_27_integration_checkpoint": {
+    "status": "integrated_source_primary_code_gates_passed_schema_27_runtime_pending_not_deployed",
+    "source_migration_count": 27,
+    "retained_runtime": {
+      "client_test_schema": 25,
+      "main_schema": 22,
+      "new_source_26_27_images_deployed": false,
+      "native_client_certified": false
+    },
+    "evidence": {
+      "pm_backend": {
+        "path": ".artifacts/workspaces/pm-receipts-67b996f3fda34add873e8ee3a6448543/.artifacts/tests/pm-receipts-67b996f3fda34add873e8ee3a6448543/verification-confirmed.json",
+        "sha256": "dc21ced62b225d6429f72d78b651a89088fb061926994fe3736ddbe8915a46d5"
+      },
+      "pm_browser": {
+        "path": ".artifacts/workspaces/pm-receipts-67b996f3fda34add873e8ee3a6448543/.artifacts/tests/pm-equal-marker-ui/verification-confirmed.json",
+        "sha256": "828859e077ba2312503974f5d4f6ebac0b4b4bbdd716f446715addfafd0d8a89"
+      },
+      "catalogue_backend": {
+        "path": ".artifacts/workspaces/effective-catalogue-bd3966bd302142f1baf6dcb05af35640/.artifacts/handoff/effective-catalogue-62-5bfb3384c353494e96b91b501f8c0d90/aggregate-verification.json",
+        "sha256": "3bd2d76978e13454e4de2541dac8d79401b0f5056e2c0e21a85ebb0065d27efd"
+      },
+      "catalogue_browser": {
+        "path": ".artifacts/workspaces/effective-catalogue-bd3966bd302142f1baf6dcb05af35640/.artifacts/tests/server-catalogue-webgate/verification-final.json",
+        "sha256": "569c0521616485855e012e4b2810be69bb9f46c871a12040316c4340f2c1bcba"
+      },
+      "contiguous_schema_26_27": {
+        "path": ".artifacts/tests/schema27-20261009T184727314Z-24c409a5-0dab-4735-9df4-67ef5b9460be/composition-verdict.json",
+        "sha256": "db4345233678ffe3bf448014363878a399fa5756dd358bea6ed9061d90e24201"
+      },
+      "initial_node_schema_fixture_failure": {
+        "path": ".artifacts/tests/schema27-20261009T184315797Z-601ab314-3d1c-4f59-8e94-cb8ce0e5fc5e/verification.json",
+        "sha256": "3f4d5918171b28e5929a333af3b6f02f4960bb970573ac4b45594bafd84b21f2"
+      },
+      "archive_website": {
+        "path": ".artifacts/workspaces/archive-acquisition-91d6606738714598b6f6b9fca8496b7d/.artifacts/tests/website-archive-downloads-20261010-8b7dc5b882d841efb3dc0b17d63a48ed/verification-final.json",
+        "sha256": "0f830ec620f546a420c9a1556508e5593964f6dbdddc19ac011005adf7dd417f"
+      },
+      "composed_web_static_checks": {
+        "path": ".artifacts/tests/source26-27-web-composition-c7042bc9f36b48f88c2a18269e217afa/run-meta.txt",
+        "sha256": "868452361c97a7d9dc8f0cd4f9a7f39604737c783a6771e81785cd3926cfc4ad"
+      },
+      "composed_locale_parity": {
+        "path": ".artifacts/tests/source26-27-web-composition-c7042bc9f36b48f88c2a18269e217afa/locale-parity.stdout.log",
+        "sha256": "dedba147b34cf9b0154d4d9c0e3f9805773b64eb405dbb64bde0dbdb84cefa05"
+      },
+      "primary_selected_browser_first_phases": {
+        "path": ".artifacts/tests/source26-27-web-composition-f5b5acbb29984d4faee073d7faaaeec8/run-meta.txt",
+        "sha256": "84510e7af3efe3d59c2ed5cac87452e20d947113df100b0f276fc1b1f3d6ac06"
+      },
+      "primary_selected_archive_browser": {
+        "path": ".artifacts/tests/source26-27-web-composition-ac630d4e47dc4547817aa15945ef39d0/run-meta.txt",
+        "sha256": "00177458170d462430f44a794ccb09bd9e8ed8e8eca874df3ae64ac19dd08c1e"
+      },
+      "final_33_file_source_manifest": {
+        "path": ".artifacts/archive-source-integration/final-source-manifest.json",
+        "sha256": "a0a6373744b23207f5200405e04e573116bfb8ede02ee4f5fdaec7f929c5f448"
+      },
+      "archive_backend_step_level_composite": {
+        "path": ".artifacts/workspaces/archive-acquisition-91d6606738714598b6f6b9fca8496b7d/.artifacts/tests/archive-acquisition-20261009T185912Z-9ae65c4a810f435dbda233ccd3588b0d/composite-verification.json",
+        "sha256": "f00ea96fd3da8bb2fec0252543a83204d859376ddc49603cffcbd0bb55d0ec30"
+      },
+      "primary_rust_composition": {
+        "path": ".artifacts/tests/source27-primary-rust-composition-0afb48fbfb0e424ca56a433a5322248f/verdict.json",
+        "sha256": "b179e88112b437998d7429d4ec29723a60a8eeca77420f635f6611bb0f8c0ab7"
+      },
+      "primary_rust_exact_preservation": {
+        "path": ".artifacts/tests/source27-primary-rust-composition-0afb48fbfb0e424ca56a433a5322248f/preservation.json",
+        "sha256": "6efce7e8fd8483b88b6d31aac884c70dd8104a1014b964361124df58e9e100b9"
+      }
+    },
+    "isolated_pm_source_26": {
+      "actual_postgresql_cases": 2,
+      "unit_cases": 7,
+      "clippy": true,
+      "late_lower_id_commits_remain_unread": true,
+      "original_before_failure_preserved": true,
+      "original_wrapper_failure_after_passing_phase_preserved": true,
+      "final_intercepted_browser_cases": 27,
+      "original_browser_passed": 26,
+      "original_browser_timed_out": 1,
+      "label_only_harness_correction": "Retry -> Try again; application hashes remained unchanged across browser runs.",
+      "native_client_execution": false
+    },
+    "isolated_catalogue_source_27": {
+      "unique_executed_cases": 62,
+      "unit_cases": 9,
+      "owned_postgresql_cases": 53,
+      "clippy_warnings_denied": true,
+      "format": true,
+      "isolated_ledger": "Migrations 1-25 plus 0027; 0026 excluded. This is not the contiguous 25-to-27 upgrade proof.",
+      "final_fixture_browser_cases": 82,
+      "original_browser_passed": 64,
+      "original_browser_failed": 14,
+      "original_browser_collected": 78,
+      "original_failures_preserved": true,
+      "two_runs_not_combined_as_160_passed": true,
+      "native_client_execution": false,
+      "retained_services_touched": false
+    },
+    "contiguous_schema_composition": {
+      "status": "passed",
+      "unique_synchronous_postgresql_cases": 6,
+      "schema_26_previous_versions": [0, 24, 25],
+      "schema_27_previous_versions": [0, 25, 26],
+      "contiguous_1_to_27_ledger_and_checksums": true,
+      "historical_1_to_25_exact_lf_bytes": true,
+      "current_source_hashes_match_receipt": true,
+      "initial_node_fixture_failure_preserved": true,
+      "owned_containers_absent": true,
+      "retained_migrations_applied": false
+    },
+    "isolated_archive_website": {
+      "focused_total": 18,
+      "transport_unit_cases": 6,
+      "actual_browser_cases": 12,
+      "affected_existing_browser_cases": 6,
+      "bounded_capture_batches": 2,
+      "confirmed_images": 7,
+      "initial_failed_reports_preserved": true,
+      "owned_loopback_zip_fixture_only": true,
+      "real_provider_tested": false,
+      "plain_download_anchor_source_audited": true,
+      "full_non_javascript_availability_flow_certified": false,
+      "native_client_execution": false
+    },
+    "archive_provider_source_configuration": {
+      "url_template_env": "OSU_ARCHIVE_URL_TEMPLATE",
+      "default": "",
+      "template": "One {set_id} placeholder in an HTTPS path; operator-provided provider.",
+      "optional_redirect_hosts_env": "OSU_ARCHIVE_REDIRECT_HOSTS",
+      "empty_template_metadata_only_sets_downloadable": false,
+      "real_mirror_or_native_proof": false
+    },
+    "archive_backend_step_level_composite": {
+      "actual_postgresql_cases": 115,
+      "unit_cases": 13,
+      "both_service_clippy_checks": true,
+      "all_selected_checks_passed": true,
+      "earlier_whole_receipts_all_passed": false,
+      "preserved_prior_whole_receipt_failures": 4,
+      "style_and_fixture_deltas_recorded": true,
+      "cleanup_passed": true,
+      "retained_services_touched": false,
+      "native_client_executed": false,
+      "external_archive_fetch_executed": false
+    },
+    "primary_selected_browser_composition": {
+      "passed": 14,
+      "failed": 0,
+      "appearance": 4,
+      "chat": 2,
+      "server_catalogue": 3,
+      "public_official": 2,
+      "archive": 3,
+      "application_or_test_changes_for_rerun": false,
+      "initial_missing_api_rewrite_harness_failure_preserved": true,
+      "initial_partial_archive_run": "One passed and two skipped; not the final three-case archive proof.",
+      "all_browser_suites_rerun": false,
+      "real_provider_or_native_client_tested": false
+    },
+    "primary_rust_composition": {
+      "status": "passed",
+      "check_locked_tests_sanctuary_resonance": true,
+      "all_target_clippy_sanctuary_resonance_domain_warnings_denied": true,
+      "workspace_rustfmt": true,
+      "pure_official_set_tests": 6,
+      "rust_cargo_toolchain_sql_input_count": 176,
+      "source_migrations": 27,
+      "before_after_input_differences": 0,
+      "before_after_inputs_manifest_sha256": "b1583f5c68527a1bfd96050f5a227676b99a7d9a47d20309378f3ecdb374fc03",
+      "preserved_exact_receipt_and_log_files": 29,
+      "original_temp_references_are_historical": true,
+      "source_edits_by_verifier": 0,
+      "postgresql_suites_repeated": false,
+      "stock_client_verification": false
+    },
+    "composition_phases": {
+      "typescript": "passed in the recorded composed-source static snapshot",
+      "scoped_eslint": "passed in the recorded composed-source static snapshot",
+      "locale_keys": 1099,
+      "locale_key_parity": true,
+      "recorded_prettier_failure": "The 18:54 static snapshot exited 1 for five files; preserved rather than rewritten as passed.",
+      "format_only_followup": {
+        "source_manifest_files": 33,
+        "ts_tsx_whitespace_and_normalized_ast_equivalent_files": 5,
+        "locale_deep_json_value_equivalent_files": 3,
+        "final_owned_prettier_files": 12,
+        "final_owned_prettier_passed": true
+      },
+      "full_rust_composition": "Primary compilation, all-target Clippy, workspace formatting and six pure domain tests passed; no PostgreSQL rerun or stock-client verification.",
+      "final_browser_composition": "14 selected primary intercepted/loopback cases passed; not all browser suites.",
+      "archive_backend_final_aggregate": "Step-level composite passed 115 actual PostgreSQL and 13 unit cases; original whole failures preserved.",
+      "new_fixed_schema_27_cohort": "pending",
+      "new_schema_27_startup_protocol_recovery_and_retained_deployment": "pending"
+    },
+    "limits": [
+      "The recorded primary source gates cover compilation, selected browser fixtures and separate isolated PostgreSQL scopes; they do not certify a new image cohort or all browser suites.",
+      "Client-test remains deployed schema25 and main remains schema22; no source26/27 retained deployment is claimed.",
+      "The catalogue projection and the contiguous synchronous migration gate are separate ledger scopes.",
+      "Original PM, catalogue, archive and Node fixture failures remain archived; earlier source25 receipts and deployment references remain unchanged.",
+      "Owned PostgreSQL and intercepted/loopback browser fixtures do not prove real provider availability or stock-client behavior.",
+      "Normal scores, gameplay, replay, chat, Relax, multiplayer, reconnect and cleanup remain pending human verification in the latest retained schema25 environment."
     ]
   }
 }

@@ -1,8 +1,56 @@
 # 2026-10-09 整合 checkpoint
 
-先前 guarded deployment 與兩次 lazer 啟動失敗的修正證據已保留。最新來源改為沿用原本 `game.ini` 遊戲偏好，只分離私服帳號，並在 GUI 設定保存每次啟動使用的 HTTPS 網址；完整 managed／Rust／合成封裝檢查已通過，新的 Debug GUI 包已建成並通過內嵌介面與目錄／ZIP 完整性驗證。玩家第一次登入取得 OAuth token 後，客戶端產生的 `/api/v2/me/` 路徑收到 404；client-test Caddy 套用限定路徑的內部改寫後，玩家已在本次對話回報使用相同 GUI 成功登入。這是人員回報，agent 沒有啟動或檢查玩家遊戲。另已完成固定 migration-24 映像的隔離協定與 backup／restore 檢查；後續新來源、完整真人遊玩與原始社群目標仍待驗證。
+目前保留的 `illyaverse-client-test` 已於 **2026-10-09 18:25:08 UTC** 完成 schema 22 → 25 部署，Sanctuary、Resonance、Serendipity 三個 application services 使用固定來源與映像；玩家圖譜排名提案、Beatmap Nominator 與新版審核流程已在這套環境部署。主部署仍保留 schema 22。新的 source-26 私訊與 source-27 catalogue／archive 工作仍屬來源變更，尚未部署，不能用下列舊 gate 宣稱已驗證。
 
-兩套保留部署均維持 migration 22；新的 application images 與 migration 23／24／25 尚未部署。本次保留環境的例外為指定 client-test Caddy 的同容器設定重載，以及經玩家授權、僅在 client-test 資料庫套用的測試帳號 administrator role。下列結果各有來源與映像邊界，不能合併宣稱完整真人 lazer 或完整專案驗證。先前 checkpoint 保留於 [release-readiness.md](release-readiness.md)。
+玩家先前已回報使用同一份 GUI 成功登入 lazer；這是人員回報，agent 沒有啟動或檢查玩家遊戲。最新 schema-25 環境的 Normal 送分、真人 gameplay、Replay、聊天、RX 與退出清理仍等待玩家非同步測試；多人、重連與完整原生流程也未因此取得驗證。先前 guarded deployment、兩次啟動失敗及來源／隔離檢查的原始證據與限制保留於下方歷史 checkpoint 和 [release-readiness.md](release-readiness.md)。
+
+## 已部署的 client-test schema 25
+
+這次部署固定 parent `de4653e464796d5e38af6d7caa0e710a80f9d070`，只替換 client-test 的三個 application containers。部署前完成私人 backup；client-test PostgreSQL／Caddy，以及主部署所有 containers 的 IDs、StartedAt、mounts、環境值與保留 guard 均通過。原 core rows、stored file bytes／ownership、sequences 與 rank history 保留，client-test 帳號 `illya`（公開 id `2`）的 administrator role 未改變。主資料庫的 schema 22 未改變，client-test 的 migration 1–25 ledger 精確相符。映像不重新建置、pull 或 retag；只有正常 application startup 套用資料庫 migration。
+
+| 已部署服務 | 固定映像 |
+| --- | --- |
+| Sanctuary | `sha256:fd8bf8d14b8dc44e1a015bd00f7ea5423f2b17ceb2a88dc4a7607738ddf8b31b` |
+| Resonance | `sha256:2ca20da6acd0f00c8bd7c4931cc17e4a04d050b7b65ec0db496343ce18d80694` |
+| Serendipity | `sha256:82f0bafbdb72db72d4b67e8d5e61a937fb415f55da7d271b9dad32be45ae2c80` |
+
+[實際 deployment manifest](../.artifacts/builds/client-ranking-deploy-20261009T162512Z-e73784ed224b42f38e60d6a240b85445/run-deploy-20261009T182149Z-714b465ed7d1404cb3607fdae7b209d4/manifest-0010.json) 記錄 `status: passed`、`stage: complete`，SHA-256 為 `80596875067a818fe9964936fa302ad6fff13464017a8b1f9698a6e6a43ea26f`。文件只保存私人 backup manifest 的 SHA-256 `664c969862c6b1aa49365226df65b32ce1bd534090331f59dfa64209141833c7`，不公開 backup records、環境內容、帳號憑證或密鑰。
+
+[source-25 gate aggregate](../.artifacts/builds/client-ranking-deploy-20261009T162512Z-e73784ed224b42f38e60d6a240b85445/release-checkpoint-20261009T181653Z-3cd11c3ff7b3401ebdca71f9a27f8804-release-gates-v1.json) SHA-256 為 `bb529d82ca43838d5445043f481e07d3055def75fe435ef4c0ae54b9649e14af`，保存固定來源、建置與各 gate 引用。網站是 **128 個未改動的原案例，加上 6 個明確修正 copied harness 的等價案例，共 134 logical cases**；不是所有原 suites 都通過。協定是 593 HTTP requests／68 check categories，類別數不是 assertion 數，原 wrapper delayed-cleanup failure 保留，最終清理證據另存。固定 schema-25 recovery、migration source、Rust 與 startup fixture gate 各自保留其範圍，不能當作 source-26／27 或真人測試結果。
+
+原 coordinator 的兩次 read-only Preflight 因既有 API／protocol 的 `RUST_LOG` 與 frozen Compose render 不同而在 activation 前失敗，未改動保留環境。後續 private override 只沿用這兩個既有 logging 值，before／after 所有環境值仍精確相同。另一個 empty-root files dictionary checkpoint serialization 缺陷也在 Deploy 前被發現；修正後的 115 offline guard cases、實際 read-only checkpoint/file proof 與新的 Preflight 才支援這次成功部署。失敗 manifest 與修正證據均保留於 aggregate，沒有覆寫為成功。
+
+部署後 **18:25:33 UTC** 的 [HTTPS receipt](../.artifacts/builds/client-ranking-deploy-20261009T162512Z-e73784ed224b42f38e60d6a240b85445/live-https-20261009T182533Z-02851906cfee4a5c9d0ce28a29f3d595.json) SHA-256 為 `579b189b78a5c87b04a8b68fa0439e6406ddc6cc5296a786941cc4125bc77cc4`，9／9 通過，使用正常 Windows trust、沒有 TLS bypass、cookies 或 credentials。`/users/2` 與 `/admin` 回傳 200；`/players/2?mode=0&variant=relax` 回傳 308，`Location` 精確為 `/users/2?mode=0&variant=relax`；`/api/v2/me/` 回傳預期未登入的 401。這些唯讀 HTTPS checks 不證明登入後的管理權限或原生遊玩，沒有控制真人 client。
+
+## 後續 source-26／27 整合（尚未部署）
+
+後續私訊 read receipts、effective catalogue 與官方完整 archive acquisition 已合入目前來源，migration 來源為 1–27；保留 client-test 仍為 schema 25，主部署仍為 schema 22。新的固定 schema-27 cohort 尚待完成，以下隔離來源收據不能取代最終 composition gates，也不能回填成現有部署或真人 client 證據。
+
+| 範圍 | Schema | 狀態 |
+| --- | --- | --- |
+| 保留 client-test | 25 | 已部署；上節 manifest 與 HTTPS 收據。 |
+| 主部署 | 22 | 保留未變。 |
+| 目前整合來源 | 27 | 來源檢查；新映像、startup、protocol、recovery 與保留部署仍待完成。 |
+
+| 隔離來源檢查 | 已確認範圍 |
+| --- | --- |
+| Source 26 私訊 | [Backend 收據](../.artifacts/workspaces/pm-receipts-67b996f3fda34add873e8ee3a6448543/.artifacts/tests/pm-receipts-67b996f3fda34add873e8ee3a6448543/verification-confirmed.json)：2 個實際 PostgreSQL cases、7 個 unit cases 與 Clippy；低 ID 的晚提交訊息仍保持未讀。原始 before assertion 與 passing phase 後的 wrapper failure 保留。[UI 收據](../.artifacts/workspaces/pm-receipts-67b996f3fda34add873e8ee3a6448543/.artifacts/tests/pm-equal-marker-ui/verification-confirmed.json)：27 個 intercepted Chromium cases，原 26 passed／1 timeout 與 label-only harness 修正保留。 |
+| Source 27 catalogue | [Backend aggregate](../.artifacts/workspaces/effective-catalogue-bd3966bd302142f1baf6dcb05af35640/.artifacts/handoff/effective-catalogue-62-5bfb3384c353494e96b91b501f8c0d90/aggregate-verification.json)：62 unique cases＝9 unit＋53 owned PostgreSQL，Clippy／format 通過；隔離 ledger 是 1–25 加 27，排除 26。[網站 fixture 收據](../.artifacts/workspaces/effective-catalogue-bd3966bd302142f1baf6dcb05af35640/.artifacts/tests/server-catalogue-webgate/verification-final.json)：最終 82／82 browser cases，原 64／78 與 14 個 failures 保留，不累加為 160 個通過案例。 |
+| 連續 schema 26／27 | [Composition verdict](../.artifacts/tests/schema27-20261009T184727314Z-24c409a5-0dab-4735-9df4-67ef5b9460be/composition-verdict.json)：6 個同步實際 PostgreSQL cases，26 fresh／24／25 與 27 fresh／25／26 全部通過，完整 1–27 ledger 與 checksums 相符；歷史 1–25 LF bytes 相同。[原 Node fixture failure](../.artifacts/tests/schema27-20261009T184315797Z-601ab314-3d1c-4f59-8e94-cb8ce0e5fc5e/verification.json)保留，沒有覆寫。 |
+| Source 27 archive 網站 | [最終收據](../.artifacts/workspaces/archive-acquisition-91d6606738714598b6f6b9fca8496b7d/.artifacts/tests/website-archive-downloads-20261010-8b7dc5b882d841efb3dc0b17d63a48ed/verification-final.json)：18 focused cases＝6 transport unit＋12 browser，另有 6 existing browser cases；兩次 bounded capture batches 確認 7 張圖。原失敗 reports 保留，僅用 owned loopback ZIP fixture，沒有測試真實 provider。 |
+| Source 27 archive backend | [Step-level composite](../.artifacts/workspaces/archive-acquisition-91d6606738714598b6f6b9fca8496b7d/.artifacts/tests/archive-acquisition-20261009T185912Z-9ae65c4a810f435dbda233ccd3588b0d/composite-verification.json)：115 actual PostgreSQL cases、13 unit cases 與兩個服務的 Clippy。四份原 whole receipts 仍為 failed；兩項 style／fixture delta 與 passing steps 分別保存，沒有把原收據全部標成通過。 |
+
+合併來源的 TypeScript、scoped ESLint 與三語系 1099 keys parity 已通過。[33-file source manifest](../.artifacts/archive-source-integration/final-source-manifest.json)保存五份 TS／TSX 的 whitespace／normalized AST equality 與三份 locale JSON 的 deep value equality；最後 12 個 owned files 的 Prettier check 通過。[18:54 composition record](../.artifacts/tests/source26-27-web-composition-c7042bc9f36b48f88c2a18269e217afa/run-meta.txt)的五個檔案 format warnings 保留為歷史結果。
+
+Primary 的 selected browser composition 為 **14／14**：appearance 4、chat 2、server catalogue 3、public official 2、archive 3。前四個範圍見[共同 run record](../.artifacts/tests/source26-27-web-composition-f5b5acbb29984d4faee073d7faaaeec8/run-meta.txt)，archive 見[最終 API rewrite fixture 收據](../.artifacts/tests/source26-27-web-composition-ac630d4e47dc4547817aa15945ef39d0/run-meta.txt)；初次 missing-API-rewrite harness failure／partial archive run 保留，沒有修改 application 或 tests 來完成重跑。這是 selected intercepted/loopback composition，不是所有 browser suites。
+
+[Primary Rust verdict](../.artifacts/tests/source27-primary-rust-composition-0afb48fbfb0e424ca56a433a5322248f/verdict.json) 為 PASS：Sanctuary／Resonance `check --locked --tests`、兩個服務加 domain 的 all-target Clippy（`-D warnings`）、workspace rustfmt 與 6 個 pure `official_set` tests 通過。176 份 Rust／Cargo／toolchain／SQL inputs（包括 migration 1–27）前後雜湊相同；沒有來源修改或 PostgreSQL 重跑。[Preservation index](../.artifacts/tests/source27-primary-rust-composition-0afb48fbfb0e424ca56a433a5322248f/preservation.json)保存 29 份 exact copied receipts／logs，verdict 中的原 Temp 路徑僅為歷史來源。這些 primary code gates 不等於 runtime deployment：新的 schema-27 映像、startup、full protocol、recovery 與保留部署仍待完成。
+
+Archive acquisition 的來源設定是 optional `OSU_ARCHIVE_URL_TEMPLATE`：HTTPS path 包含一個 `{set_id}`，預設空字串，未設定時 metadata-only sets 仍不能下載完整 `.osz`。額外 redirect hosts 可用 `OSU_ARCHIVE_REDIRECT_HOSTS`。Website 收據驗證 bounded transport、stored archive 與 plain download anchor 的 fixture 行為；初次 availability metadata 仍需要 JavaScript，沒有證明完整無 JavaScript 流程、真實 mirror、stock client 或真人送分。所有新引用與 SHA-256 保存在[證據索引](current-integration-20261009-evidence.json)，舊 source-25 deployment 與 gates 保持原樣。
+
+## 先前 checkpoint 的歷史範圍
+
+以下各節記錄當時的來源、映像與保留狀態；其中 schema 22、HOLD 與「尚未部署」描述屬於該節的時間點。最新 client-test 狀態以上節的 schema-25 manifest 為準，舊檢查與失敗紀錄沒有改寫成新來源證據。
 
 ## 本輪來源與功能
 
@@ -122,7 +170,7 @@ Disposable helper 的[最終離線收據](../.artifacts/tests/disposable-image-i
 
 保留 runtime 的兩套資料庫仍為 migration 22，以上三個 application images 尚未部署。玩家另已授權將 client-test 的測試帳號 id `2` 從 `player` 加入 `administrator`；2026-10-09 15:53:32 UTC 的[私人操作收據](../.artifacts/tests/illya-admin-grant-20261009T155331Z-5dad11a0762d48b397e5d3b256fb01e0/verification.json) SHA-256 為 `aa11efdb50faba83eaaecf19f72b29c76d0a37e137686fb2b7445d4909ac80f7`。本文件只摘要公開帳號 ID 與 role names；沒有公開 SQL／grant dump、email、session 或密鑰，也沒有重新部署服務或套用 migration。真人登入成功的依據仍是玩家在本次對話使用相同 GUI 的回報，這些隔離檢查沒有啟動遊戲或檢查玩家檔案。
 
-## 部署狀態
+## 11:14 UTC 部署狀態（歷史）
 
 2026-10-09 19:14:49（UTC+08:00；11:14:49 UTC）的 guarded deployment 已通過。兩套部署各重建 Sanctuary、Resonance、Serendipity，共六個 application services，十個容器均 running／healthy。部署使用前述兩個 backend 映像，以及通過最後 10 項 account-session 確認的 Web `sha256:36f52e19775bfc4825dcde1a82d5aa145cbff97943188cdd651ec983fe4114aa`。原資料與 stored bytes、schema 22、環境值、排名觀察，以及四個 PostgreSQL／Caddy 的容器身分、image、時間、health 和 mounts 的保留 guard 全部通過；沒有以健康狀態推論原生遊戲成功。
 

@@ -28,7 +28,7 @@ bounded singleflight、四個 discovery slots、短期失敗快取及 429 Retry-
 官方 metadata 證明 difficulty 身分與 checksum。音訊、圖片、影片及其他
 assets 是營運者所提供的原始內容；metadata 無法逐一證明這些 assets 是官方
 下載的原物。伺服器保存上傳封包的 SHA-256、長度、完整難度 manifest 及
-原始 bytes，不重包、不改寫 `.osu`，也不使用第三方 mirror 或官方玩家密碼。
+原始 bytes，不重包、不改寫 `.osu`。這個手動匯入流程不使用 mirror 或官方玩家密碼。
 
 官方 set response 的 `beatmaps` 是原始成員集合；`converts` 不當作額外 `.osu`。
 已標示 convert 或 deleted 的 member、畸形 metadata 和 checksum 不一致會拒絕。
@@ -39,8 +39,9 @@ assets 是營運者所提供的原始內容；metadata 無法逐一證明這些 
 
 現有 `public` client-credentials token 可查 metadata。官方完整 `.osz` 下載
 另有登入帳號與 privilege 檢查，並重新導向 mirror；本流程讓營運者提供封包，
-沒有宣稱現有 token 可以自動下載完整官方封包。受控官方帳號 OAuth 下載連線、
-網站的官方 metadata 搜尋可帶入匯入表單；完整封包自動取得仍是後續工作。
+沒有宣稱現有 token 可以自動下載完整官方封包。網站的官方 metadata 搜尋可帶入匯入表單。
+另有預設關閉的[完整封包暫存取得](official-archive-acquisition.md)，必須由營運者設定
+固定 HTTPS provider；它不發布圖譜、不指定 uploader，也不更改這個持久匯入契約。
 
 ## 重試與衝突
 

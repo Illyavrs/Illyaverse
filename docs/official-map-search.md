@@ -1,10 +1,14 @@
 # 官方圖譜搜尋
 
-`/beatmaps` 預設直接搜尋 osu! 官方圖譜，公開訪客也能使用；選擇「本站」才搜尋本站保存的圖譜與社群上傳。搜尋詞與篩選在提交時送出，不逐字呼叫官方。圖譜卡片維持等高緊湊排版，難度摘要可用 hover、鍵盤或觸控查看完整名稱與星數，預覽項目沒有連結。
+`/beatmaps` 預設直接搜尋 osu! 官方圖譜，公開訪客也能使用；選擇「本站」使用[本站有效狀態目錄](server-beatmap-catalogue.md)，包含保存的圖譜、社群上傳及已核准並驗證完整 metadata 的官方圖譜。搜尋詞與篩選在提交時送出，不逐字呼叫官方。圖譜卡片維持等高緊湊排版，難度摘要可用 hover、鍵盤或觸控查看完整名稱與星數，預覽項目沒有連結。
 
 `GET /api/v1/official/beatmapsets/search` 提供公開搜尋，`GET /api/v1/official/beatmapsets/{id}` 提供整組 metadata；兩者不需要匯入權限，也不會自動匯入或新增任何圖譜。`/beatmaps/official/{id}` 顯示官方整組難度與 metadata，只在 API 已核對本站難度 ID／checksum 時提供相應本站頁面。
 
-整組下載是 `.osz`。只有相應已保存難度具備完整封包時才提供本站下載，否則顯示既有 osu.direct 來源並遵守官方 `download_disabled`。官方搜尋結果的狀態、本站保存狀態與本站審核是不同資料；未保存的官方結果不顯示虛構的本站 leaderboard。
+整組下載是 `.osz`。下載能力區分已保存的完整封包，以及營運者明確啟用的
+[已驗證暫存取得](official-archive-acquisition.md)。新的暫存取得遵守已知官方
+`download_disabled=false`，未知狀態不可取得；已保存的原始封包維持既有讀取契約。
+未啟用 provider 時不以 `.osu` 假裝整組下載。官方搜尋結果的狀態、本站保存狀態與本站審核
+是不同資料；未保存的官方結果不顯示虛構的本站 leaderboard。
 
 ## 管理員匯入
 
@@ -30,9 +34,11 @@
 不是本站加入日期。URL query encoding 保留 Unicode 搜尋詞和 cursor 裡的 `+`、`/`、`=`。
 
 回覆是 `{items,total,cursor_string}`。每筆有官方 set ID、標題、演出者、圖師、
-官方狀態、固定官方 cover／set URL、官方 download-disabled 標記、原始非 convert
+狀態摘要、固定官方 cover／set URL、官方 download-disabled 標記、原始非 convert
 的 difficulty 摘要，以及獨立的 `local` 保存數量／封包／withdrawn 摘要。
-不回傳上游 token、原始 JSON、儲存路徑或撤下原因。官方狀態與本站 moderation 是不同資料。
+`archive_download_available` 與 same-origin `archive_download_url` 區分下載能力；
+`local.archive_available` 及各 difficulty 的 `archive_available` 仍只表示實際保存的封包。
+不回傳上游 token、原始 JSON、儲存路徑或撤下原因。搜尋的成員、排序、total、cursor 與 status 篩選由官方目錄決定；回覆中的各 difficulty 狀態重新套用本站決定。混合狀態的官方 set 摘要保留上游標籤，因此 set 標籤不代表每張 difficulty 的有效狀態。官方 Pending／Graveyard 中一張被本站 Ranked，不會加入官方 Ranked 搜尋；請使用本站目錄查詢本站有效狀態。
 
 ## 限流與快取
 
@@ -60,7 +66,8 @@
 | 502 `official_search_invalid`／`official_api_failed`／`official_auth_failed` | 上游資料、服務或營運者授權問題；不當成零結果 |
 
 完整 `.osz` 自動下載需要另外的授權或明確設定的封包來源；搜尋成功不代表已下載音樂、
-背景或全部難度。現在可使用原有的[完整封包匯入](official-beatmap-archives.md)。
+背景或全部難度。可以使用原有的[完整封包匯入](official-beatmap-archives.md)，
+或由營運者啟用[已驗證暫存取得](official-archive-acquisition.md)。
 搜尋與完整封包的 metadata 驗證不會宣稱各個音樂／圖片資產由官方逐檔驗證。
 
 ## 公開圖譜卡片的難度預覽

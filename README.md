@@ -80,8 +80,12 @@ and a local CA; browser preview alone does not configure game connectivity.
 
 Official beatmap search and imports need your own `OSU_CLIENT_ID` and
 `OSU_CLIENT_SECRET`; requests share rate limiting and handle upstream `429`
-responses. Local uploads do not require those credentials. SMTP is optional;
-the website reports when email features are unavailable.
+responses. Source-27 archive acquisition optionally uses an operator-provided
+`OSU_ARCHIVE_URL_TEMPLATE`, an HTTPS URL with `{set_id}` in its path; it defaults
+to empty, so metadata-only sets remain unavailable for download. Additional
+redirect hosts use `OSU_ARCHIVE_REDIRECT_HOSTS`. This source workflow is not live.
+Local uploads do not require those credentials. SMTP is optional; the website
+reports when email features are unavailable.
 
 The default dark background is plain black. Players can adjust background
 blur and dimming, panel blur and opacity, glass coverage, accent color and
@@ -93,10 +97,14 @@ are separate from Normal; mania has no Relax variant. See the
 [Relax contract](docs/relax.md) for scoring and replay limitations.
 
 Player ranking requests, the Beatmap Nominator role and the revised review queue
-are being integrated. New local uploads start in Graveyard in that workflow;
+are deployed to the retained client-test environment at schema 25. New local
+uploads start in Graveyard in that workflow;
 nomination and staff decisions target individual difficulties. The
 [ranking-request contract](docs/beatmap-rank-requests.md) describes permissions,
-conflict handling and integration status.
+conflict handling and integration status. The main deployment remains at schema
+22; newer source-26 private messaging and source-27 catalogue/archive work are
+not live. See the [integration record](docs/current-integration-20261009.md) for
+the deployment evidence and pending human client checks.
 
 ## Connect a game client
 

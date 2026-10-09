@@ -50,6 +50,8 @@ services:
       OSU_CLIENT_ID: ${OSU_CLIENT_ID:-}
       OSU_CLIENT_SECRET: ${OSU_CLIENT_SECRET:-}
       OSU_API_INTERVAL_MS: ${OSU_API_INTERVAL_MS:-1000}
+      OSU_ARCHIVE_URL_TEMPLATE: ${OSU_ARCHIVE_URL_TEMPLATE:-}
+      OSU_ARCHIVE_REDIRECT_HOSTS: ${OSU_ARCHIVE_REDIRECT_HOSTS:-}
       RUST_LOG: ${RUST_LOG:-info,tower_http=info}
     volumes:
       - shared_data:/data

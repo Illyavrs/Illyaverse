@@ -20,7 +20,9 @@ Gateway 先驗證登入 bearer，再透過既有 service key 呼叫內部搜尋�
 
 搜尋的 `total`、cursor、成員及排序仍使用官方目錄；例如官方 Pending 中一張難度被本站核准，不會令官方 `s=ranked` 查詢自行加入這組。本站已收錄圖譜的狀態篩選使用本機目錄。完整下載仍使用實際保存的 `.osz`，`availability.download_disabled` 不會因 metadata 已找到就變成 false。官方 `public` client-credentials token 並不授權整包下載，沒有已驗證封包的圖譜目前可以搜尋與辨識，但不能透過此路由下載；不以單張 `.osu` 代替完整 archive。詳見[官方封包契約](official-beatmap-archives.md)。
 
-保留 `source=local` 的明確擴充，供本站目錄搜尋／原有協定工具使用。它接受 `q`、`m`、`s` 與數字 `cursor_string`，狀態包含 Pending、Ranked、Loved、unranked、Graveyard 與 WIP，直接讀取目前 active catalogue；stock lazer 預設不會送出這個擴充。
+`source=local` 明確選擇[本站有效狀態目錄](server-beatmap-catalogue.md)。Stock lazer 可在一般搜尋欄輸入 `server:`，後面接搜尋詞；未指定 source 的 query 以這個保留前綴開頭時使用同一目錄。這個目錄包含已保存的圖譜、社群上傳，以及核准時原子發布完整 metadata 的官方圖譜，故官方 Pending／Graveyard 的本站 Ranked difficulty 不必先匯入內容才可被發現。`source=official` 可明確選擇官方來源並保留搜尋詞。預設仍是官方，不會自動切換來源。
+
+本站目錄使用 exact total 與 opaque、query-bound cursor，並支援 stock 的 `cursor[illya]`；舊數字 offset 不再適用。清除 Featured Artists 等 feature/personal filters 才能使用目前的 `server:` 契約；不支援的篩選回覆明確 400，不會悄悄忽略。狀態／模式／文字條件必須由同一張 difficulty 同時符合，回覆仍保留整組 siblings。Metadata-only 結果沒有虛構的本站 difficulty ID／leaderboard／archive；匯入內容與整包下載仍遵循既有驗證路徑。
 
 參考 pinned stock [搜尋請求](https://github.com/ppy/osu/blob/6cbcae7fbb764839a66c1adf564c2e1679242072/osu.Game/Online/API/Requests/SearchBeatmapSetsRequest.cs)、[回覆及分頁物件](https://github.com/ppy/osu/blob/6cbcae7fbb764839a66c1adf564c2e1679242072/osu.Game/Online/API/Requests/SearchBeatmapSetsResponse.cs) 與 [cursor 序列化](https://github.com/ppy/osu/blob/6cbcae7fbb764839a66c1adf564c2e1679242072/osu.Game/Extensions/WebRequestExtensions.cs)。這些資料僅作契約參考，未複製其程式碼。來源實作、隔離整合測試、已部署映像與真人畫面測試分別記錄；來源完成不代表 retained 服務已更新。
 
@@ -96,3 +98,17 @@ Stable 的 filename-only BeatmapInfo（`Ids` 空陣列）保留原輸入的 zero
 符合目前驗證條件的原生成績會自動公開；需要完整 capture 的 lazer 成績會等待 capture 完成。一般 stable 成績不需要逐筆 moderator 審查。隔離 HTTP／PostgreSQL fixture 不代表遊戲視窗、原生送分或 replay 播放已通過。完整檢查見 [相容性清單](protocol-compatibility.md) 與 [本機測試](local-client-testing.md)。
 
 官方 API 契約參考 [Lookup Beatmap](https://osu.ppy.sh/docs/index.html#lookup-beatmap)；伺服器實作及 fixture 為原創。
+
+## Configured official archive acquisition
+
+The optional [archive acquisition provider](official-archive-acquisition.md) extends the retention-only download statements above. `OSU_ARCHIVE_URL_TEMPLATE` is empty by default. The operator can configure a fixed HTTPS template containing a numeric official set ID. This does not reuse a player's official login, turn an OAuth application token into download authorization, or publish transient files as a retained catalogue package.
+
+Native downloads first read an existing immutable local or official archive and recheck local withdrawal. Retained reads remain available during an upstream outage. When an official archive is absent, stable's public read-only `/d/{id}` and authenticated lazer's `/api/v2/beatmapsets/{id}/download` can request the configured acquisition. Local IDs never enter the official provider. Known disabled or unknown official download policy blocks new acquisition. Sanctuary verifies the complete ZIP and original difficulty manifest, stored identities, fresh policy and withdrawal before returning bytes.
+
+Resonance calls `POST /api/v1/internal/beatmapsets/archive` using only `x-illya-service-key` and `official_set_id`; lazer additionally supplies its already authenticated `user_id`. The stable `/d` request omits `user_id` and creates no synthetic account. No client bearer, Cookie, personal official token or provider URL is forwarded. The internal transfer refuses redirects, has a 50-second deadline and a 64 MiB body ceiling, and verifies the response SHA-256. Native responses stay on the Illyaverse origin, return an `.osz` attachment with `private, no-store`, and never redirect a player's authenticated request to a mirror. After the wait, lazer rechecks the exact bearer, and both clients recheck withdrawal. A complete retained archive published during acquisition takes precedence over transient bytes.
+
+Shared official search and full-set metadata advertise acquisition availability only when the provider is configured and validated official metadata explicitly allows downloading, or an archive is retained. The retained-only `local.archive_available` field continues to describe actual storage. Merely finding metadata or individual `.osu` rows does not make a ZIP available. Acquisition verifies bytes on demand; discovery does not fetch a ZIP or import rows.
+
+Stable's bulk osu!direct search retains its existing stored-archive catalogue membership and pagination. It does not perform an official metadata lookup for every candidate. An authenticated explicit `/web/osu-search-set.php?s={official_set_id}` lookup can display validated full-set metadata and offer configured acquisition without first importing the set. This slice does not claim complete official catalogue search in stable. The default lazer official search keeps its upstream filter membership, ordering, totals and opaque cursors.
+
+The native transport fixtures verify bounded delivery, credential separation, redirect refusal, retained precedence, withdrawal and bearer-revocation races, metadata availability and explicit stable set lookup. Sanctuary separately verifies real ZIP structure, member checksums and policy. Neither fixture constitutes real client import or play verification; those remain part of the native checklist above.
