@@ -2,7 +2,7 @@
 
 Illyaverse 將玩家網站、社群 API、遊戲協定與遊戲啟動分成獨立服務。命名以伊莉雅的世界觀延伸：Serendipity 展示、Sanctuary 提供資料與權限、Resonance 接合客戶端協定、Kaleidoscope 管理固定伺服器的遊戲啟動與清理。這個 monorepo 保留共用型別與共同 migration，讓 Docker 部署保持一致。
 
-整合 checkout 位於 `osu-ps/Illyaverse`；五個主要子專案各有 repository 邊界，Illyaverse parent 透過 submodules 固定它們的版本。此階段已完成來源布局，Git 子模組登記尚待完成，實際狀態以 `.gitmodules` 與 `git submodule status` 為準。根 `package.json` 管理 Serendipity 與 `tools/kaleidoscope/ui` 兩個 npm workspace；根 `Cargo.toml` 管理兩個服務、兩個共用 crate 與 Kaleidoscope 核心。Windows Tauri 外殼在 Kaleidoscope 的 `ui/src-tauri`，以 `../..` path dependency 使用同一核心；C# Transfiguration 有自己的 `.csproj`。共用 crates、migrations、lockfile、Compose 與整合文件留在 parent，Docker build 仍以完整 parent checkout 為 context。找程式碼與執行入口見 [資料夾導覽](repository-layout.md)。
+整合 checkout 位於 `osu-ps/Illyaverse`；五個主要子專案各有 repository 邊界，Illyaverse parent 透過 submodules 固定它們的版本。五個子模組已登記；目前使用本機 bare remotes，跨電腦 clone 與 GitHub CI 需先設定真正的遠端網址。實際狀態以 `.gitmodules` 與 `git submodule status` 為準。根 `package.json` 管理 Serendipity 與 `tools/kaleidoscope/ui` 兩個 npm workspace；根 `Cargo.toml` 管理兩個服務、兩個共用 crate 與 Kaleidoscope 核心。Windows Tauri 外殼在 Kaleidoscope 的 `ui/src-tauri`，以 `../..` path dependency 使用同一核心；C# Transfiguration 有自己的 `.csproj`。共用 crates、migrations、lockfile、Compose 與整合文件留在 parent，Docker build 仍以完整 parent checkout 為 context。找程式碼與執行入口見 [資料夾導覽](repository-layout.md)。
 
 ```mermaid
 flowchart LR

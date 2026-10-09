@@ -1,6 +1,6 @@
 # Illyaverse 資料夾導覽
 
-`osu-ps/Illyaverse` 是整合 parent 的根目錄。Serendipity、Sanctuary、Resonance、Kaleidoscope 與 Transfiguration 五個主要子專案各有 repository 邊界，parent 以 Git submodules 固定組合版本。此階段來源布局與建置引用已整理，Git 子模組登記尚待完成；實際狀態以 `.gitmodules` 與 `git submodule status` 為準。根 Compose 組合部署網站、兩個 Rust 服務、PostgreSQL 與 Caddy；Windows 啟動器建成玩家電腦上的程式，不作為 Docker 服務。
+`osu-ps/Illyaverse` 是整合 parent 的根目錄。Serendipity、Sanctuary、Resonance、Kaleidoscope 與 Transfiguration 五個主要子專案各有 repository 邊界，parent 以 Git submodules 固定組合版本。五個子模組已登記，相關歷史保留；目前 remote 是本機 bare repositories，實際狀態以 `.gitmodules` 與 `git submodule status` 為準。根 Compose 組合部署網站、兩個 Rust 服務、PostgreSQL 與 Caddy；Windows 啟動器建成玩家電腦上的程式，不作為 Docker 服務。
 
 ## 子專案與共用來源
 

@@ -1,0 +1,15 @@
+[submodule "Serendipity"]
+	path = apps/serendipity
+	url = C:/Users/owenl/C/Projects/osu-ps/Illyaverse/.git/local-remotes/Serendipity.git
+[submodule "Sanctuary"]
+	path = services/sanctuary
+	url = C:/Users/owenl/C/Projects/osu-ps/Illyaverse/.git/local-remotes/Sanctuary.git
+[submodule "Resonance"]
+	path = services/resonance
+	url = C:/Users/owenl/C/Projects/osu-ps/Illyaverse/.git/local-remotes/Resonance.git
+[submodule "Kaleidoscope"]
+	path = tools/kaleidoscope
+	url = C:/Users/owenl/C/Projects/osu-ps/Illyaverse/.git/local-remotes/Kaleidoscope.git
+[submodule "Transfiguration"]
+	path = tools/transfiguration
+	url = C:/Users/owenl/C/Projects/osu-ps/Illyaverse/.git/local-remotes/Transfiguration.git

@@ -1,9 +1,0 @@
-* text=auto
-*.sh text eol=lf
-*.ps1 text eol=crlf
-Dockerfile text eol=lf
-*.yml text eol=lf
-*.yaml text eol=lf
-# Provenance hashes cover the exact published bytes, including notices/JSON.
-/public/fonts/** -text
-/src/styles/cjk-fonts.css text eol=lf
