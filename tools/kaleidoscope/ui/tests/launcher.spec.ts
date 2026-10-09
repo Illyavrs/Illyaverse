@@ -39,7 +39,7 @@ async function capture(page: Page, name: string) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect(await page.locator('body').evaluate((node) => getComputedStyle(node).backgroundColor)).toBe('rgb(0, 0, 0)');
   if (process.env.ILLYA_CAPTURE_LAUNCHER_REVIEW === '1') {
-    await page.screenshot({ path: `../../data-launcher-review/${name}.png`, fullPage: true, animations: 'disabled' });
+    await page.screenshot({ path: `../../../data-launcher-review/${name}.png`, fullPage: true, animations: 'disabled' });
   }
 }
 

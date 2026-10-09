@@ -30,6 +30,8 @@ Public registration. Landing and connection guides. Light/dark themes; uploaded 
 
 Illyaverse, inspired by 魔法少女伊莉雅. Related project names should form a coherent family like Solar System. osu! official site provides layout inspiration. Anime-compatible frosted glass, pure black and neutral gray-black glass by default, neutral gray/white light surfaces, rounded typography. User-customized values override defaults. The panel material uses independent blur and opacity controls rather than a fixed heavy blur.
 
+Latin lettering retains Nunito; Traditional Chinese uses licensed TaiwanPearl and Japanese uses Zen Maru Gothic. Fonts are self-hosted Unicode-range subsets that retain dynamic player-name coverage. Dense record actions retain accessible hit targets while using small inset hover feedback. Public beatmap discovery defaults to official osu! API search with an explicit server-library scope; preview difficulties remain read-only and downloads use complete `.osz` sets.
+
 User correction: no AI-generated art. The default background is plain black; only player-uploaded backgrounds are used. Commit messages follow Conventional Commits with type(scope): subject. Glass coverage has its own 0–100 slider: the minimum retains glass navigation and floating controls, then identity, sections and content join progressively. Blur and opacity independently adjust the selected glass surfaces. The solid counterparts stay readable on uploaded backgrounds.
 
 Use direct, ordinary product labels and explanatory copy. Avoid poetic marketing taglines. Appearance defaults are 8px panel blur, 55% panel opacity and 14px radius; panel blur ranges from 0–48px, opacity from 0–100%, and radius from 0–40px. Background blur and dim remain separate controls.

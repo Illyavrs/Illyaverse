@@ -1,6 +1,6 @@
 # Kaleidoscope surface brief
 
-Scope: `apps/kaleidoscope`, primarily `src/components/launcher.tsx` and the root route. Related targets are the launcher stylesheet, runtime bridge and Tauri window configuration. Visitor mode: **Operate**.
+Scope: `tools/kaleidoscope/ui`, primarily `src/components/launcher.tsx` and the root route. Related targets are the launcher stylesheet, runtime bridge and Tauri window configuration. Visitor mode: **Operate**. The UI and Rust core now share the Kaleidoscope product directory; the historical review below records its original pre-move paths and proof scope.
 
 Audience and job: players with an existing stable or lazer installation who want to enter Illyaverse, see the current process state and recover safely when cleanup is incomplete. This surface owns launch decisions and lifecycle feedback; it extends the existing Illyaverse identity.
 

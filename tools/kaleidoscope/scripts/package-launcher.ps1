@@ -35,7 +35,7 @@ try {
     if ($bridgeManifest.protocol -ne 1 -or $bridgeManifest.fixture -ne $false -or $bridgeManifest.endpoint -ne 'https://illya.test' -or $bridgeManifest.sha256 -ne $env:ILLYA_BRIDGE_SHA256) { throw 'Production bridge manifest validation failed.' }
     & npm run build --workspace '@illyaverse/kaleidoscope'
     Assert-Build 'Launcher interface build'
-    & cargo build --manifest-path apps/kaleidoscope/src-tauri/Cargo.toml --release --locked --features custom-protocol
+    & cargo build --manifest-path tools/kaleidoscope/ui/src-tauri/Cargo.toml --release --locked --features custom-protocol
     Assert-Build 'Native launcher build'
     $launcher = Join-Path $repo 'target/release/kaleidoscope-desktop.exe'
     $launcherHash = (Get-FileHash -LiteralPath $launcher -Algorithm SHA256).Hash.ToLowerInvariant()

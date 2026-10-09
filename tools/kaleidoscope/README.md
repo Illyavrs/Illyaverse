@@ -1,6 +1,8 @@
 # Kaleidoscope
 
-Illyaverse 的原創 Rust 連線助手。玩家使用 `apps/kaleidoscope` 的 Tauri／Next.js 視窗，固定連到 Illyaverse；stable 使用 `-devserver`，lazer 沿用已安裝的客戶端和現有圖譜庫，在啟動前載入原創 Transfiguration 外掛。沒有玩家伺服器選單。
+Illyaverse 的原創 Rust 連線助手。Rust 核心、程序／清理 tests、scripts 與 `ui/` 的 Tauri／Next.js 視窗集中在同一個 Kaleidoscope 產品 repository。玩家固定連到 Illyaverse；stable 使用 `-devserver`，lazer 沿用已安裝的客戶端和現有圖譜庫，在啟動前載入原創 Transfiguration 外掛。沒有玩家伺服器選單。
+
+協調開發從完整 Illyaverse parent checkout 執行，使用根 Cargo／npm workspace 與 lockfile；介面是 `tools/kaleidoscope/ui`，Tauri manifest 是 `ui/src-tauri/Cargo.toml`，透過 `../..` path dependency 使用本目錄的核心。bridge、部署與整合文件由 parent 的其他子專案提供；單獨 clone 本產品不含完整整合環境。Git 子模組登記狀態以 parent 的 `.gitmodules` 為準。
 
 操作與退出清理見[啟動器指南](../../docs/kaleidoscope-launcher.md)。公開 DNS／HTTPS 環境不需要 hosts。現在的本機 `illya.test` 測試仍需開發 DNS／CA，真實原生遊玩尚待驗證。
 

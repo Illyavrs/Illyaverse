@@ -1,1 +1,12 @@
 .test-target/
+/target/
+/ui/node_modules/
+/ui/.next/
+/ui/.swc-cache/
+/ui/out/
+/ui/test-results/
+/ui/playwright-report/
+/ui/tsconfig.tsbuildinfo
+/ui/src-tauri/gen/schemas/
+/ui/src-tauri/target/
+*.log

@@ -1,5 +1,13 @@
 # 官方圖譜搜尋
 
+`/beatmaps` 預設直接搜尋 osu! 官方圖譜，公開訪客也能使用；選擇「本站」才搜尋本站保存的圖譜與社群上傳。搜尋詞與篩選在提交時送出，不逐字呼叫官方。圖譜卡片維持等高緊湊排版，難度摘要可用 hover、鍵盤或觸控查看完整名稱與星數，預覽項目沒有連結。
+
+`GET /api/v1/official/beatmapsets/search` 提供公開搜尋，`GET /api/v1/official/beatmapsets/{id}` 提供整組 metadata；兩者不需要匯入權限，也不會自動匯入或新增任何圖譜。`/beatmaps/official/{id}` 顯示官方整組難度與 metadata，只在 API 已核對本站難度 ID／checksum 時提供相應本站頁面。
+
+整組下載是 `.osz`。只有相應已保存難度具備完整封包時才提供本站下載，否則顯示既有 osu.direct 來源並遵守官方 `download_disabled`。官方搜尋結果的狀態、本站保存狀態與本站審核是不同資料；未保存的官方結果不顯示虛構的本站 leaderboard。
+
+## 管理員匯入
+
 有 `beatmaps.import` 權限的帳號可在 `/beatmaps/import` 搜尋 osu! 官方圖譜組。
 搜尋只取得官方 metadata，並顯示本站保存的難度數量、完整封包與撤下狀態。
 選擇結果會把 difficulty ID 或 set ID 填入原有匯入表單；確認並提交表單後才匯入。
@@ -30,7 +38,7 @@
 
 沿用既有營運者 `OSU_CLIENT_ID`／`OSU_CLIENT_SECRET` 的 `public` client-credentials token。
 正式程式固定連到 `https://osu.ppy.sh`，不接受玩家指定上游 URL。
-共享至少一秒的官方請求間隔、四個 discovery slots 與 Retry-After/backoff。
+共享至少一秒的官方請求間隔、四個 discovery slots 與 Retry-After/backoff。公開搜尋最多使用其中兩個 slots。上游 HTTP、等待與 pacing gate 不持有 metadata cache mutex，因此慢速公開搜尋不會阻塞已快取的原生客戶端圖譜辨識。
 搜尋不會在每個按鍵輸入時請求官方。
 
 同一 query/cursor 的同時請求合併。搜尋正向快取最多 16 筆、總共 8 MiB、60 秒；

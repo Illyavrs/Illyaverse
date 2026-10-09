@@ -2,7 +2,7 @@
   "name": "illyaverse",
   "version": "0.1.0",
   "private": true,
-  "workspaces": ["apps/serendipity", "apps/kaleidoscope"],
+  "workspaces": ["apps/serendipity", "tools/kaleidoscope/ui"],
   "scripts": {
     "dev": "npm run dev --workspace @illyaverse/serendipity",
     "build": "npm run build --workspace @illyaverse/serendipity",

@@ -22,6 +22,8 @@ jobs:
           --health-interval 5s --health-timeout 3s --health-retries 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -118,6 +120,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -132,6 +136,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -145,6 +151,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-dotnet@v4
         with:
@@ -162,11 +170,11 @@ jobs:
         run: ./tools/kaleidoscope/tests/package-integrity.ps1
       - run: npm ci
       - run: npm run build --workspace @illyaverse/kaleidoscope
-      - run: cargo build --manifest-path apps/kaleidoscope/src-tauri/Cargo.toml --release --locked --features custom-protocol
+      - run: cargo build --manifest-path tools/kaleidoscope/ui/src-tauri/Cargo.toml --release --locked --features custom-protocol
       - name: Verify embedded production interface without opening a window
         shell: pwsh
         run: |
-          $launcher = Join-Path $pwd 'apps/kaleidoscope/src-tauri/target/release/kaleidoscope-desktop.exe'
+          $launcher = Join-Path $pwd 'tools/kaleidoscope/ui/src-tauri/target/release/kaleidoscope-desktop.exe'
           $proof = Start-Process -FilePath $launcher -ArgumentList '--verify-embedded-interface' -WindowStyle Hidden -Wait -PassThru
           if ($proof.ExitCode -ne 0) { throw 'Embedded production interface proof failed.' }
 
@@ -174,6 +182,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: actions/setup-node@v4
         with:
           node-version: '22'

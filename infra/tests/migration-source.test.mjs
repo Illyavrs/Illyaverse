@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { createMigrationSourceFixture } from './migration-source-fixtures.mjs';
 
 const workspace = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const migrations = readdirSync(path.join(workspace, 'migrations'))
@@ -38,49 +39,59 @@ function assertLf(bytes, label) {
 }
 
 // Each fixture is a new, owned repository. It never checks out or changes this repository.
-// Keep its ignored directory for inspection; cleanup never recursively removes files.
-function fixture(t, attributeBytes, sources) {
-  const root = mkdtempSync(path.join(workspace, 'data-migration-source-'));
-  assert.equal(path.dirname(path.resolve(root)), workspace);
-  const empty = path.join(root, 'empty');
-  const source = path.join(root, 'source');
-  const checkout = path.join(root, 'checkout');
-  mkdirSync(empty);
-  mkdirSync(source);
-  writeFileSync(path.join(empty, 'gitconfig'), '');
-  writeFileSync(path.join(empty, 'attributes'), '');
-  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith('GIT_')));
-  Object.assign(env, {
-    GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: path.join(empty, 'gitconfig'), GIT_ATTR_NOSYSTEM: '1',
-    GIT_AUTHOR_NAME: 'Migration source test', GIT_AUTHOR_EMAIL: 'migration-test@example.invalid',
-    GIT_COMMITTER_NAME: 'Migration source test', GIT_COMMITTER_EMAIL: 'migration-test@example.invalid',
-    GIT_AUTHOR_DATE: '2000-01-01T00:00:00Z', GIT_COMMITTER_DATE: '2000-01-01T00:00:00Z',
-  });
-  function git(cwd, args, autocrlf = 'false', eol = 'lf') {
-    return runGit(cwd, args, env, [
-      '-c', `core.autocrlf=${autocrlf}`, '-c', `core.eol=${eol}`, '-c', 'core.safecrlf=false',
-      '-c', `core.attributesFile=${path.join(empty, 'attributes')}`, '-c', `core.hooksPath=${empty}`,
-      '-c', 'commit.gpgsign=false',
-    ]);
+// Successful owned repositories are removed after verification; failures retain
+// their marker and durable receipt. Existing data-* evidence is never inspected.
+function withFixture(t, attributeBytes, sources, verify) {
+  const lifecycle = createMigrationSourceFixture(workspace);
+  const { root } = lifecycle;
+  t.diagnostic(`Owned fixture: ${path.relative(workspace, root)}`);
+  try {
+    const empty = path.join(root, 'empty');
+    const source = path.join(root, 'source');
+    const checkout = path.join(root, 'checkout');
+    mkdirSync(empty);
+    mkdirSync(source);
+    writeFileSync(path.join(empty, 'gitconfig'), '');
+    writeFileSync(path.join(empty, 'attributes'), '');
+    const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith('GIT_')));
+    Object.assign(env, {
+      GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: path.join(empty, 'gitconfig'), GIT_ATTR_NOSYSTEM: '1',
+      GIT_AUTHOR_NAME: 'Migration source test', GIT_AUTHOR_EMAIL: 'migration-test@example.invalid',
+      GIT_COMMITTER_NAME: 'Migration source test', GIT_COMMITTER_EMAIL: 'migration-test@example.invalid',
+      GIT_AUTHOR_DATE: '2000-01-01T00:00:00Z', GIT_COMMITTER_DATE: '2000-01-01T00:00:00Z',
+    });
+    function git(cwd, args, autocrlf = 'false', eol = 'lf') {
+      return runGit(cwd, args, env, [
+        '-c', `core.autocrlf=${autocrlf}`, '-c', `core.eol=${eol}`, '-c', 'core.safecrlf=false',
+        '-c', `core.attributesFile=${path.join(empty, 'attributes')}`, '-c', `core.hooksPath=${empty}`,
+        '-c', 'commit.gpgsign=false',
+      ]);
+    }
+    git(source, ['init', '--quiet', '--initial-branch=fixture', `--template=${empty}`]);
+    mkdirSync(path.join(source, 'migrations'));
+    writeFileSync(path.join(source, '.gitattributes'), attributeBytes);
+    for (const migration of sources) writeFileSync(path.join(source, migration.name), migration.bytes);
+    git(source, ['add', '--', '.gitattributes', 'migrations']);
+    const tree = git(source, ['write-tree']).toString('utf8').trim();
+    const commit = git(source, ['commit-tree', tree, '-m', 'Owned migration source fixture']).toString('utf8').trim();
+    git(source, ['update-ref', 'refs/heads/fixture', commit]);
+    const owned = {
+      git,
+      source,
+      checkout,
+      clone(autocrlf) {
+        git(source, ['clone', '--quiet', '--no-checkout', '--no-hardlinks', '--local', `--template=${empty}`, source, checkout], autocrlf, 'crlf');
+        git(checkout, ['checkout', '--quiet', '--force', 'HEAD'], autocrlf, 'crlf');
+      },
+    };
+    assert.equal(verify(owned) instanceof Promise, false, 'Fixture verification must finish synchronously');
+  } catch (error) {
+    lifecycle.fail();
+    t.diagnostic(`Failed fixture retained; receipt: ${path.relative(workspace, lifecycle.receiptPath)}`);
+    throw error;
   }
-  git(source, ['init', '--quiet', '--initial-branch=fixture', `--template=${empty}`]);
-  mkdirSync(path.join(source, 'migrations'));
-  writeFileSync(path.join(source, '.gitattributes'), attributeBytes);
-  for (const migration of sources) writeFileSync(path.join(source, migration.name), migration.bytes);
-  git(source, ['add', '--', '.gitattributes', 'migrations']);
-  const tree = git(source, ['write-tree']).toString('utf8').trim();
-  const commit = git(source, ['commit-tree', tree, '-m', 'Owned migration source fixture']).toString('utf8').trim();
-  git(source, ['update-ref', 'refs/heads/fixture', commit]);
-  t.diagnostic(`Owned fixture retained at ${path.relative(workspace, root)}`);
-  return {
-    git,
-    source,
-    checkout,
-    clone(autocrlf) {
-      git(source, ['clone', '--quiet', '--no-checkout', '--no-hardlinks', '--local', `--template=${empty}`, source, checkout], autocrlf, 'crlf');
-      git(checkout, ['checkout', '--quiet', '--force', 'HEAD'], autocrlf, 'crlf');
-    },
-  };
+  lifecycle.complete();
+  t.diagnostic(`Verified fixture removed; receipt: ${path.relative(workspace, lifecycle.receiptPath)}`);
 }
 
 // Read the short, regular-file entries emitted by Git's tar archive in memory.
@@ -129,21 +140,22 @@ test('current migration bytes are UTF-8 LF without BOM and match their Git blobs
 
 for (const autocrlf of ['true', 'false', 'input']) {
   test(`owned Git checkout and archive preserve migration checksums with core.autocrlf=${autocrlf}`, (t) => {
-    const owned = fixture(t, readFileSync(path.join(workspace, '.gitattributes')), migrations);
-    owned.clone(autocrlf);
-    const archived = archiveFiles(owned.git(owned.checkout, ['archive', '--format=tar', 'HEAD', 'migrations'], autocrlf, 'crlf'));
-    assert.deepEqual([...archived.keys()].sort(), migrations.map(({ name }) => name));
-    for (const { name, bytes } of migrations) {
-      const blob = owned.git(owned.checkout, ['show', `HEAD:${name}`], autocrlf, 'crlf');
-      const checkedOut = readFileSync(path.join(owned.checkout, name));
-      assertLf(checkedOut, `${autocrlf} checkout ${name}`);
-      assert.deepEqual(blob, bytes, `${autocrlf} fixture Git blob ${name}`);
-      assert.deepEqual(checkedOut, bytes, `${autocrlf} checkout bytes ${name}`);
-      assert.deepEqual(archived.get(name), bytes, `${autocrlf} archive bytes ${name}`);
-      assert.equal(sha384(checkedOut), sha384(bytes), `${autocrlf} checkout checksum ${name}`);
-      assert.equal(sha384(archived.get(name)), sha384(bytes), `${autocrlf} archive checksum ${name}`);
-    }
-    t.diagnostic(`All ${migrations.length} migrations retain their Git/LF SHA-384 checksums in checkout and archive`);
+    withFixture(t, readFileSync(path.join(workspace, '.gitattributes')), migrations, (owned) => {
+      owned.clone(autocrlf);
+      const archived = archiveFiles(owned.git(owned.checkout, ['archive', '--format=tar', 'HEAD', 'migrations'], autocrlf, 'crlf'));
+      assert.deepEqual([...archived.keys()].sort(), migrations.map(({ name }) => name));
+      for (const { name, bytes } of migrations) {
+        const blob = owned.git(owned.checkout, ['show', `HEAD:${name}`], autocrlf, 'crlf');
+        const checkedOut = readFileSync(path.join(owned.checkout, name));
+        assertLf(checkedOut, `${autocrlf} checkout ${name}`);
+        assert.deepEqual(blob, bytes, `${autocrlf} fixture Git blob ${name}`);
+        assert.deepEqual(checkedOut, bytes, `${autocrlf} checkout bytes ${name}`);
+        assert.deepEqual(archived.get(name), bytes, `${autocrlf} archive bytes ${name}`);
+        assert.equal(sha384(checkedOut), sha384(bytes), `${autocrlf} checkout checksum ${name}`);
+        assert.equal(sha384(archived.get(name)), sha384(bytes), `${autocrlf} archive checksum ${name}`);
+      }
+      t.diagnostic(`All ${migrations.length} migrations retain their Git/LF SHA-384 checksums in checkout and archive`);
+    });
   });
 }
 
@@ -151,19 +163,20 @@ test('independent fixture without the LF attribute reproduces the Windows-style 
   const name = 'migrations/0001_checksum_fixture.sql';
   const lf = Buffer.from('-- portable migration fixture\nCREATE TABLE checksum_fixture (id BIGINT PRIMARY KEY);\n', 'utf8');
   const crlf = Buffer.from('-- portable migration fixture\r\nCREATE TABLE checksum_fixture (id BIGINT PRIMARY KEY);\r\n', 'utf8');
-  const owned = fixture(t, Buffer.from('* text=auto\n'), [{ name, bytes: lf }]);
-  const lfArchive = archiveFiles(owned.git(owned.source, ['archive', '--format=tar', 'HEAD', 'migrations']));
-  assert.deepEqual(lfArchive.get(name), lf, 'an LF-configured archive matches the Git blob');
-  owned.clone('true');
-  const effective = attributes(owned.git(owned.checkout, ['check-attr', '-z', 'eol', '--', name], 'true', 'crlf'));
-  assert.equal(effective.get(`${name}:eol`), 'unspecified');
-  const checkedOut = readFileSync(path.join(owned.checkout, name));
-  const blob = owned.git(owned.checkout, ['show', `HEAD:${name}`], 'true', 'crlf');
-  const archived = archiveFiles(owned.git(owned.checkout, ['archive', '--format=tar', 'HEAD', 'migrations'], 'true', 'crlf'));
-  assert.deepEqual(blob, lf, 'the committed SQL stays LF');
-  assert.deepEqual(archived.get(name), crlf, 'the Windows-style archive also converts SQL to CRLF');
-  assert.deepEqual(checkedOut, crlf, 'core.autocrlf=true converts checkout bytes to CRLF');
-  assert.notEqual(sha384(checkedOut), sha384(blob), 'line endings alone change the SQLx SHA-384 checksum');
-  assert.notEqual(sha384(archived.get(name)), sha384(blob), 'archive line endings alone change the checksum');
-  t.diagnostic(`Control SHA-384 LF=${sha384(lf)} CRLF=${sha384(checkedOut)}`);
+  withFixture(t, Buffer.from('* text=auto\n'), [{ name, bytes: lf }], (owned) => {
+    const lfArchive = archiveFiles(owned.git(owned.source, ['archive', '--format=tar', 'HEAD', 'migrations']));
+    assert.deepEqual(lfArchive.get(name), lf, 'an LF-configured archive matches the Git blob');
+    owned.clone('true');
+    const effective = attributes(owned.git(owned.checkout, ['check-attr', '-z', 'eol', '--', name], 'true', 'crlf'));
+    assert.equal(effective.get(`${name}:eol`), 'unspecified');
+    const checkedOut = readFileSync(path.join(owned.checkout, name));
+    const blob = owned.git(owned.checkout, ['show', `HEAD:${name}`], 'true', 'crlf');
+    const archived = archiveFiles(owned.git(owned.checkout, ['archive', '--format=tar', 'HEAD', 'migrations'], 'true', 'crlf'));
+    assert.deepEqual(blob, lf, 'the committed SQL stays LF');
+    assert.deepEqual(archived.get(name), crlf, 'the Windows-style archive also converts SQL to CRLF');
+    assert.deepEqual(checkedOut, crlf, 'core.autocrlf=true converts checkout bytes to CRLF');
+    assert.notEqual(sha384(checkedOut), sha384(blob), 'line endings alone change the SQLx SHA-384 checksum');
+    assert.notEqual(sha384(archived.get(name)), sha384(blob), 'archive line endings alone change the checksum');
+    t.diagnostic(`Control SHA-384 LF=${sha384(lf)} CRLF=${sha384(checkedOut)}`);
+  });
 });

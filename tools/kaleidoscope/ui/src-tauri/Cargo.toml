@@ -16,5 +16,5 @@ tauri-build = { version = "2", features = ["codegen"] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
-kaleidoscope = { path = "../../../tools/kaleidoscope" }
+kaleidoscope = { path = "../.." }
 

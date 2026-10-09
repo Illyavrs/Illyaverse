@@ -10,6 +10,7 @@ data-kaleidoscope-package-*.zip
 /data-*.verification.json
 .test-deps/
 .protocol-venv/
+/.artifacts/
 __pycache__/
 *.pyc
 *.log
@@ -17,6 +18,8 @@ __pycache__/
 .impeccable/review/*.png
 test-results/
 playwright-report/
-apps/kaleidoscope/out/
-apps/kaleidoscope/tsconfig.tsbuildinfo
-apps/kaleidoscope/src-tauri/gen/schemas/
+tools/kaleidoscope/ui/out/
+tools/kaleidoscope/ui/tsconfig.tsbuildinfo
+tools/kaleidoscope/ui/src-tauri/gen/schemas/
+# Legacy build output remains in place; only tracked launcher source was moved.
+apps/kaleidoscope/

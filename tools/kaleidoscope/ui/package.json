@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node ../serendipity/scripts/next.mjs dev --port 3010",
-    "build": "node ../serendipity/scripts/next.mjs build",
+    "dev": "node scripts/next.mjs dev --port 3010",
+    "build": "node scripts/next.mjs build",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test:ui": "playwright test"

@@ -1,4 +1,5 @@
 .git
+**/.git
 .env
 .env.*
 !.env.example
@@ -8,7 +9,9 @@ node_modules
 **/.swc-cache
 target
 **/target
-apps/kaleidoscope/out
+tools/kaleidoscope/ui/out
+# Legacy ignored output from the source-only launcher move.
+apps/kaleidoscope
 tools/transfiguration/bin
 tools/transfiguration/obj
 tools/transfiguration/tests/bin
@@ -19,6 +22,7 @@ data
 data-*
 .test-deps
 .protocol-venv
+.artifacts
 .impeccable/review
 test-results
 playwright-report

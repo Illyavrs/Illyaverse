@@ -4,7 +4,7 @@ WORKDIR /illyaverse
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY package.json package-lock.json ./
 COPY apps/serendipity/package.json ./apps/serendipity/package.json
-COPY apps/kaleidoscope/package.json ./apps/kaleidoscope/package.json
+COPY tools/kaleidoscope/ui/package.json ./tools/kaleidoscope/ui/package.json
 RUN npm ci --include=dev
 COPY apps/serendipity ./apps/serendipity
 COPY docs ./docs

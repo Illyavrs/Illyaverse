@@ -192,6 +192,21 @@ four-element stats tuples, including nullable `new_rank`, empty distributions,
 and large score values. Finally, run a real pinned lazer client through token
 creation, load, play, submit, reconnect, room result display, metadata snapshot,
 and live score event delivery; record that evidence separately from synthetic
-codec tests. The source currently loads each viewer's authorized room attempts
-in memory before selecting highs and pagination; large retained histories need
-future query-level pagination work.
+codec tests.
+
+Current queries aggregate frozen, authorized round history in PostgreSQL rather
+than retaining every raw attempt in application memory. Score windows transfer
+at most 101 rows including the next-page sentinel; complete native arrays use
+aggregate chunks of at most 100 rows. Ranking precedes cursor filtering, and
+all chunks and formatting for one response share a read-only repeatable-read
+snapshot and one connection. This prevents concurrent high/rejection changes
+from omitting or duplicating users and avoids a second pooled connection while
+holding the snapshot. Unpaged native arrays still require response memory
+proportional to their complete user/item counts; they are not silently capped.
+
+Two parser/cursor unit tests and three owned PostgreSQL cases verify real SQL
+ordering, privacy, failed/rejected selection, 124 players, 123 retained items,
+974 scores and 1,074 retained tokens, concurrent changes between chunks,
+single-connection HTTP formatting, distributions and overflow. Evidence is in
+`data-room-result-queries/verification.json`; these fixtures do not certify
+native GUI or gameplay.

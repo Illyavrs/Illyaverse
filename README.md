@@ -6,29 +6,29 @@
 
 ## 專案結構
 
-Illyaverse 是一個 Git repository，網站與啟動器前端由根目錄的 npm workspaces 管理，Rust 服務與共用核心由 Cargo workspace 管理。從 `osu-ps/Illyaverse` 開發或部署，子專案不需要各自 clone。
+Illyaverse 採用整合 parent 與五個主要子專案 repository 的結構；子專案透過 Git submodules 固定版本，網站與啟動器前端仍由根 npm workspaces 管理，Rust 服務與共用核心仍由 Cargo workspace 管理。從 `osu-ps/Illyaverse` 的完整 checkout 開發或部署。此階段已整理來源與建置路徑，Git 子模組登記尚待完成，實際登記狀態以 `.gitmodules` 與 `git submodule status` 為準。
 
 ```text
 Illyaverse/
 ├── apps/
-│   ├── serendipity/         玩家網站：Next.js、Tailwind、shadcn/ui
-│   └── kaleidoscope/        Windows 啟動器介面與 Tauri 外殼
+│   └── serendipity/         Serendipity repository：玩家網站
 ├── services/
-│   ├── sanctuary/          Rust 社群 API：帳號、權限、圖譜、成績、聊天
-│   └── resonance/          Rust stable／lazer 協定服務
+│   ├── sanctuary/          Sanctuary repository：Rust 社群 API
+│   └── resonance/          Resonance repository：stable／lazer 協定服務
 ├── crates/
 │   ├── illya-domain/       共用領域型別、驗證、分數與 mods 規則
 │   └── resonance-protocol/ stable 封包解析與編碼
 ├── tools/
-│   ├── kaleidoscope/       啟動器 Rust 核心、CLI 與退出清理
-│   ├── transfiguration/    原創 C# lazer 連線橋接
+│   ├── kaleidoscope/       Kaleidoscope repository：Rust 核心、CLI、退出清理
+│   │   └── ui/             同一啟動器的 Next.js 介面與 Tauri 外殼
+│   ├── transfiguration/    Transfiguration repository：原創 C# lazer 橋接
 │   └── archive-compatibility/ 原生 ZIP 讀取器的隔離驗證工具
 ├── infra/                  Docker、部署、備份與隔離測試腳本
 ├── migrations/             共用 PostgreSQL schema
 └── docs/                   玩家、營運與開發文件
 ```
 
-`apps/kaleidoscope` 與 `tools/kaleidoscope` 是同一個啟動器的介面和核心；Tauri 以本地 Rust dependency 使用核心。Transfiguration 是它在 lazer 啟動前載入的橋接，不是另一台伺服器。完整 workspace 邊界、各入口與生成檔說明見 [資料夾導覽](docs/repository-layout.md)。
+Kaleidoscope 的介面與核心集中在 `tools/kaleidoscope` 同一個產品 repository；Tauri 以本地 Rust dependency 使用核心。Transfiguration 是它在 lazer 啟動前載入的橋接，不是另一台伺服器。共用 crates、schema、Compose、lockfile 與整合文件留在 Illyaverse parent。完整 workspace 邊界、各入口與生成檔說明見 [資料夾導覽](docs/repository-layout.md)。
 
 ## 文件入口
 

@@ -1,36 +1,28 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Serendipity
 
-## Getting Started
+Illyaverse 的玩家網站，使用 Next.js、Tailwind CSS、shadcn/ui 與 next-intl。
+包含公開註冊、個人頁、圖譜搜尋、排行榜、聊天、外觀設定與權限對應管理介面。
+API 由 Sanctuary 提供；實作與實際客戶端驗證的範圍分別記錄。
 
-First, run the development server:
+本目錄是 Serendipity 子 repository 的來源邊界。協調開發與 Docker 建置從
+Illyaverse parent 根目錄執行，使用 parent 的 npm workspace／package-lock：
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```sh
+npm ci
+npm run dev --workspace @illyaverse/serendipity
+npm run lint --workspace @illyaverse/serendipity
+npm run typecheck --workspace @illyaverse/serendipity
+npm run build --workspace @illyaverse/serendipity
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Docker build context 同樣是 parent 根目錄，以取得部署文件與 workspace manifest。
+單獨 clone 此子專案不包含 parent 的 lockfile、後端、部署與整合測試環境。
+資料夾與建置邊界見 [repository 導覽](../../docs/repository-layout.md)，
+產品設計見 [DESIGN.md](../../DESIGN.md)，驗證見 [完成度](../../docs/release-readiness.md)。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+英文／數字使用 Nunito；繁中與日文使用自架 OFL 字體。`public/fonts` 是需發布的
+產品資產，notice／provenance 與完整 bytes 必須保留，見 [字體文件](../../docs/fonts.md)。
+預設黑底，沒有 AI 生成插畫；禁止複製參考專案程式碼。
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+應用程式採 MIT；字體與其他第三方資產遵循各自隨附的授權。
+Commit 使用 `feat(serendipity): ...`、`fix(serendipity): ...` 等 scoped Conventional Commits。
