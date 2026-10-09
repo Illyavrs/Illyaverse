@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 pub const PERMISSIONS: &[&str] = &[
     "chat.send",
+    "chat.moderate",
     "social.manage",
     "beatmaps.upload",
     "beatmaps.import",
@@ -154,6 +155,10 @@ mod tests {
     fn permission_wildcard_is_explicit() {
         assert!(has_permission(&["*".into()], "roles.manage"));
         assert!(!has_permission(&["admin.view".into()], "roles.manage"));
+        assert!(PERMISSIONS.contains(&"chat.moderate"));
+        assert!(has_permission(&["chat.moderate".into()], "chat.moderate"));
+        assert!(!has_permission(&["users.moderate".into()], "chat.moderate"));
+        assert!(!has_permission(&["chat.moderate".into()], "chat.send"));
     }
     #[test]
     fn rejects_unsafe_theme_urls_and_nan() {

@@ -4,14 +4,17 @@
 精確名稱比對，沒有隱含的階級或名稱前綴繼承。公開註冊自動取得 `player`
 角色。不要將 `*` 指派給公開註冊角色。
 
-網站管理面板入口需要 `admin.view`。面板中的功能另外依照下列權限顯示，
-後端每個 API 也會獨立驗證權限。只有 `admin.view` 的帳號不能修改資料。
+網站管理面板依帳號持有的功能權限提供入口與分區。例如只持有
+`chat.moderate` 或 `announcements.manage` 也能開啟對應區域，無須另外授予
+`admin.view`。後端每個 API 獨立驗證權限；`admin.view` 仍授權讀取管理用
+圖譜中繼資料，不會隱含任何寫入權限。
 
 | 權限                                  | 可執行的操作                                       |
 | ------------------------------------- | -------------------------------------------------- |
 | `roles.manage`                        | 建立、編輯、指派或移除自己有權限管理的角色         |
 | `users.moderate`                      | 查看帳號 email，限制或解除限制其他帳號             |
 | `users.sessions.revoke`               | 撤銷自己有權限管理的帳號之網站、stable、lazer 登入 |
+| `chat.moderate`                       | 查看最小玩家目錄、設定或解除限時聊天禁言         |
 | `beatmaps.moderate`                   | 審核圖譜狀態                                       |
 | `scores.moderate`                     | 審核成績，以及透過 API 進行有上限的 RX pp 重算     |
 | `announcements.manage`                | 建立公告草稿、編輯、發布、撤下與查看非公開公告     |
@@ -19,7 +22,8 @@
 | `beatmaps.upload` / `beatmaps.import` | 上傳伺服器圖譜／從官方匯入圖譜                     |
 | `chat.send` / `social.manage`         | 發送聊天訊息／管理自己的好友與封鎖關係             |
 
-建議建立帶有 `admin.view` 與所需操作權限的自訂角色，再指派給工作人員。
+自訂工作人員角色只需授予其負責功能的權限。migration 0024 為內建
+`moderator` 加入 `chat.moderate`；自訂角色須明確指派此權限。
 內建 `player`、`moderator`、`administrator` 保留原名稱且不能刪除；
 `administrator` 必須保留 `*`。自訂角色刪除前必須先從所有帳號解除指派，
 系統不會默默移除玩家角色。每次角色或限制變更後，仍須保留至少一個
@@ -46,8 +50,10 @@
 | `/admin/roles/{id}`                           | PATCH 更新；DELETE 刪除未指派的自訂角色                             |
 | `/admin/users/{id}`                           | PATCH `roles` 與／或 `is_restricted`                                |
 | `/admin/users/{id}/sessions/revoke`           | POST 無需 request body，回傳 `revoked.web/stable/lazer` 筆數        |
+| `/admin/chat-silences?page=1&page_size=24&search=...` | GET 最小玩家目錄、有效禁言期限、`chat_silence_revision` 與操作旗標 |
+| `/admin/users/{id}/chat-silence`              | PUT `expires_at`、`reason`、`expected_revision`；DELETE `reason`、`expected_revision` |
 | `/admin/beatmaps/{id}`                        | PATCH `status`                                                      |
-| `/admin/scores/{id}`                          | PATCH `verification`                                                |
+| `/admin/scores/{id}`                          | PATCH `verification` 與 `expected_revision`                          |
 | `/admin/scores/recalculate-relax`             | POST `score_ids`，1–16 個不重複正整數 ID                            |
 | `/admin/announcements`                        | GET 依狀態分頁公告；POST 建立草稿                                   |
 | `/admin/announcements/{id}`                   | GET 指定公告的最新版本；PATCH 完整標題、內文、狀態與預期 `revision` |
@@ -60,9 +66,27 @@
 公告建立與更新會在交易中重新驗證權限和登入，再與稽核紀錄一同提交。
 更新必須帶入目前 `revision`；版本不同回傳 409 `announcement_conflict`，
 不會覆蓋其他人的修改。內建管理員維持單一 `*` 權限；一般玩家與版主不會
-自動取得公告管理權限。面板入口仍需 `admin.view`。
+自動取得公告管理權限。公告 API、面板與暫存草稿的授權皆以
+`announcements.manage` 為準；失去此權限、登出或換帳號會清除私密暫存。
 
-角色變更、限制、登入撤銷、圖譜／成績審核與 RX 重算均在資料庫交易中
+禁言目錄只提供公開身分、有效期限、原始版本與 `can_silence`／`is_protected`，
+不提供 email、密碼、角色權限或理由。`chat.moderate` 可處理一般玩家；不可
+處理自己，其他持有 `chat.moderate` 或 `*` 的帳號須由持有 `*` 的管理員處理。
+期限須為 RFC3339 時間，在取得權限表、排序後的使用者與登入鎖之後，以資料庫
+`clock_timestamp()` 驗證為未來且不超過 30 天。理由去除首尾空白後須為
+1–500 字元，輸入不得包含控制字元，僅寫入私密稽核紀錄。套用與解除都須帶
+目前 `chat_silence_revision` 作為 `expected_revision`；過期版本回傳 409
+`chat_silence_conflict`。已到期的期限在 API 顯示為 null，原始版本仍保留。
+禁言只阻止新訊息，玩家仍能登入、遊玩、接收訊息與讀取原有歷史。
+
+成績清單與詳情提供 `moderation_revision`。審核必須帶入此版本，取得成績鎖
+後重新比對；其他管理員或原生發布流程改過狀態時回傳 409
+`score_moderation_conflict`，即使狀態曾改走又改回也不會接受舊版本。
+要求與目前相同的狀態回傳 400 `score_verification_unchanged`，不新增稽核決策。
+成功審核的前後狀態與版本一同寫入稽核。一般 stable／lazer 成績原有的合格
+原生提交自動發布流程維持不變；新增審核工具不會要求每筆新成績經人工批准。
+
+角色變更、限制、登入撤銷、禁言、圖譜／成績審核與 RX 重算均在資料庫交易中
 重新讀取操作者目前的登入、限制與權限。請求若在排隊期間被撤銷權限或
 登出，會在寫入前拒絕。成功的寫入和稽核紀錄一同提交。
 網頁會區分「寫入失敗」與「寫入成功但清單重新載入失敗」。
@@ -70,6 +94,10 @@
 常見錯誤代碼為 `stronger_role`、`builtin_role`、`last_administrator`、
 `role_assigned`、`invalid_search`、`forbidden` 與 `unauthorized`。
 角色仍有人持有時刪除會回傳 HTTP 409；權限不足回傳 403；登入失效回傳 401。
+
+2026-10-09 的新禁言與成績版本 API 已通過隔離 PostgreSQL 測試；網站分區與
+操作介面已有獨立瀏覽器與 source build 驗證。migration 0023／0024 與這次變更尚未套用至保留的本機
+部署，其資料庫仍為 0022。上述為目前原始碼契約，不是已部署或原生視窗實測宣告。
 
 相關限制與驗證請參考 [RX](relax.md)、[部署](deployment.md) 與
 [驗證紀錄](verification.md)。本機隔離測試不代表原生遊戲視窗已完成實測。

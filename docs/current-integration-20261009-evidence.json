@@ -2,7 +2,7 @@
   "version": 1,
   "checkpoint": "integration-20261009",
   "recorded_at_utc": "2026-10-09T11:19:13Z",
-  "status": "client_test_lazer_nullable_ruleset_hotfix_applied_native_login_retest_pending",
+  "status": "client_test_lazer_user_path_hotfix_applied_moderation_source_verified_native_login_retest_pending",
   "git_topology": {
     "projects": [
       "Serendipity",
@@ -416,6 +416,38 @@
     "lazer_user_alias_retained_reload": {
       "path": ".artifacts/builds/integration-20261009/lazer-route-hotfix-20261009T145619Z-ab56370b579e45d385e2f587e12ae597/verification.json",
       "sha256": "8080ae4511d0f490c29aa2103c401760aa1f10b53c102aa42ee78b83d395dd9e"
+    },
+    "sanctuary_timed_chat_score_moderation": {
+      "path": ".artifacts/tests/sanctuary-moderation-20261009T145152Z-f51b158f346544efa51d66a7174bd432/verification-confirmed.json",
+      "sha256": "890d8a5d16f3806e39a3e13c54e6b31b2e0ddca7b6dd1169c2c3ac993d802191"
+    },
+    "native_timed_chat_and_user_aliases": {
+      "path": ".artifacts/tests/native-chat-silence-20261009T150401Z-075b846d8d9443b493cde418b5604f4a/verification.json",
+      "sha256": "05344f0cac7ec2bba748ee328683a5fa7ee9f7a1b8bf54dd4fa77609fa9473fa"
+    },
+    "migration_24_source": {
+      "path": ".artifacts/tests/migration-24-source-20261009T150755669Z-06bd6a3a869149aa885e7ecda8cb02ec/verification.json",
+      "sha256": "08eea379a704334be82726574e086ef8a1bbe8549bf0f65e7c2b1a065c3262bc"
+    },
+    "ranking_url_navigation": {
+      "path": ".artifacts/tests/ranking-navigation-20261009T223814-cbabedf8833b4db6a1faebe906411e16/verification.json",
+      "sha256": "6b3622b4a033a651faeab3ede65efef7c4371ccc23635abb188611c531543582"
+    },
+    "website_timed_chat_silence": {
+      "path": ".artifacts/tests/chat-silence-20261009T150521Z-118362f40feb1/verification-confirmed.json",
+      "sha256": "81c092f17f444b32432d0c09b3366b9076c5a783cc309e73d43da17df08c9750"
+    },
+    "admin_moderation_final_security": {
+      "path": ".artifacts/tests/admin-moderation-security-20261009T151706Z-f7d30437317f4e5db2adf0dc98a1ad0c/verification.json",
+      "sha256": "49b1eb67c03a13f89c6082cda29a7b0e13371347aaff36fff36dd8eca0d396ba"
+    },
+    "moderation_web_source_build": {
+      "path": ".artifacts/builds/moderation-web-20261009T151922Z-8ade655014e74a48ba50dce0b499eb08/verification-confirmed.json",
+      "sha256": "7a0e42a61faebb0cb8838d20ec9f611a43fe703f4898b17b248348efa9ab30eb"
+    },
+    "protocol_score_review_runner": {
+      "path": ".artifacts/tests/protocol-score-cas-20261009T152018Z-c23e65d1f1de416e9c513687f1050cf3/verification.json",
+      "sha256": "a84ce412f42fb4ed26783c11b8b2f6721b74cb1785b71d3ada120614e3688cf3"
     }
   },
   "limitations": [
@@ -514,7 +546,7 @@
     "native_gameplay_verified": false,
     "retained_services_redeployed": false
   },
-  "updated_at_utc": "2026-10-09T15:10:47.448Z",
+  "updated_at_utc": "2026-10-09T15:29:35.878Z",
   "post_deployment_source_fixes": {
     "retained_services_redeployed": false,
     "serendipity": "1179315",
@@ -950,5 +982,122 @@
       "authenticated_login_verified": false
     },
     "limits": "401 probes establish routing parity, not authenticated native login; other services and future source remain HOLD."
+  },
+  "moderation_source_checkpoint": {
+    "evidence": {
+      "sanctuary_timed_chat_score_moderation": {
+        "path": ".artifacts/tests/sanctuary-moderation-20261009T145152Z-f51b158f346544efa51d66a7174bd432/verification-confirmed.json",
+        "sha256": "890d8a5d16f3806e39a3e13c54e6b31b2e0ddca7b6dd1169c2c3ac993d802191"
+      },
+      "native_timed_chat_and_user_aliases": {
+        "path": ".artifacts/tests/native-chat-silence-20261009T150401Z-075b846d8d9443b493cde418b5604f4a/verification.json",
+        "sha256": "05344f0cac7ec2bba748ee328683a5fa7ee9f7a1b8bf54dd4fa77609fa9473fa"
+      },
+      "migration_24_source": {
+        "path": ".artifacts/tests/migration-24-source-20261009T150755669Z-06bd6a3a869149aa885e7ecda8cb02ec/verification.json",
+        "sha256": "08eea379a704334be82726574e086ef8a1bbe8549bf0f65e7c2b1a065c3262bc"
+      },
+      "ranking_url_navigation": {
+        "path": ".artifacts/tests/ranking-navigation-20261009T223814-cbabedf8833b4db6a1faebe906411e16/verification.json",
+        "sha256": "6b3622b4a033a651faeab3ede65efef7c4371ccc23635abb188611c531543582"
+      },
+      "website_timed_chat_silence": {
+        "path": ".artifacts/tests/chat-silence-20261009T150521Z-118362f40feb1/verification-confirmed.json",
+        "sha256": "81c092f17f444b32432d0c09b3366b9076c5a783cc309e73d43da17df08c9750"
+      }
+    },
+    "sanctuary": {
+      "source_commit": "1a77c991a3d46c33b069c34e4636b43e4b13ae14",
+      "ordinary": 90,
+      "domain_ordinary": 32,
+      "new_postgresql": 9,
+      "existing_postgresql": 4,
+      "clippy": true,
+      "format": true
+    },
+    "resonance": {
+      "feature_source_commit": "3d721b7d6b6edc989905df80b418c6ceddf14b84",
+      "ordinary": 64,
+      "timed_silence_postgresql_tcp_ws": 6,
+      "authenticated_alias_postgresql": 1,
+      "existing_native_chat": 7,
+      "clippy": true,
+      "format": true
+    },
+    "migrations": {
+      "source_count": 24,
+      "source_tests": 6,
+      "previous_23_bytes_preserved": true,
+      "retained_count": 22
+    },
+    "ranking": {
+      "browser_passed": 14,
+      "original_typecheck_failure": "four concurrent outside-owned Score fixtures missing moderation_revision; corrected, later chat whole-app check passed"
+    },
+    "website_chat": {
+      "browser_passed": 30,
+      "new": 13,
+      "existing": 17,
+      "lint": true,
+      "typecheck": true,
+      "format": true,
+      "paired_visual_rounds": 2,
+      "initial_failed_run_retained": true
+    },
+    "admin_browser_final": {
+      "evidence": {
+        "path": ".artifacts/tests/admin-moderation-security-20261009T151706Z-f7d30437317f4e5db2adf0dc98a1ad0c/verification.json",
+        "sha256": "49b1eb67c03a13f89c6082cda29a7b0e13371347aaff36fff36dd8eca0d396ba"
+      },
+      "final_targeted_passed": 9,
+      "historical_behavior_passed": 16,
+      "separate_source_scopes": true,
+      "application_source_unchanged_after_final_browser_run": true,
+      "test_only_prettier_after_browser_run": true,
+      "lint": true,
+      "typecheck": true,
+      "format": true,
+      "visual_rounds": 2,
+      "cleanup": true
+    },
+    "retained_runtime": "source-only; new backend and website images not deployed; migrations23/24 not applied",
+    "limits": [
+      "Separate proof scopes; not native-client certification.",
+      "Full new-image protocol and migration-24 recovery deployment gates pending.",
+      "Existing native auto-publication policy preserved."
+    ],
+    "source_commits": {
+      "serendipity": "05a7fbffc0b907779a4abfbdc85d22c456de774a",
+      "sanctuary": "1a77c991a3d46c33b069c34e4636b43e4b13ae14",
+      "resonance": "aeb72245c89dd2713f450a014ed5812119043451"
+    },
+    "production_source_build": {
+      "evidence": {
+        "path": ".artifacts/builds/moderation-web-20261009T151922Z-8ade655014e74a48ba50dce0b499eb08/verification-confirmed.json",
+        "sha256": "7a0e42a61faebb0cb8838d20ec9f611a43fe703f4898b17b248348efa9ab30eb"
+      },
+      "exit": 0,
+      "application_file_hashes": 590,
+      "translation_key_parity": 974,
+      "locales": [
+        "en",
+        "zh-TW",
+        "ja"
+      ],
+      "new_docker_image": false,
+      "retained_deploy": false
+    },
+    "protocol_runner": {
+      "evidence": {
+        "path": ".artifacts/tests/protocol-score-cas-20261009T152018Z-c23e65d1f1de416e9c513687f1050cf3/verification.json",
+        "sha256": "a84ce412f42fb4ed26783c11b8b2f6721b74cb1785b71d3ada120614e3688cf3"
+      },
+      "syntax_files": 2,
+      "offline_unit_passed": 8,
+      "intended_staff_review_source_sites": 10,
+      "fetched_revision_required": true,
+      "automatic_cas_retry": false,
+      "live_new_image_smoke_run": false
+    }
   }
 }

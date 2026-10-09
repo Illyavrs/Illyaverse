@@ -80,6 +80,26 @@ Kaleidoscope 的 GUI 可讀取、驗證與保存部署網址，預設 `https://i
 
 重載後的實際 HTTPS unauthenticated probes 確認 aliases 與 canonical paths 均取得既有 401、65-byte 錯誤回覆，沒有 `Location`，採預設 .NET hostname／chain 驗證，沒有自訂 TLS callback 或信任庫變更。[本次重載收據](../.artifacts/builds/integration-20261009/lazer-route-hotfix-20261009T145619Z-ab56370b579e45d385e2f587e12ae597/verification.json) SHA-256 為 `8080ae4511d0f490c29aa2103c401760aa1f10b53c102aa42ee78b83d395dd9e`。這證明請求已到達認證 handler；hotfix 後的真人登入、完整 profile DTO 讀取、聊天與遊玩仍待玩家重試。未重新封裝 GUI；後續 gateway direct aliases 已準備於來源，但未隨此次 proxy 修正部署。
 
+## 後續聊天與管理來源
+
+後續來源加入期限禁言和具版本檢查的成績審核。`chat.moderate` 可獨立授權管理員目錄與禁言操作，不會因此取得 email 或帳號限制權限；對自己與有同等管理權限的目標有保護。每次操作重新檢查有效權限、期限及 `expected_revision`，將前後狀態和私人原因寫入稽核。成績狀態沒有改變時回覆明確錯誤，不會留下影響原生自動公開政策的空操作。正常原生成績的自動公開政策維持原契約。
+
+網站、stable、lazer 只阻擋新的聊天發送；既有可讀歷史、接收訊息、已接受的 UUID 重試及遊戲 session 繼續使用。stable 回報實際剩餘禁言秒數；lazer 使用期限錯誤回覆，不以 silence arrays 清除玩家聊天歷史。網站編輯器保留草稿，確認權限失敗時停用發送，期限到達後重新確認權限。排名和圖譜成績列表也改成保留 URL 的分區／模式／國家／頁碼，支援上一頁、下一頁和瀏覽器歷史。
+
+以下檢查各自對應來源與 synthetic fixtures，沒有部署到保留服務或操作真人遊戲：
+
+- Sanctuary：90 ordinary tests、domain 32 tests、9 個新增 PostgreSQL moderation tests，以及 4 個既有 RBAC／聊天／mutation／成績與 Replay 回歸通過；Clippy 與格式通過。[確認收據](../.artifacts/tests/sanctuary-moderation-20261009T145152Z-f51b158f346544efa51d66a7174bd432/verification-confirmed.json)。
+- Resonance：64 ordinary tests、6 個期限禁言 PostgreSQL／TCP／WebSocket tests、1 個 authenticated nullable-ruleset alias test，和 7 個既有 native chat tests 通過；Clippy 與格式通過。[確認收據](../.artifacts/tests/native-chat-silence-20261009T150401Z-075b846d8d9443b493cde418b5604f4a/verification.json)。
+- Migration 24：6 個來源／Git index／LF checkout／archive tests 通過，前 23 份 migration bytes 保持原樣。[確認收據](../.artifacts/tests/migration-24-source-20261009T150755669Z-06bd6a3a869149aa885e7ecda8cb02ec/verification.json)。
+- 排名導覽：14 個瀏覽器案例、scoped lint／format、桌面與手機 containment 確認通過。當時全域 typecheck 因 4 個同時修改的成績 fixtures 缺少版本欄位而失敗；fixtures 已補齊，之後的聊天 cohort 全域 typecheck 通過，原始失敗證據保留。[導覽收據](../.artifacts/tests/ranking-navigation-20261009T223814-cbabedf8833b4db6a1faebe906411e16/verification.json)。
+- 網站聊天：13 個新增案例及 17 個既有案例，共 30 passed；lint、全域 typecheck、format 與兩輪桌面／手機確認通過。首輪 26／30 的失敗 log 保留：3 個測試使用錯誤的重試按鈕名稱，另 1 個 reconnect case 受到同時修改 providers 的 Fast Refresh full reload 影響；凍結所有網站來源後完整重跑通過。[確認收據](../.artifacts/tests/chat-silence-20261009T150521Z-118362f40feb1/verification-confirmed.json)。
+
+管理介面先通過 16 個瀏覽器案例與兩輪桌面／手機確認；後續權限競態與 staff 入口修正另外通過 9 個針對性案例。兩組是不同來源時點的證據，不合併宣稱全部案例在最終來源重跑。最後 9 個案例後只有測試檔的 Prettier 排版，application source 保持原樣。
+
+正式 Next.js source build 通過，590 份 application 檔案的雜湊已固定；974 個翻譯鍵在三個語系一致且格式通過。[source build 收據](../.artifacts/builds/moderation-web-20261009T151922Z-8ade655014e74a48ba50dce0b499eb08/verification-confirmed.json)不是新的 Docker image 或保留部署證據。成績審核的 protocol runner 已改成使用實際版本與明確的狀態轉換，2 份 Python syntax 和 8 個離線案例通過；新增 no-op／stale／ABA 的 live probes 尚未跑新的映像。[runner 收據](../.artifacts/tests/protocol-score-cas-20261009T152018Z-c23e65d1f1de416e9c513687f1050cf3/verification.json)。
+
+Migration 24 與新的 API／native source 必須一起部署；新的整合映像及 migration-24 recovery gate 仍待完成。目前保留資料庫為 migration 22，這些來源結果不能當作現有網站或真人聊天功能已更新的證據。
+
 ## 部署狀態
 
 2026-10-09 19:14:49（UTC+08:00；11:14:49 UTC）的 guarded deployment 已通過。兩套部署各重建 Sanctuary、Resonance、Serendipity，共六個 application services，十個容器均 running／healthy。部署使用前述兩個 backend 映像，以及通過最後 10 項 account-session 確認的 Web `sha256:36f52e19775bfc4825dcde1a82d5aa145cbff97943188cdd651ec983fe4114aa`。原資料與 stored bytes、schema 22、環境值、排名觀察，以及四個 PostgreSQL／Caddy 的容器身分、image、時間、health 和 mounts 的保留 guard 全部通過；沒有以健康狀態推論原生遊戲成功。

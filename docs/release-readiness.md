@@ -10,7 +10,11 @@
 
 新 Sanctuary／Resonance 映像完成 552 次 HTTP 請求、66 類隔離協定檢查；66 是涵蓋類別數，並非 assertion 數。另有一次全 Rust workspace `269 passed / 204 ignored / 0 failed`，ignored cases 不算通過，獨立 PostgreSQL／橋接案例的範圍另列於證據。這些檢查不使用玩家資料，也不證明真人 lazer 登入成功。
 
-沿用既有 lazer 圖譜庫的 production-bound debug CLI ZIP 已產出，完整 GUI release 包仍受 Windows error 5 阻擋。CLI 使用方式、精確相容版本與清理步驟見 [Kaleidoscope 的 CLI 測試包](kaleidoscope-launcher.md#目前的-lazer-cli-測試包)。CLI 獨立來源審查與最後網站針對性確認已完成。Guarded deployment 已於 2026-10-09 19:14:49（UTC+08:00；11:14:49 UTC）完成，只重建兩套部署的六個 application services；十個容器健康，schema 22、原資料／stored bytes、環境值、排名觀察與四個 PostgreSQL／Caddy 的身分、時間及 mount 保留檢查全部通過。這仍不是真人 lazer 驗證。確切映像、檔案與待確認狀態見[本輪整合證據](current-integration-20261009.md)。以下歷史記錄保持原本時間與範圍。
+新版 Debug GUI 測試 ZIP 已產出，嵌入 production 網頁介面，可保存每次啟動使用的 HTTPS 網址。lazer 沿用既有圖譜庫與原本遊戲偏好，只將七項帳號資訊按網址分開保存；內嵌介面、完整目錄及 ZIP 檢查通過。操作、精確相容版本與清理步驟見 [Kaleidoscope 指南](kaleidoscope-launcher.md)。先前三次 Release 原生建置的 Windows error 5 原因仍未確認；Debug 包成功不代表真人視窗、登入與遊玩通過。Guarded deployment 已於 2026-10-09 19:14:49（UTC+08:00；11:14:49 UTC）完成，只重建兩套部署的六個 application services；十個容器健康，schema 22、原資料／stored bytes、環境值、排名觀察與四個 PostgreSQL／Caddy 的身分、時間及 mount 保留檢查全部通過。其後網站語系、stable durable PM／migration 23 與啟動器來源修正尚未部署到保留服務。確切映像、檔案與待確認狀態見[本輪整合證據](current-integration-20261009.md)。以下歷史記錄保持原本時間與範圍。
+
+玩家回報新版 GUI 已啟動 lazer，但按登入後中斷。安全日誌確認 OAuth token 為 200，後續 `/api/v2/me/` 空回覆為 404；這是未指定 ruleset 的正常 stock 路徑。2026-10-09 15:04:16 UTC 已僅重載 client-test Caddy 的指定 GET／HEAD 路由修正，實際 HTTPS 確認 aliases 與 canonical paths 均進入驗證，十個容器及兩份 migration-22 資料庫保持原樣。未更換 GUI 或重建後端；authenticated 真人重試仍待確認。[本次路由證據](current-integration-20261009.md#lazer-登入路由-hotfix)記錄完整邊界。
+
+後續來源已有期限禁言、具版本檢查的成績管理，以及排名／圖譜成績的 URL 導覽。API、native bridge 和 migration 24 的隔離檢查通過；網站聊天的 30 項、排名的 14 項瀏覽器案例，以及管理介面後續 9 個競態／staff 入口針對性案例通過。正式 Next.js source build 也通過。這些來源尚未部署到保留服務；新的映像整合與 migration-24 recovery gate 仍待完成，詳見[後續來源](current-integration-20261009.md#後續聊天與管理來源)。
 
 ## 原始需求
 
@@ -26,8 +30,8 @@
 | 聊天系統 | 已有網站公開／私人對話、好友／封鎖及跨協定隔離整合證據。見 [聊天](website-chat.md)。原生遊戲的聊天畫面與重連仍待實機驗證。 |
 | 官方與社群圖譜 | 已有共享官方節流、metadata／整包匯入、本地 `.osu`／`.osz` 上傳、下載、難度切換及下架。見 [圖譜搜尋](map-discovery.md)、[官方圖譜包](official-beatmap-archives.md)、[本地圖譜包](local-map-packages.md)。 |
 | Score、Replay、rosu-pp、RX | 已有持久化、Replay 綁定、PP 計算與獨立 Normal／RX 分區。真人 stable 已保存一筆 failed 與一筆 passed 成績，passed Replay 13,047 bytes、11 項綁定全部符合。正常原生成績改為通過協定與所需 Replay 檢查後自動公開；passed lazer 須完整 capture，API／未完成 capture／管理員明確決定保留原狀態。實際保存證據見 [原生提交](native-score-submission.md#真人-stable-保存證據)；Replay 播放及完整原生清單仍待確認。 |
-| stable 與 lazer 連線 | 已有 stable `-devserver` 協定及固定端點的 stock lazer 原創橋接，並有 HTTP／DTO／即時協定測試。見 [協定相容性](protocol-compatibility.md)。實機登入、遊玩、送分、Replay 播放及重連尚未通過完整清單。 |
-| 專用啟動器、禁止官方 fallback、退出移除 DLL | 已有必須先載入的外掛、固定服務、相容性拒絕、監護程序與復原清理。見 [Kaleidoscope](kaleidoscope-launcher.md)。真實遊戲的啟動／重新啟動／退出清理仍待玩家驗證；外掛只允許已驗證的 client 版本。 |
+| stable 與 lazer 連線 | 已有 stable `-devserver` 協定及 stock lazer 原創橋接，GUI 可設定部署的 HTTPS 網址並於每次啟動捕捉；有 HTTP／DTO／即時協定測試。見 [協定相容性](protocol-compatibility.md)。實機登入、遊玩、送分、Replay 播放及重連尚未通過完整清單。 |
+| 專用啟動器、禁止官方 fallback、退出移除 DLL | 新 Debug GUI 包已有網址設定、必須先載入的 Transfiguration、相容性拒絕、監護程序與復原清理；lazer 共用圖譜與遊戲偏好，只隔離帳號。見 [Kaleidoscope](kaleidoscope-launcher.md)。真實遊戲的啟動／重新啟動／退出清理仍待玩家驗證；外掛只允許精確相容檔案，不能僅以版本字串判定。 |
 | Landing 與連線教學 | 已有實際伺服器資料、功能入口、註冊／連線步驟及各客戶端操作指南。見 [網站功能](website-features.md) 與 [連線](connection.md)。 |
 
 ## 歷史版本與原生保存證據
