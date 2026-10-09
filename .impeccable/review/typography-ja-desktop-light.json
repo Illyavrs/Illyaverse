@@ -1,0 +1,110 @@
+{
+  "provenance": "Synthetic read-only intercepted homepage API fixtures; temporary mixed glyph probe removed before capture. Genuine licensed self-hosted fonts. No live writes or native-client certification.",
+  "scene": {
+    "name": "ja-desktop-light",
+    "locale": "ja",
+    "theme": "light",
+    "width": 1280
+  },
+  "filename": "typography-ja-desktop-light.png",
+  "png_sha256": "1954c36bf9e2aa2d3366945bafedaa0e353e95d0a5f69cc29b018d25636368bf",
+  "metrics": {
+    "width": 1280,
+    "document_width": 1265,
+    "lang": "ja",
+    "theme": "light",
+    "body_font": "\"Nunito Variable\", \"Illya Maru\", \"Illya Pearl\", sans-serif",
+    "body_size": "15px",
+    "body_line_height": "25.5px",
+    "wordmark_size": "80px",
+    "wordmark_svg_count": 0
+  },
+  "textFonts": [
+    {
+      "familyName": "Illya Maru",
+      "postScriptName": "IllyaMaru-Regular",
+      "isCustomFont": true,
+      "glyphCount": 67
+    },
+    {
+      "familyName": "Nunito ExtraLight",
+      "postScriptName": "Nunito-ExtraLight",
+      "isCustomFont": true,
+      "glyphCount": 6
+    }
+  ],
+  "wordmarkFonts": [
+    {
+      "familyName": "Nunito ExtraLight",
+      "postScriptName": "Nunito-ExtraLight-Black",
+      "isCustomFont": true,
+      "glyphCount": 5
+    }
+  ],
+  "mixedFonts": {
+    "zh": [
+      {
+        "familyName": "Illya Pearl",
+        "postScriptName": "IllyaPearl-Regular",
+        "isCustomFont": true,
+        "glyphCount": 6
+      }
+    ],
+    "ja": [
+      {
+        "familyName": "Illya Maru",
+        "postScriptName": "IllyaMaru-Regular",
+        "isCustomFont": true,
+        "glyphCount": 9
+      }
+    ],
+    "en": [
+      {
+        "familyName": "Nunito ExtraLight",
+        "postScriptName": "Nunito-ExtraLight",
+        "isCustomFont": true,
+        "glyphCount": 28
+      }
+    ],
+    "kanaFallback": [
+      {
+        "familyName": "Illya Pearl",
+        "postScriptName": "IllyaPearl-Regular",
+        "isCustomFont": true,
+        "glyphCount": 5
+      }
+    ],
+    "kanaMarks": [
+      {
+        "familyName": "Illya Pearl",
+        "postScriptName": "IllyaPearl-Regular",
+        "isCustomFont": true,
+        "glyphCount": 2
+      }
+    ],
+    "kanaDecomposed": [
+      {
+        "familyName": "Illya Maru",
+        "postScriptName": "IllyaMaru-Regular",
+        "isCustomFont": true,
+        "glyphCount": 2
+      }
+    ]
+  },
+  "requested": [
+    "/fonts/zen-maru-gothic/400-common.woff2",
+    "/fonts/zen-maru-gothic/700-common.woff2",
+    "/fonts/taiwan-pearl/400-080.woff2",
+    "/fonts/taiwan-pearl/400-056.woff2",
+    "/fonts/taiwan-pearl/400-kana-fallback.woff2",
+    "/fonts/taiwan-pearl/400-common.woff2"
+  ],
+  "payloadBytes": 567696,
+  "source_sha256": {
+    "src/app/layout.tsx": "c95522187e4e4b3923f925772a5d8521ef8f1bfb2faa1e80caafa62a2f0a21ba",
+    "src/app/globals.css": "7e48ce83fab325ebb41b6041167603c2dd7e8d4a795ea0a518a9ba143add7851",
+    "src/styles/cjk-fonts.css": "7e821470c382c04906ce0c525af23d843f800b3964d231e5c62a853f65ed37cf",
+    "public/fonts/provenance.json": "f695b0174faa3f6b8a387d4ef2789572132bc1d0a2857e9a127b7a6002632c59",
+    "tests/typography.spec.ts": "da6762ee61996c7f3c57ea264721a602ce91f27da0c57338beef00da860e9cb1"
+  }
+}

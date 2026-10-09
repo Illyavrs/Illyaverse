@@ -2,11 +2,21 @@
 
 這份表依原始需求核對 Illyaverse 的實作與證據。網站與隔離整合測試通過，不等於 stable／lazer 已可正常遊玩；原始目標目前仍未完成。
 
+## 最新整合 checkpoint：2026-10-09
+
+五個主要子專案已改成獨立 Git repositories，由 Illyaverse parent 以 submodules 固定版本；目前 origins 是本機 bare repositories，尚未配置可供其他電腦使用的 HTTPS／SSH remotes。[資料夾與 Git 導覽](repository-layout.md)記錄 workspace、共用來源與遞迴 checkout 邊界。
+
+這輪完成公開官方圖譜預設搜尋與明確的伺服器圖譜範圍、帳號登入 session 自助撤銷、中文 TaiwanPearl／日文 Zen Maru Gothic 本機子集字體，以及保留點擊範圍的較小成績選單 hover。英文保持 Nunito，面板沿用既有可調毛玻璃。Web `sha256:49580deecc6d49e0d83d83853b4802dc989de6bcf101d1647c001c2b27dc4cd8` 的 112 項整合瀏覽器案例通過；其後僅修正 session 撤銷成功回饋的圖示與換行文字對齊，修正版 Web `sha256:36f52e19775bfc4825dcde1a82d5aa145cbff97943188cdd651ec983fe4114aa` 已通過 10 項針對性案例與該修正範圍的 ship 審查；不宣稱原本 112 項已在新映像重跑。
+
+新 Sanctuary／Resonance 映像完成 552 次 HTTP 請求、66 類隔離協定檢查；66 是涵蓋類別數，並非 assertion 數。另有一次全 Rust workspace `269 passed / 204 ignored / 0 failed`，ignored cases 不算通過，獨立 PostgreSQL／橋接案例的範圍另列於證據。這些檢查不使用玩家資料，也不證明真人 lazer 登入成功。
+
+沿用既有 lazer 圖譜庫的 production-bound debug CLI ZIP 已產出，完整 GUI release 包仍受 Windows error 5 阻擋。CLI 使用方式、精確相容版本與清理步驟見 [Kaleidoscope 的 CLI 測試包](kaleidoscope-launcher.md#目前的-lazer-cli-測試包)。CLI 獨立來源審查與最後網站針對性確認已完成。Guarded deployment 已於 2026-10-09 19:14:49（UTC+08:00；11:14:49 UTC）完成，只重建兩套部署的六個 application services；十個容器健康，schema 22、原資料／stored bytes、環境值、排名觀察與四個 PostgreSQL／Caddy 的身分、時間及 mount 保留檢查全部通過。這仍不是真人 lazer 驗證。確切映像、檔案與待確認狀態見[本輪整合證據](current-integration-20261009.md)。以下歷史記錄保持原本時間與範圍。
+
 ## 原始需求
 
 | 需求 | 目前狀態與證據 |
 | --- | --- |
-| Illyaverse monorepo、原創程式碼 | Serendipity、Sanctuary、Resonance、Kaleidoscope／Transfiguration 各有明確責任；來源規範見 [AGENTS.md](../AGENTS.md) 與 [PRODUCT.md](../PRODUCT.md)。參考專案不作為複製來源。 |
+| Illyaverse 整合 parent、獨立子倉庫、原創程式碼 | Serendipity、Sanctuary、Resonance、Kaleidoscope、Transfiguration 五個獨立子倉庫由 parent submodules 固定版本；目前 origins 僅在本機。共用 workspace、Compose 與 migrations 邊界見 [資料夾導覽](repository-layout.md)。來源規範見 [AGENTS.md](../AGENTS.md) 與 [PRODUCT.md](../PRODUCT.md)。參考專案不作為複製來源。 |
 | Next.js、Tailwind、shadcn/ui、Rust | 已實作；來源與依賴位於 `apps/serendipity`、`services`。最新網站 lint、typecheck、正式 Docker build 及操作證據見 [圖譜與共用層次檢查](map-discovery-review.md)。 |
 | Docker 部署 | 已有初始化、Compose、持久化、健康檢查、備份及正式 HTTPS 配置；兩套本機部署共十個健康容器。見 [部署](deployment.md)。正式 DNS／ACME 仍由營運者配置，本機測試不證明公開域名部署成功。 |
 | 公開註冊、多語系 | 已有網站註冊、登入、帳號設定及 cookie／帳號語系偏好；遊戲註冊導向網站。郵件復原／驗證取決於 SMTP 配置。見 [帳號復原](account-recovery.md) 與 [網站功能](website-features.md)。 |
@@ -20,7 +30,7 @@
 | 專用啟動器、禁止官方 fallback、退出移除 DLL | 已有必須先載入的外掛、固定服務、相容性拒絕、監護程序與復原清理。見 [Kaleidoscope](kaleidoscope-launcher.md)。真實遊戲的啟動／重新啟動／退出清理仍待玩家驗證；外掛只允許已驗證的 client 版本。 |
 | Landing 與連線教學 | 已有實際伺服器資料、功能入口、註冊／連線步驟及各客戶端操作指南。見 [網站功能](website-features.md) 與 [連線](connection.md)。 |
 
-## 目前版本
+## 歷史版本與原生保存證據
 
 2026-10-09 的網站 checkpoint 對應 HEAD `9d6e097`，詳見[密集介面驗證](dense-interface-verification.md)。原始完整 Web image `31e6cc4c…` 的 87 項瀏覽器測試與最終相容性修正 Web image `d1309dd7d4e405afa0a09ade2955fca5146152f34a13ab0e78ae96f559ddd4be` 的 26 項測試均分別通過；後者是相容性修正後的 final Web image，並非宣稱在其上重跑 87 項。最終 guarded Web-only deployment 只更新 Serendipity，保留後端八個服務、storage、schema 22 與原有資料；同一份證據也記錄來源、截圖、部署與實際瀏覽器核對。這是網站 checkpoint，不代表 stable／lazer 或 Kaleidoscope 的手動原生驗證已完成；那些檢查仍待玩家執行。
 

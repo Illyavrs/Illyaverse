@@ -1,0 +1,301 @@
+{
+  "version": 1,
+  "checkpoint": "integration-20261009",
+  "recorded_at_utc": "2026-10-09T11:19:13Z",
+  "status": "guarded_deployment_passed_cli_ready_native_testing_pending",
+  "git_topology": {
+    "projects": [
+      "Serendipity",
+      "Sanctuary",
+      "Resonance",
+      "Kaleidoscope",
+      "Transfiguration"
+    ],
+    "independent_child_histories": true,
+    "parent_gitlinks": true,
+    "origins": "local bare repositories only",
+    "portable_remote_clone_verified": false,
+    "recursive_local_source_clone": {
+      "passed": true,
+      "scope": "source-only local recursive clone; no dependency installation, game launch or deploy",
+      "initial_parent_commit": "3e9236898f937bebca4257c804da5b683510ba4c",
+      "final_checkpoint_parent_commit": "ef91510a3cec925907c840b490f719559fda8727",
+      "final_checkpoint_scope": "source-only reused owned clone; all five child gitlinks and local bare heads match; fsck, shared crates, 22 exact LF migrations and locked offline Cargo metadata passed; no builds or gameplay"
+    }
+  },
+  "website": {
+    "broad": {
+      "image": "sha256:49580deecc6d49e0d83d83853b4802dc989de6bcf101d1647c001c2b27dc4cd8",
+      "tests": {
+        "total": 112,
+        "failed": 0,
+        "passed": 112
+      },
+      "source_commits": {
+        "serendipity": "a2e3f2ef57856234376208785e0878f37566ae30",
+        "root": "758a1ff1a7daf41951046c5788f14a5ce9d1b216",
+        "kaleidoscope_ui": "60cd1c02b6c2451a4e54cf870d3c77c4f3fd4550"
+      },
+      "scope": "eight intercepted final-image browser suites; typography/CDP probes and generated review captures"
+    },
+    "account_success_confirmation": {
+      "image": "sha256:36f52e19775bfc4825dcde1a82d5aa145cbff97943188cdd651ec983fe4114aa",
+      "tests": {
+        "total": 10,
+        "passed": 10,
+        "failed": 0
+      },
+      "source_commits": {
+        "serendipity": "f199a60395b2ca76ade1f06c970154614d99c238",
+        "kaleidoscope_ui": "60cd1c02b6c2451a4e54cf870d3c77c4f3fd4550",
+        "root": "3f8a19092b340cc453a51b72621abe4b612cb743"
+      },
+      "capture_count": 7,
+      "scope": "single success-feedback CSS fix and account-session suite; no claim of broad 112 rerun",
+      "finish_review": {
+        "disposition": "ship",
+        "scope": "single scored success-feedback finding only",
+        "reported_by": "/root after finish_account_sessions reviewer"
+      }
+    },
+    "deployment": {
+      "status": "passed",
+      "final_manifest": {
+        "path": "data-current-integration-20261009/integration-deploy-20261009T110622Z-6dcebea122f949e6942b2915b00c5c9b/deployment-manifest.json",
+        "sha256": "5dc274e2fcb7c2000dfcaf351627fb9e3143efe590d0057e869b55e7ea3ce73e"
+      },
+      "final_image": "sha256:36f52e19775bfc4825dcde1a82d5aa145cbff97943188cdd651ec983fe4114aa"
+    }
+  },
+  "backend_protocol": {
+    "images": {
+      "sanctuary": "sha256:d84d71bb9398b8d63df6b9dba5a7b2b5f784aaf174d47b1475c652d9a7037363",
+      "resonance": "sha256:ec8a0058a2a40c553abe52256f6a336aadbad191233a2f63f4b3f0575341667c"
+    },
+    "http_requests": 552,
+    "check_categories": 66,
+    "category_count_is_assertion_count": false,
+    "exit_code": 0,
+    "cleanup": "passed: disposable containers, network, volumes and temporary environment removed; retained services/data untouched",
+    "scope": "disposable PostgreSQL/Sanctuary/Resonance HTTP protocol check; not real stable/lazer GUI"
+  },
+  "rust_workspace": {
+    "command": "cargo test --workspace --locked",
+    "totals": {
+      "passed": 269,
+      "failed": 0,
+      "ignored": 204
+    },
+    "ignored_counted_as_passed": false,
+    "scope": "recorded whole-workspace source snapshot before later CLI packaging changes; CLI 59 is a separate scope, not an addition to the workspace total"
+  },
+  "lazer_cli": {
+    "artifact_kind": "cli_connection_test",
+    "archive": {
+      "path": ".artifacts/packages/kaleidoscope-cli-test-20261009-105203-46ed5f615ec7444cb0ed693ce3714969.zip",
+      "sha256": "e276fd015c577b5dd2267e635397398d4d4ef040150777d75ba3440856739418"
+    },
+    "build_profile": "ordinary debug",
+    "launcher_sha256": "8ff6a873e67a2ccd3e5b445d4fcbd63325e66d565026126403cb767b9d3d47f2",
+    "bridge_sha256": "99d7fcb8dea1846a945633f14073a2e0fdd9bd70bcc2a18f2f491e1d84f559b3",
+    "compatibility_sha256": "d48afa7c94e64cbc6bc536eadf1728ec6a70d0aa3c9b98934f25931c77b4e600",
+    "checks": {
+      "cli_integrity": {
+        "log": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.artifacts\\packages\\kaleidoscope-cli-test-20261009-105203-46ed5f615ec7444cb0ed693ce3714969.integrity-confirmation.log",
+        "log_sha256": "6b18aef3a3011e1bc1ba964071fde07fd920b6dce347309698f5f40ce4210e5d",
+        "exit_code": 0,
+        "passed": 30,
+        "tool_chunk": "ab6691"
+      },
+      "gui_package_regression": {
+        "log": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.artifacts\\packages\\kaleidoscope-cli-test-20261009-105203-46ed5f615ec7444cb0ed693ce3714969.gui-regression-confirmation.log",
+        "log_sha256": "bdaf72e4c8b79f862d54d354dbb8455578ff7e491a549eba71ede04d8d0a3aad",
+        "exit_code": 0,
+        "passed": 41,
+        "tool_chunk": "2cd7d3"
+      },
+      "core": {
+        "exit_code": 0,
+        "lifecycle": 11,
+        "cli_integration": 6,
+        "failed": 0,
+        "cli_unit": 2,
+        "passed": 59,
+        "library": 40,
+        "tool_chunk": "cfbb9e"
+      },
+      "clippy": {
+        "log": "C:\\Users\\owenl\\C\\Projects\\osu-ps\\Illyaverse\\.artifacts\\packages\\kaleidoscope-cli-test-20261009-105203-46ed5f615ec7444cb0ed693ce3714969.clippy.log",
+        "log_sha256": "b8c9a587ac7e2f986d2bf4dbf3e4f0127fda5ac32621a630735e9ce80aa5068c",
+        "warnings_denied": true,
+        "exit_code": 0
+      },
+      "rustfmt": {
+        "exit_code": 0,
+        "tool_chunk": "46db6a"
+      },
+      "powershell_parse": {
+        "files": 4,
+        "diagnostics": 0,
+        "tool_chunk": "733709"
+      },
+      "positive_source_ownership": {
+        "packaged_payload_paths": 13,
+        "passed": true,
+        "process_started": false,
+        "producer_input_paths": 8
+      }
+    },
+    "independent_source_review": {
+      "original_P2": "resolved",
+      "disposition": "no remaining finding within requested scope",
+      "independently_confirmed_zip_sha256": "e276fd015c577b5dd2267e635397398d4d4ef040150777d75ba3440856739418",
+      "scope": "CLI runtime/main bindings, production source ownership before reads/copy/execution, fixed Cargo target guards, portable verifier, 13 unchanged payload hashes and original unchanged ZIP",
+      "independently_confirmed_payloads": 13,
+      "reviewer": "/root/cli_package_review",
+      "binary_or_test_execution_by_reviewer": false
+    },
+    "post_build_source_changes": {
+      "change": "PowerShell source ownership guards plus negative fixtures and documentation",
+      "ZIP": false,
+      "compiled_Rust": false,
+      "package_payloads": false,
+      "core_tests_and_clippy_repeated": false
+    },
+    "one_command": ".\\Kaleidoscope.exe launcher start lazer \"$env:LOCALAPPDATA\\osulazer\\current\\osu!.exe\"",
+    "native_gui_verified": false,
+    "native_login_verified": false,
+    "game_started_by_automated_checks": false,
+    "player_data_accessed_by_automated_checks": false,
+    "hosts_ca_modified_by_automated_checks": false,
+    "gui_release_available": false,
+    "gui_release_limit": "Windows error 5 while running dependency build scripts; cause not established"
+  },
+  "deployment": {
+    "status": "passed",
+    "final_manifest": {
+      "path": "data-current-integration-20261009/integration-deploy-20261009T110622Z-6dcebea122f949e6942b2915b00c5c9b/deployment-manifest.json",
+      "sha256": "5dc274e2fcb7c2000dfcaf351627fb9e3143efe590d0057e869b55e7ea3ce73e"
+    },
+    "finished_at_source_utc": "2026-10-09T11:14:49.9209291+00:00",
+    "finished_at_utc_to_seconds": "2026-10-09T11:14:49Z",
+    "finished_at_taipei_to_seconds": "2026-10-09T19:14:49+08:00",
+    "schema": 22,
+    "images": {
+      "sanctuary": "sha256:d84d71bb9398b8d63df6b9dba5a7b2b5f784aaf174d47b1475c652d9a7037363",
+      "resonance": "sha256:ec8a0058a2a40c553abe52256f6a336aadbad191233a2f63f4b3f0575341667c",
+      "serendipity": "sha256:36f52e19775bfc4825dcde1a82d5aa145cbff97943188cdd651ec983fe4114aa"
+    },
+    "verified_services": [
+      "illyaverse-client-test/sanctuary",
+      "illyaverse-client-test/resonance",
+      "illyaverse-client-test/serendipity",
+      "illyaverse/sanctuary",
+      "illyaverse/resonance",
+      "illyaverse/serendipity"
+    ],
+    "healthy_container_count": 10,
+    "preservation_flags": {
+      "original_data_and_stored_bytes_preserved": true,
+      "daily_rank_observations_preserved": true,
+      "four_nonapplication_container_identities_images_states_health_timestamps_and_mounts_preserved": true,
+      "environment_values_and_schema22_preserved": true
+    },
+    "native_client_control": false,
+    "security_hosts_certificates_firewall_or_environment_changes": false
+  },
+  "raw_evidence": {
+    "web_broad_112": {
+      "path": ".artifacts/builds/integration-20261009/web-disposable-smoke-confirmation-20261009T104000Z.json",
+      "sha256": "e71e9aed1eb63359fab2d02781bdae32c7059b189889456171948f51b9b31ece"
+    },
+    "web_account_success_10": {
+      "path": ".artifacts/builds/integration-20261009/account-success-confirmation/manifest.json",
+      "sha256": "83a0eca068755c89f0c5415b6fdc3a5ea814a25c853923bb084f3129cf3de68c"
+    },
+    "protocol_552_66": {
+      "path": ".artifacts/builds/integration-20261009/disposable-protocol-evidence.json",
+      "sha256": "35c1a067fbd74c435d3d5c4bb0262e5346d566b47c8b65bfe19bb2e8dbea1f47"
+    },
+    "rust_workspace_log": {
+      "path": "data-current-integration-20261009/cargo-test-workspace-20261009.log",
+      "sha256": "5f64207e3a93d2a3ef46f5a10ff58c0bff01a8f8feb432819e9f34c16f83e32c"
+    },
+    "rustfmt_workspace_log": {
+      "path": "data-current-integration-20261009/rustfmt-workspace-20261009.log",
+      "sha256": "c1e97067c5f479a44a6f57297a0a8f87a59d181c3c529910f8bf059094bc3abb"
+    },
+    "clippy_workspace_log": {
+      "path": "data-current-integration-20261009/cargo-clippy-workspace-20261009.log",
+      "sha256": "3bac0c1bfb1636eb04b8432eb0027d246ee266f8358b25dbc3137667f81f3224"
+    },
+    "cli_initial": {
+      "path": ".artifacts/packages/kaleidoscope-cli-test-20261009-105203-46ed5f615ec7444cb0ed693ce3714969.verification.json",
+      "sha256": "767e2ebcb558d0698f19e6c525f62f74d6c4a75feda3698951b78795ef211b92"
+    },
+    "cli_final": {
+      "path": ".artifacts/packages/kaleidoscope-cli-test-20261009-105203-46ed5f615ec7444cb0ed693ce3714969.verification-final.json",
+      "sha256": "4fae244605f45a91db9a87decff5f82ab3cf72192a666e8aedfb7449ed775a38"
+    },
+    "cli_archive": {
+      "path": ".artifacts/packages/kaleidoscope-cli-test-20261009-105203-46ed5f615ec7444cb0ed693ce3714969.zip",
+      "sha256": "e276fd015c577b5dd2267e635397398d4d4ef040150777d75ba3440856739418"
+    },
+    "gui_release_diagnosis": {
+      "path": ".artifacts/builds/integration-20261009/launcher-package-diagnosis.json",
+      "sha256": "d23cbd1c918989a6a4417fd1dbed87f51fb5f50ff81a064e968e03346a010140"
+    },
+    "recursive_clone": {
+      "path": ".git/split-verification/20261009T101852Z-2cd029defb3d455fa2716ea66387626a/verification.json",
+      "sha256": "0d2d0ec4a0cb4068e0a580b7eb64dad1427c2e421c7b72c2c9d6e8e9aa7abb00"
+    },
+    "read_only_final_preflight": {
+      "path": "data-current-integration-20261009/integration-preflight-20261009T110435Z-c0b8833105a447829958dfba11541c31/deployment-manifest.json",
+      "sha256": "c2b9f7c1c2791f82a5aa6f4b3d025a9066cbba4bc47f124de14e11fe5f5b833b"
+    },
+    "recursive_clone_final_checkpoint": {
+      "path": ".git/split-verification/20261009T101852Z-2cd029defb3d455fa2716ea66387626a/final-checkpoint.json",
+      "sha256": "9e39f54b9ace5f42aaaabff52577500d07f584e1864ed400dffe645fa9f05c8b"
+    },
+    "guarded_deployment_final": {
+      "path": "data-current-integration-20261009/integration-deploy-20261009T110622Z-6dcebea122f949e6942b2915b00c5c9b/deployment-manifest.json",
+      "sha256": "5dc274e2fcb7c2000dfcaf351627fb9e3143efe590d0057e869b55e7ea3ce73e"
+    },
+    "local_https_read_only": {
+      "path": ".artifacts/builds/integration-20261009/local-https-check.json",
+      "sha256": "23bb451ba7cb35a8e47d898abd2659d190577bf0da77113d0bc5231ea9cde603"
+    }
+  },
+  "limitations": [
+    "Local ignored evidence is not included in a normal Git clone.",
+    "Actual native GUI/login/gameplay/score/replay/reconnect/cleanup remain player testing.",
+    "Original broad community objective remains incomplete.",
+    "Historical checkpoints and source/image scopes are preserved separately."
+  ],
+  "local_https_read_only": {
+    "version": 1,
+    "observed_at_utc": "2026-10-09T11:16:44.7265058+00:00",
+    "url": "https://illya.test/",
+    "curl_default": {
+      "exit_code": 35,
+      "status": 0,
+      "error": "CRYPT_E_NO_REVOCATION_CHECK",
+      "scope": "Windows Schannel could not obtain local CA revocation information"
+    },
+    "curl_revocation_best_effort": {
+      "exit_code": 0,
+      "status": 200,
+      "hostname_and_chain_validation_skipped": false
+    },
+    "dotnet_default": {
+      "status": 200,
+      "runtime": ".NET 10.0.12",
+      "handler": "SocketsHttpHandler",
+      "allow_auto_redirect": false,
+      "revocation_mode": "NoCheck",
+      "custom_certificate_callback": false
+    },
+    "scope": "Read-only homepage HTTP probes; no native game launch, login, host or certificate configuration changes",
+    "native_client_verified": false
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "capturedAt": "2026-10-09T10:42:31.542Z",
+  "variant": {
+    "width": 320,
+    "height": 740,
+    "locale": "ja",
+    "theme": "dark"
+  },
+  "syntheticApi": true,
+  "url": "http://localhost:19000/beatmaps",
+  "metrics": {
+    "scrollY": 0,
+    "width": 320,
+    "height": 740,
+    "documentWidth": 305,
+    "bodyText": "メインコンテンツへ\nJA\nosu! ビートマップ\nサーバーのビートマップ\nビートマップ\n\n曲名、アーティスト、マッパーで osu! のビートマップを検索。\n\n検索\n検索\nゲームモード\nすべてのモード\nステータス\nRanked\n並び順\n最近 Ranked になった順\n4 セット\nこのページに 2 セット\nグリッド\nリスト\nPublic official fixture song\nFixture artist 星の歌\n\nマッパー：Fixture mapper\n\n1.25–9.08\n1:30–1:59\nosu! / taiko / catch / mania\nRanked\n30\nPublic official fixture 46\nFixture artist 星の歌\n\nマッパー：Fixture mapper\n\n1.25–1.52\n1:30–1:31\nosu! / taiko\nRanked\n2\n次へ\nIllyaverse\nosu! コミュニティサーバー\n接続ガイド\n設定\nosu!\n独立コミュニティ · osu! は ppy Pty Ltd の商標です · Twemoji · CC BY 4.0",
+    "cards": [
+      {
+        "height": 112
+      },
+      {
+        "height": 112
+      }
+    ]
+  }
+}
