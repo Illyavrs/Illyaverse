@@ -110,6 +110,7 @@ services:
       dockerfile: apps/serendipity/Dockerfile
       args:
         API_INTERNAL_URL: http://sanctuary:8080
+        RESONANCE_INTERNAL_URL: http://resonance:8081
     init: true
     restart: unless-stopped
     environment:
@@ -119,6 +120,7 @@ services:
       PORT: "3000"
       ILLYA_DOCS_PATH: /illyaverse/docs
       API_INTERNAL_URL: http://sanctuary:8080
+      RESONANCE_INTERNAL_URL: http://resonance:8081
     depends_on:
       sanctuary:
         condition: service_healthy

@@ -1,0 +1,119 @@
+name: Build verified Kaleidoscope package
+
+# An operator-managed runner supplies the tested installed client assemblies.
+# No osu! client, player data, private signing key or gameplay enters artifacts.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Canonical stable Kaleidoscope update version (without v)
+        required: true
+        type: string
+      bridge_version:
+        description: Exact stable Transfiguration version bundled in this build
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kaleidoscope-native-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: [self-hosted, Windows, X64, illyaverse-native]
+    environment: launcher-build
+    timeout-minutes: 120
+    env:
+      # Per-process Git configuration keeps auto text checkout bytes equal to
+      # committed blobs without changing this self-hosted runner's settings.
+      GIT_CONFIG_COUNT: '2'
+      GIT_CONFIG_KEY_0: core.autocrlf
+      GIT_CONFIG_VALUE_0: 'false'
+      GIT_CONFIG_KEY_1: core.eol
+      GIT_CONFIG_VALUE_1: lf
+      ILLYAVERSE_NATIVE_ROOT: ${{ vars.ILLYAVERSE_NATIVE_ROOT }}
+      # Detached request builders capture this origin without sending requests.
+      ILLYAVERSE_LAZER_SERVER_ENDPOINT: https://illya.test
+      KALEIDOSCOPE_UPDATE_REPOSITORY: ${{ vars.KALEIDOSCOPE_UPDATE_REPOSITORY }}
+      KALEIDOSCOPE_UPDATE_PUBLIC_KEY: ${{ vars.KALEIDOSCOPE_UPDATE_PUBLIC_KEY }}
+      KALEIDOSCOPE_UPDATE_VERSION: ${{ inputs.version }}
+      TRANSFIGURATION_UPDATE_REPOSITORY: ${{ vars.TRANSFIGURATION_UPDATE_REPOSITORY }}
+      TRANSFIGURATION_UPDATE_PUBLIC_KEY: ${{ vars.TRANSFIGURATION_UPDATE_PUBLIC_KEY }}
+      TRANSFIGURATION_BUNDLED_VERSION: ${{ inputs.bridge_version }}
+    steps:
+      - name: Check out the exact parent and recursive component pins
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Require the dedicated preinstalled toolchain
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_REPOSITORY -cne 'Illyavrs/Illyaverse') { throw 'This producer belongs in Illyavrs/Illyaverse.' }
+          if ([string]::IsNullOrWhiteSpace($env:ILLYAVERSE_NATIVE_ROOT) -or ![IO.Path]::IsPathFullyQualified($env:ILLYAVERSE_NATIVE_ROOT) -or $env:ILLYAVERSE_NATIVE_ROOT.StartsWith('\\') -or !(Test-Path -LiteralPath $env:ILLYAVERSE_NATIVE_ROOT -PathType Container)) { throw 'Configure an absolute local dedicated runner native assembly directory.' }
+          foreach ($tool in @('cl.exe', 'rc.exe', 'dotnet', 'rustc', 'cargo', 'node', 'npm', 'pwsh')) { Get-Command $tool -ErrorAction Stop | Out-Null }
+          node -e "if(process.platform!=='win32'||process.arch!=='x64'||process.versions.node.split('.')[0]!=='24')process.exit(1)"
+          if ($LASTEXITCODE -ne 0) { throw 'Use preinstalled Windows x64 Node.js 24.' }
+          $sdks = @(dotnet --list-sdks)
+          if ($LASTEXITCODE -ne 0 -or !($sdks | Where-Object { $_ -match '^10\.' })) { throw 'Use the preinstalled .NET 10 SDK.' }
+          $rust = @(rustc -vV)
+          if ($LASTEXITCODE -ne 0 -or $rust -cnotcontains 'host: x86_64-pc-windows-msvc') { throw 'Use the preinstalled Windows x64 MSVC Rust toolchain.' }
+          if (Test-Path -LiteralPath .artifacts/ci-launcher) { throw 'This run requires a fresh build output directory.' }
+          New-Item -ItemType Directory -Path .artifacts/ci-launcher/payload, .artifacts/ci-launcher/provenance | Out-Null
+
+      - name: Freeze clean immutable sources and native reference bytes
+        shell: pwsh
+        run: |
+          node infra/launcher-build-receipt.mjs snapshot --workspace-root . --parent-commit $env:GITHUB_SHA --frozen-native .artifacts/ci-launcher/provenance/frozen-native.json --output-file .artifacts/ci-launcher/provenance/source-before.json
+          if ($LASTEXITCODE -ne 0) { throw 'Source or public channel validation failed.' }
+          node --test infra/launcher-build-receipt.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Build receipt guard tests failed.' }
+
+      - name: Restore the locked JavaScript dependencies
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'Locked JavaScript dependency restore failed.' }
+
+      - name: Build the production Release GUI and bridge package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./tools/kaleidoscope/scripts/package-launcher.ps1 -BuildProfile Release -NativeRoot $env:ILLYAVERSE_NATIVE_ROOT -OutputDirectory (Join-Path $pwd '.artifacts/ci-launcher/payload/package')
+          if ($LASTEXITCODE -ne 0) { throw 'Production launcher packaging failed.' }
+          ./tools/kaleidoscope/scripts/verify-launcher-package.ps1 -Directory .artifacts/ci-launcher/payload/package
+          ./tools/kaleidoscope/scripts/verify-launcher-package.ps1 -ArchivePath .artifacts/ci-launcher/payload/package.zip
+
+      - name: Publish the detached proof harness with its pinned runtime
+        shell: pwsh
+        run: |
+          dotnet publish tools/transfiguration/tests/Proof.csproj -c Release -r win-x64 --self-contained true -p:UseAppHost=true -p:RuntimeFrameworkVersion=10.0.12 "-p:NativeRoot=$env:ILLYAVERSE_NATIVE_ROOT" -o .artifacts/ci-launcher/proof-runtime --nologo
+          if ($LASTEXITCODE -ne 0) { throw 'Detached production proof harness publication failed.' }
+
+      - name: Prove the exact bundled DLL and bind unchanged inputs
+        shell: pwsh
+        run: |
+          node infra/launcher-build-receipt.mjs complete --workspace-root . --parent-commit $env:GITHUB_SHA --before .artifacts/ci-launcher/provenance/source-before.json --frozen-native .artifacts/ci-launcher/provenance/frozen-native.json --proof-runtime .artifacts/ci-launcher/proof-runtime --package-directory .artifacts/ci-launcher/payload/package --archive .artifacts/ci-launcher/payload/package.zip --output-file .artifacts/ci-launcher/provenance/build-receipt.json
+          if ($LASTEXITCODE -ne 0) { throw 'Production build receipt verification failed.' }
+
+      - name: Upload only the complete package and its ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: kaleidoscope-verified-gui-package
+          path: .artifacts/ci-launcher/payload/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload the separate immutable build provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: kaleidoscope-build-provenance
+          path: .artifacts/ci-launcher/provenance/
+          if-no-files-found: error
+          retention-days: 14

@@ -207,6 +207,7 @@ requirements are in [AGENTS.md](AGENTS.md).
 
 - [Deployment and backups](docs/deployment.md)
 - [Launcher and connection setup](docs/kaleidoscope-launcher.md)
+- [Launcher and bridge Release builds](docs/launcher-release-builds.md)
 - [API and permissions](docs/api.md) · [Role management](docs/permissions.md)
 - [Beatmap discovery](docs/map-discovery.md) · [Ranking requests](docs/beatmap-rank-requests.md)
 - [Scores and replays](docs/native-score-submission.md) · [Chat](docs/website-chat.md)
