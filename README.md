@@ -15,13 +15,12 @@ Illyaverse brings accounts, beatmaps, scores, replays, rankings and chat into on
 deployment. Its name is inspired by _Fate/kaleid liner Prisma Illya_. Players
 register on the website and use the same account in either game client.
 
-Development is ongoing. The user now reports stable and lazer score submissions,
-replay retrieval and chat working normally. Replay playback, multiplayer, private
-messages and launcher cleanup still need client verification. The
-[current integration record](docs/current-integration-20261010.md) supersedes
-older failure checkpoints and distinguishes human reports from automated proof.
-Source-28 fixes are under verification and are not deployed; the
-[release checklist](docs/release-readiness.md) retains its dated evidence.
+Stable and lazer score submissions, replay retrieval and chat have been reported
+working. Replay playback, multiplayer, private messages, Relax, reconnection and
+launcher cleanup still need client verification. Client-test now runs schema 29,
+with its existing data preserved; the main deployment remains at schema 22. See the
+[current integration record](docs/current-integration-20261010.md) and
+[release checklist](docs/release-readiness.md) for verification scope.
 
 ## Run a local server
 
@@ -100,7 +99,7 @@ are separate from Normal; mania has no Relax variant. See the
 [Relax contract](docs/relax.md) for scoring and replay limitations.
 
 Player ranking requests, the Beatmap Nominator role and the revised review queue
-are deployed to the retained client-test environment at schema 27. New local
+are deployed to the retained client-test environment at schema 29. New local
 uploads start in Graveyard in that workflow;
 nomination and staff decisions target individual difficulties. The
 [ranking-request contract](docs/beatmap-rank-requests.md) describes permissions,
@@ -108,7 +107,7 @@ conflict handling and integration status. The main deployment remains at schema
 22. Client-test also includes private-message read receipts, the combined server
 catalogue and archive acquisition. See the
 [current integration record](docs/current-integration-20261010.md) for
-the deployment boundary, latest human report and source-28 checks still pending.
+the deployment boundary and remaining client verification.
 
 ## Connect a game client
 
