@@ -1,0 +1,12 @@
+{
+  "title": "營運與設定",
+  "pages": [
+    "permissions",
+    "account-recovery",
+    "announcements",
+    "official-archive-acquisition",
+    "official-beatmap-archives",
+    "local-map-packages",
+    "beatmap-availability"
+  ]
+}

@@ -1,0 +1,44 @@
+---
+title: 快速開始
+description: 需要 Docker 與 Compose 2.24.4 以上，十分鐘內在本機啟動完整網站。
+---
+
+## 需求
+
+- 運行中的 Docker daemon，Compose 2.24.4 以上
+- 空閒的本機連接埠 3000
+
+## 啟動
+
+<Tabs items={['Windows', 'Linux / macOS']}>
+<Tab value="Windows">
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File infra/setup.ps1
+docker compose up -d --build --wait
+docker compose ps
+```
+
+</Tab>
+<Tab value="Linux / macOS">
+
+```sh
+sh infra/setup.sh
+docker compose up -d --build --wait
+docker compose ps
+```
+
+</Tab>
+</Tabs>
+
+`setup` 會產生互相獨立的隨機密鑰到 `.env`，不會列印、也不會覆蓋既有檔案。完成後開啟 [http://localhost:3000](http://localhost:3000)。
+
+## 第一個管理員
+
+初始管理員帳號密碼在 `.env` 的 `BOOTSTRAP_ADMIN_USERNAME`／`BOOTSTRAP_ADMIN_PASSWORD`。登入後請**清空這三項 `BOOTSTRAP_ADMIN_*` 並重新建立 Sanctuary 容器**。
+
+## 接下來
+
+- 想用正式網域與 HTTPS：看 [Docker 部署](/docs/deploy/deployment)。
+- 想讓玩家下載 Kaleidoscope：在 `.env` 設定 `KALEIDOSCOPE_DOWNLOAD_URL`（公開 HTTPS 連結），網站的連線教學會自動顯示下載按鈕。
+- 備份前請先閱讀部署文件的備份章節。

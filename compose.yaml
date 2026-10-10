@@ -103,6 +103,25 @@ services:
       - no-new-privileges:true
     cap_drop: [ALL]
 
+  docs:
+    profiles: [docs]
+    image: illyaverse/docs:local
+    build:
+      context: .
+      dockerfile: apps/docs/Dockerfile
+    init: true
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/docs').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
   serendipity:
     image: illyaverse/serendipity:local
     build:
@@ -118,7 +137,8 @@ services:
       NEXT_TELEMETRY_DISABLED: "1"
       HOSTNAME: 0.0.0.0
       PORT: "3000"
-      ILLYA_DOCS_PATH: /illyaverse/docs
+      ILLYA_DOCS_PATH: /illyaverse/docs/player
+      KALEIDOSCOPE_DOWNLOAD_URL: ${KALEIDOSCOPE_DOWNLOAD_URL:-}
       API_INTERNAL_URL: http://sanctuary:8080
       RESONANCE_INTERNAL_URL: http://resonance:8081
     depends_on:
