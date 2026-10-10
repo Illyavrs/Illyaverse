@@ -1,33 +1,33 @@
-# 成績、pp 與 Relax
+# Scores, pp and Relax
 
-## 成績怎麼算
+## How scores work
 
-你在遊戲裡完成的成績會自動送到本站。通過驗證的成績會出現在你的個人頁、譜面排行榜與全站排行榜。
+Scores you finish in the game are sent to this server automatically. Verified scores appear on your profile, beatmap leaderboards and the global rankings.
 
-| 狀態 | 意思 |
+| Status | Meaning |
 | --- | --- |
-| 已核准 | 成績通過驗證，計入排行榜與 pp |
-| 待審核 | 還沒通過驗證，暫不計入排行榜 |
-| 已拒絕 | 管理員判定無效，不會顯示在排行榜 |
+| Verified | Checked and counted for leaderboards and pp |
+| Pending | Not verified yet; not counted on leaderboards |
+| Rejected | Ruled invalid by an administrator; not shown on leaderboards |
 
-**Stable：** 通過的成績需要有 replay 才會公開；沒通過（fail）的成績只留作歷史紀錄，不進入排行榜。
-**lazer：** 通過的成績需要完整、沒有中斷的 replay 紀錄才會公開。
+**stable:** a passed score needs its replay to be published. Failed scores are kept as history only and do not enter leaderboards.
+**lazer:** a passed score needs a complete, uninterrupted replay capture to be published.
 
-## pp（表現分數）
+## pp (performance points)
 
-pp 由伺服器用你的實際判定與 mods 計算，你的個人 pp 是各譜面最佳成績依序加權後的總和。
+pp is calculated by the server from your actual judgements and mods. Your total pp is the weighted sum of your best score on each beatmap.
 
-- AP、AT、DA 這類 mod 不計入 pp。
-- 每位玩家在同一張譜面只保留一筆最佳成績。
+- Mods such as AP, AT and DA do not count toward pp.
+- Only your best score on each beatmap is kept.
 
-## Relax（RX）
+## Relax (RX)
 
-RX 是**獨立的成績分區**，跟一般成績分開排名，各有自己的 pp、排名與統計。
+RX is a **separate score category**. It has its own rankings, pp and statistics, apart from normal scores.
 
-- 支援 osu!、taiko 與 catch。mania 不支援 RX。
-- 在遊戲裡開啟 Relax mod 提交即可，不需要另外設定。
-- 網站排行榜與玩家頁可以切換「一般」和「Relax (RX)」。
+- Supported for osu!, taiko and catch. mania has no RX.
+- Just play with the Relax mod; nothing else to set up.
+- Leaderboards and profiles can switch between Normal and Relax (RX).
 
-## 分數怎麼比較
+## Comparing scores
 
-lazer 與 stable 的原始分數算法不同。成績頁會同時顯示「原始分數」，並在可行時顯示標準化分數與 Classic 分數。若這筆成績沒有足夠資訊換算，就不會參與跨客戶端的分數比較，只用 pp 排名。
+lazer and stable calculate raw scores differently. A score page shows the raw score and, when possible, the standardised and Classic scores. If a score does not have enough information to convert, it is left out of cross-client score comparison and ranks by pp only.

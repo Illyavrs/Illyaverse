@@ -1,29 +1,29 @@
-# 圖譜搜尋、下載與申請排名
+# Beatmaps: search, download and ranking requests
 
-## 搜尋圖譜
+## Searching
 
-「圖譜」頁預設搜尋 osu! 官方圖譜，也可以切換到「伺服器圖譜」，只看本站保存或由玩家上傳的圖譜。
+The Beatmaps page searches official osu! beatmaps by default. Switch to Server beatmaps to see only maps this server stores or players uploaded.
 
-- 可用名稱、演出者、製作者或難度名稱搜尋，並用模式、狀態與排序篩選。
-- 本站管理員可以改變某些圖譜的狀態（例如把官方 Pending 的圖譜在本站設為 Ranked）。這些圖譜會優先顯示，並標示本站狀態。
-- 勾選「只顯示本站更改狀態的圖譜」可以只看這些圖譜。
+- Search by title, artist, mapper or difficulty name, and filter by mode, status and sort order.
+- Administrators can change the status of some maps on this server (for example make an official Pending map Ranked here). These maps are listed first and show the server status.
+- Tick "only maps with a changed status" to see just those maps.
 
-## 下載
+## Downloading
 
-下載的是完整的 `.osz`，包含音樂、背景與所有難度，用遊戲開啟即可匯入。如果顯示不可下載，代表本站目前沒有該圖譜的完整封包。
+Downloads are complete `.osz` packages with the music, background and every difficulty. Open the file in the game to import it. If a download is unavailable, this server does not hold a complete package for that map.
 
-## 上傳自己的圖譜
+## Uploading your own
 
-登入後到「上傳」頁上傳 `.osz`。新上傳的圖譜一開始是 **Graveyard**，只有你和管理員看得到它的排名狀態變化，不會自動進入排行榜。
+Sign in and use the Upload page to add an `.osz`. New uploads start in **Graveyard** and do not enter leaderboards until they are ranked.
 
-## 申請排名
+## Requesting a rank
 
-想讓自己的圖譜（或官方 Pending／Graveyard 的圖譜）在本站獲得排名：
+To ask for ranking of your own map, or of an official Pending or Graveyard map:
 
-1. 打開圖譜頁，選擇「申請排名」，寫下理由（1 至 1000 字）。
-2. 同一張圖譜同時只能有一筆待審申請；每位玩家最多同時有 5 筆待審申請，24 小時內最多送出 10 筆。
-3. 管理員審核後，你會在右上角的通知收到結果。
+1. Open the beatmap page and choose Request rank, then explain why (1 to 1000 characters).
+2. A beatmap set can have only one pending request. You can have up to 5 open requests and send 10 per 24 hours.
+3. An administrator reviews it, and the result arrives in your notifications (the bell in the top right).
 
-## 圖譜被撤下
+## Removed beatmaps
 
-如果圖譜因授權或其他原因被撤下，圖譜頁會顯示不可使用，已有的成績不會被刪除。
+If a beatmap is taken down, its page shows it as unavailable. Existing scores are not deleted.

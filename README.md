@@ -20,7 +20,7 @@ working. Replay playback, multiplayer, private messages, Relax, reconnection and
 launcher cleanup still need client verification. Client-test now runs schema 29,
 with its existing data preserved; the main deployment remains at schema 22. See the
 current integration record and
-[release checklist](apps/docs/content/docs/reference/release-readiness.md) for verification scope.
+[release checklist](apps/docs/content/docs/status.md) for verification scope.
 
 ## Run a local server
 
@@ -62,9 +62,9 @@ use the HTTPS overlay:
 docker compose -f compose.yaml -f compose.production.yaml up -d --build --wait
 ```
 
-The [deployment guide](apps/docs/content/docs/deploy/deployment.md) covers DNS, HTTPS, environment
+The [deployment guide](apps/docs/content/docs/deployment.md) covers DNS, HTTPS, environment
 settings, backups and restoration. The separate
-[local client test configuration](apps/docs/content/docs/clients/local-client-testing.md) uses `illya.test`
+[local client test configuration](apps/docs/content/docs/connecting-players.md) uses `illya.test`
 and a local CA; browser preview alone does not configure game connectivity.
 
 ## What is included
@@ -96,13 +96,13 @@ The project uses no AI-generated artwork.
 
 Relax supports osu!, taiko and catch. Its scores, performance points and ranks
 are separate from Normal; mania has no Relax variant. See the
-[Relax contract](docs/relax.md) for scoring and replay limitations.
+Relax contract for scoring and replay limitations.
 
 Player ranking requests, the Beatmap Nominator role and the revised review queue
 are deployed to the retained client-test environment at schema 29. New local
 uploads start in Graveyard in that workflow;
 nomination and staff decisions target individual difficulties. The
-[ranking-request contract](docs/beatmap-rank-requests.md) describes permissions,
+ranking-request contract describes permissions,
 conflict handling and integration status. The main deployment remains at schema
 22. Client-test also includes private-message read receipts, the combined server
 catalogue and archive acquisition. See the
@@ -128,9 +128,9 @@ A lazer update can require an updated launcher package. The current package is
 a local unsigned Debug test build with the production web interface embedded; public
 release distribution is not configured. The new 17-file package is complete;
 its native GUI and gameplay checks remain pending. The
-[launcher guide](apps/docs/content/docs/clients/kaleidoscope-launcher.md) links the package and explains
-restart, cleanup and recovery. See [connection setup](apps/docs/content/docs/clients/connection.md) and
-[protocol compatibility](apps/docs/content/docs/reference/protocol-compatibility.md) for verification scope.
+[launcher guide](apps/docs/content/docs/kaleidoscope.md) links the package and explains
+restart, cleanup and recovery. See [connection setup](apps/docs/content/docs/connecting-players.md) and
+[protocol compatibility](apps/docs/content/docs/status.md) for verification scope.
 
 ## Repository layout
 
@@ -164,7 +164,7 @@ previous origin remains as `previous-origin`. This configures repository URLs;
 source has not been pushed to GitHub, releases have not been published and signing
 keys have not been configured. Pinned commits must be available there before a
 fresh recursive clone can be claimed to work.
-See the [repository guide](apps/docs/content/docs/deploy/repository-layout.md) for submodule workflows
+See the [repository guide](apps/docs/content/docs/architecture.md) for submodule workflows
 and the boundaries between source files and generated output.
 
 ## Develop and verify
@@ -179,7 +179,7 @@ npm run dev
 
 The root npm commands target Serendipity. API and protocol services need
 PostgreSQL, `DATABASE_URL` and service secrets; `compose.dev.yaml` provides
-loopback-only database and API ports. See the [architecture guide](apps/docs/content/docs/deploy/architecture.md)
+loopback-only database and API ports. See the [architecture guide](apps/docs/content/docs/architecture.md)
 for service startup and routing.
 
 ```sh
@@ -192,7 +192,7 @@ npm run build
 Kaleidoscope's interface is a separate npm workspace:
 `npm run dev --workspace @illyaverse/kaleidoscope`. Building its native Windows
 package also needs the MSVC toolchain and .NET 10 SDK; follow the launcher guide.
-[Verification records](apps/docs/content/docs/reference/verification.md)
+[Verification records](apps/docs/content/docs/status.md)
 document the integration gates. Ignored database tests and protocol fixtures do
 not replace actual client testing.
 
@@ -205,19 +205,21 @@ requirements are in [AGENTS.md](AGENTS.md).
 
 ## Guides
 
-- [Deployment and backups](apps/docs/content/docs/deploy/deployment.md)
-- [Launcher and connection setup](apps/docs/content/docs/clients/kaleidoscope-launcher.md)
-- [Launcher and bridge Release builds](apps/docs/content/docs/deploy/launcher-release-builds.md)
-- [API and permissions](apps/docs/content/docs/reference/api.md) · [Role management](apps/docs/content/docs/operate/permissions.md)
-- [Beatmap discovery](docs/map-discovery.md) · [Ranking requests](docs/beatmap-rank-requests.md)
-- [Scores and replays](docs/native-score-submission.md) · [Chat](docs/website-chat.md)
-- [Release readiness](apps/docs/content/docs/reference/release-readiness.md)
+Operator documentation is the bilingual site in [apps/docs](apps/docs):
+
+- [Deployment](apps/docs/content/docs/deployment.md) and [configuration](apps/docs/content/docs/configuration.md)
+- [Backup and restore](apps/docs/content/docs/backup-and-restore.md)
+- [Architecture](apps/docs/content/docs/architecture.md) and [roles and permissions](apps/docs/content/docs/permissions.md)
+- [Connecting players](apps/docs/content/docs/connecting-players.md) and the [Kaleidoscope launcher](apps/docs/content/docs/kaleidoscope.md)
+- [Verification status](apps/docs/content/docs/status.md)
+
+Player help shown on the website lives in [docs/player](docs/player). The score conversion derivation is in [docs/score-normalization.md](docs/score-normalization.md).
 
 ## License and references
 
 Illyaverse is licensed under the [MIT License](LICENSE). Bundled fonts, flag
 graphics and launcher dependencies retain their own licenses and notices.
-See [font provenance](docs/fonts.md), the
+See font provenance, the
 [Twemoji attribution](apps/serendipity/public/flags/twemoji/ATTRIBUTION.txt) and
 the [bridge notices](tools/transfiguration/THIRD-PARTY-NOTICES.md).
 

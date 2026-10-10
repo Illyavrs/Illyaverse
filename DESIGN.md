@@ -318,7 +318,7 @@ A pale raspberry personal accent sits over black and neutral glass; light mode r
 
 ## Typography
 
-**Display and Body Font:** locally bundled Nunito Variable for Latin lettering, TaiwanPearl for Traditional Chinese and Zen Maru Gothic for Japanese. OFL-safe subset family names are `Illya Pearl` and `Illya Maru`; the locale selects their fallback order through `--font-ui-cjk`. TaiwanPearl uses weights 400 and 600, Zen Maru Gothic uses 400 and 700. Unicode-range WOFF2 subsets retain the eligible source repertoire for player names and dynamic content; the browser requests only the subsets needed on that page. Licensed source versions, full coverage and rebuild instructions are in [fonts.md](docs/fonts.md).
+**Display and Body Font:** locally bundled Nunito Variable for Latin lettering, TaiwanPearl for Traditional Chinese and Zen Maru Gothic for Japanese. OFL-safe subset family names are `Illya Pearl` and `Illya Maru`; the locale selects their fallback order through `--font-ui-cjk`. TaiwanPearl uses weights 400 and 600, Zen Maru Gothic uses 400 and 700. Unicode-range WOFF2 subsets retain the eligible source repertoire for player names and dynamic content; the browser requests only the subsets needed on that page. Licensed source versions, full coverage and rebuild instructions are in fonts.md.
 
 Rounded Latin, Traditional Chinese and Japanese lettering carry a compact, readable community interface. Keep Nunito for the Latin wordmark. Use native monospace for code and commands; comparable numeric data uses tabular figures where its component requests them.
 

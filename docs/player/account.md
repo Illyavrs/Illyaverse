@@ -1,27 +1,27 @@
-# 帳號、安全與隱私
+# Account, security and privacy
 
-## 註冊與登入
+## Registering and signing in
 
-本站的帳號與官方 osu! 帳號完全獨立。請使用不同的密碼。連線到本站的方式請看「連線教學」。
+Your account here is completely separate from your official osu! account. Use a different password. See the Connect page for how to connect your game.
 
-## 忘記密碼與信箱驗證
+## Forgot password and email verification
 
-若伺服器有開放，登入頁可以選擇「忘記密碼」，輸入註冊用的信箱：
+If the server has enabled it, choose "Forgot password" on the sign-in page and enter your account email.
 
-- 不論信箱是否存在，畫面都會顯示相同訊息，這表示要求已受理，不代表郵件已寄出。
-- 重設連結 15 分鐘內有效，只能使用一次。成功後所有裝置都需要重新登入。
-- 登入後可以在帳號設定驗證信箱，驗證連結 24 小時內有效。
+- The page shows the same message whether or not the email exists. It means the request was accepted, not that mail was sent.
+- A reset link works for 15 minutes and only once. After resetting, every device must sign in again.
+- After signing in you can verify your email in account settings. The link works for 24 hours.
 
-如果顯示「尚未開放」，代表這個伺服器沒有設定寄信功能，請聯絡管理員。
+If it says "not available", this server has no mail configured; contact the administrator.
 
-## 登入裝置
+## Signed-in devices
 
-在設定的「帳號」分頁可以看到目前登入的裝置，並登出其他裝置。
+Account settings list the devices you are signed in on and let you sign out the others.
 
-## 外觀與隱私
+## Appearance and privacy
 
-背景、模糊、透明度等外觀設定預設只保存在你的瀏覽器；登入後可以明確儲存到帳號，讓換裝置時同步。自己上傳的背景只有你看得到。
+Background, blur and opacity settings are stored only in your browser by default. Sign in and save them to sync across devices. A background you upload is visible only to you.
 
-## 個人頁與公告
+## Profile and announcements
 
-個人頁的「關於我」與公告內容支援 [Markdown](/docs/markdown) 格式。圖片不會載入，連結會在新分頁開啟。
+Your profile's "About me" and announcements support [Markdown](/docs/markdown). Images are not loaded and links open in a new tab.

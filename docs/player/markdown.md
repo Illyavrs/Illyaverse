@@ -1,23 +1,23 @@
-# Markdown 格式
+# Markdown formatting
 
-個人頁的「關於我」、公告與排名申請的理由可以使用 Markdown。
+You can use Markdown in your profile's "About me", in announcements and in the reason for a rank request.
 
-| 想要的效果 | 寫法 |
+| To get | Write |
 | --- | --- |
-| **粗體** | `**粗體**` |
-| *斜體* | `*斜體*` |
-| 連結 | `[顯示文字](https://example.com)` |
-| 標題 | `## 標題` |
-| 清單 | 每行以 `- ` 開頭 |
-| 編號清單 | 每行以 `1. ` 開頭 |
-| 引用 | `> 引用文字` |
-| 行內程式碼 | `` `code` `` |
-| 刪除線 | `~~文字~~` |
-| 表格 | 使用 `|` 分隔欄位，第二行用 `---` 分隔表頭 |
+| **Bold** | `**bold**` |
+| *Italic* | `*italic*` |
+| A link | `[text](https://example.com)` |
+| A heading | `## Heading` |
+| A list | start each line with `- ` |
+| A numbered list | start each line with `1. ` |
+| A quote | `> quoted text` |
+| Inline code | `` `code` `` |
+| Strikethrough | `~~text~~` |
+| A table | separate columns with `\|` and put `---` under the header row |
 
-## 限制
+## Limits
 
-- **不支援 HTML**，寫入的 HTML 標籤會被忽略。
-- **不載入圖片**，避免透過圖片追蹤讀者。想放圖片請貼連結。
-- 所有連結都會在新分頁開啟，並標示為使用者內容。
-- 聊天室訊息是純文字，不套用 Markdown。
+- **No HTML.** HTML tags you write are ignored.
+- **No images.** They are not loaded, so nobody can be tracked through an image. Paste a link instead.
+- Every link opens in a new tab and is marked as user content.
+- Chat messages are plain text and do not use Markdown.
