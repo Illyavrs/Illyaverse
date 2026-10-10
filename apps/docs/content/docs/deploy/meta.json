@@ -1,9 +1,0 @@
-{
-  "title": "部署",
-  "pages": [
-    "deployment",
-    "launcher-release-builds",
-    "repository-layout",
-    "architecture"
-  ]
-}

@@ -1,9 +1,0 @@
-{
-  "title": "客戶端與連線",
-  "pages": [
-    "connection",
-    "kaleidoscope-launcher",
-    "local-client-testing",
-    "lazer-client-build"
-  ]
-}

@@ -13,3 +13,6 @@
 [submodule "Transfiguration"]
 	path = tools/transfiguration
 	url = https://github.com/Illyavrs/Transfiguration.git
+[submodule "apps/docs"]
+	path = apps/docs
+	url = https://github.com/Illyavrs/Docs.git
