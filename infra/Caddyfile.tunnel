@@ -1,0 +1,68 @@
+# Behind Cloudflare Tunnel: Cloudflare terminates TLS, cloudflared forwards plain HTTP here.
+{
+	admin off
+	auto_https off
+	servers {
+		# cloudflared is the only trusted hop; take the real client IP from Cloudflare.
+		trusted_proxies static 172.30.91.12/32
+		client_ip_headers Cf-Connecting-Ip
+	}
+}
+
+(lazer_user_alias) {
+	# Preserve Authorization and query parameters; this is an internal path rewrite.
+	@lazer_user_alias {
+		method GET HEAD
+		path_regexp lazer_user_alias ^/api/v2/(me|users/[^/]+)/$
+		# path_regexp cleans repeated slashes; require the original path to match too.
+		expression {http.request.uri.path}.matches('^/api/v2/(me|users/[^/]+)/$')
+	}
+	uri @lazer_user_alias strip_suffix /
+}
+
+# Services trust only this proxy's X-Forwarded-For, so send exactly the real client IP.
+(upstream_ip) {
+	header_up X-Forwarded-For {client_ip}
+}
+
+(website_routes) {
+	import lazer_user_alias
+	encode zstd gzip
+	request_body {
+		max_size 71303168
+	}
+	@protocol_paths path /users /users/ /web/* /osu/* /d/* /oauth/* /api/v2/* /signalr/* /notification-server /notification-server/* /spectator /spectator/* /multiplayer /multiplayer/* /metadata /metadata/*
+	handle @protocol_paths {
+		reverse_proxy resonance:8081 {
+			import upstream_ip
+		}
+	}
+	@sanctuary_paths path /api/v1/* /media/*
+	handle @sanctuary_paths {
+		reverse_proxy sanctuary:8080 {
+			import upstream_ip
+		}
+	}
+	handle {
+		reverse_proxy serendipity:3000 {
+			import upstream_ip
+		}
+	}
+}
+
+http://{$ILLYA_DOMAIN}, http://osu.{$ILLYA_DOMAIN} {
+	import website_routes
+}
+
+http://c.{$ILLYA_DOMAIN}, http://ce.{$ILLYA_DOMAIN}, http://c4.{$ILLYA_DOMAIN}, http://api.{$ILLYA_DOMAIN}, http://spectator.{$ILLYA_DOMAIN}, http://bss.{$ILLYA_DOMAIN}, http://a.{$ILLYA_DOMAIN}, http://b.{$ILLYA_DOMAIN} {
+	import lazer_user_alias
+	encode zstd gzip
+	reverse_proxy resonance:8081 {
+		import upstream_ip
+	}
+}
+
+# Container-only liveness endpoint; this port is not published by Compose.
+http://:8088 {
+	respond /healthz "ok" 200
+}
