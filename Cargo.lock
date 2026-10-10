@@ -1251,6 +1251,7 @@ dependencies = [
  "base64 0.22.1",
  "fs2",
  "getrandom 0.4.3",
+ "libc",
  "reqwest",
  "ring",
  "semver",
