@@ -41,12 +41,6 @@ osu.{$ILLYA_DOMAIN} {
 	import website_routes
 }
 
-# Optional operator documentation (start with `--profile docs`).
-docs.{$ILLYA_DOMAIN} {
-	encode zstd gzip
-	reverse_proxy docs:3000
-}
-
 c.{$ILLYA_DOMAIN}, ce.{$ILLYA_DOMAIN}, c4.{$ILLYA_DOMAIN}, api.{$ILLYA_DOMAIN}, spectator.{$ILLYA_DOMAIN}, bss.{$ILLYA_DOMAIN}, a.{$ILLYA_DOMAIN}, b.{$ILLYA_DOMAIN} {
 	import lazer_user_alias
 	encode zstd gzip
