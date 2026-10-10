@@ -126,8 +126,9 @@ connection does not fall back to the official server.
 
 The bridge supports the exact client files listed in its compatibility manifest.
 A lazer update can require an updated launcher package. The current package is
-a local Debug test build with the production web interface embedded; public
-release distribution is not configured. The
+a local unsigned Debug test build with the production web interface embedded; public
+release distribution is not configured. The new 17-file package is complete;
+its native GUI and gameplay checks remain pending. The
 [launcher guide](docs/kaleidoscope-launcher.md) links the package and explains
 restart, cleanup and recovery. See [connection setup](docs/connection.md) and
 [protocol compatibility](docs/protocol-compatibility.md) for verification scope.
@@ -157,9 +158,13 @@ Illyaverse/
 └── docs/                 Player, operator and contributor guides
 ```
 
-The current submodule origins are **local bare repositories**, not published
-GitHub repositories. `.gitmodules` must point to reachable origins containing
-the pinned commits before another machine can clone the complete project.
+The parent origin is [Illyavrs/Illyaverse](https://github.com/Illyavrs/Illyaverse).
+All five submodule URLs and child origins use canonical HTTPS GitHub URLs under
+`Illyavrs`. Previous child bare origins remain as `local-cache`; the parent's
+previous origin remains as `previous-origin`. This configures repository URLs;
+source has not been pushed to GitHub, releases have not been published and signing
+keys have not been configured. Pinned commits must be available there before a
+fresh recursive clone can be claimed to work.
 See the [repository guide](docs/repository-layout.md) for submodule workflows
 and the boundaries between source files and generated output.
 

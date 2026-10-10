@@ -1,6 +1,6 @@
 # Illyaverse 資料夾導覽
 
-`osu-ps/Illyaverse` 是整合 parent 的根目錄。Serendipity、Sanctuary、Resonance、Kaleidoscope 與 Transfiguration 五個主要子專案各有 repository 邊界，parent 以 Git submodules 固定組合版本。五個子模組已登記，相關歷史保留；目前 remote 是本機 bare repositories，實際狀態以 `.gitmodules` 與 `git submodule status` 為準。根 Compose 組合部署網站、兩個 Rust 服務、PostgreSQL 與 Caddy；Windows 啟動器建成玩家電腦上的程式，不作為 Docker 服務。
+`osu-ps/Illyaverse` is the integration parent. Serendipity, Sanctuary, Resonance, Kaleidoscope and Transfiguration have separate repository histories, and the parent pins their commits through submodules. The parent origin is `Illyavrs/Illyaverse`; all five `.gitmodules` URLs and child origins use canonical HTTPS GitHub URLs under `Illyavrs`. Exact previous child bare origins remain as `local-cache`, and the parent's previous origin remains as `previous-origin`. Root Compose deploys the website, two Rust services, PostgreSQL and Caddy; the Windows launcher runs on the player's computer.
 
 ## 子專案與共用來源
 
@@ -66,49 +66,37 @@ Tauri manifest 的 `[workspace]` 讓桌面原生依賴有獨立的建置邊界�
 
 ## Git 協作
 
-目前五個 URL 指向這台電腦 `.git/local-remotes/` 內的 bare repositories，其他電腦無法使用這些絕對路徑。從這台電腦的 parent checkout 初始化時，僅對這次指令允許本機 file transport：
+The configured submodule URLs use HTTPS. Once every pinned child commit is available on its GitHub origin, initialize a checkout with:
 
 ```sh
-git -c protocol.file.allow=always submodule update --init --recursive
+git submodule update --init --recursive
 ```
 
-之後改成可存取的 HTTPS／SSH 遠端時，使用 `git submodule update --init --recursive`，再安裝／建置依賴。子模組固定 parent 記錄的 commit；一般的遞迴 checkout 會以 detached HEAD 載入該版本（[Git submodule 文件](https://git-scm.com/docs/git-submodule)），開發前先切換到明確的分支。本機目前五個來源 checkout 都在 `main`。
+A normal recursive checkout loads the parent's pinned commits in detached HEAD; switch to an explicit branch before development. The preserved `local-cache` remotes retain the exact previous local bare repositories.
 
-功能變更先在所屬子 repository 提交，並讓目前的 origin 保存該 commit，再由 parent 固定新的 gitlink。本機 `origin` 是自己的 bare repository，子專案 commit 不會自動同步進去。以 Serendipity 為例，完成來源提交與驗證後：
+Commit a feature in its owning child repository, preserve that commit in the local bare cache, then update the parent gitlink. `origin` identifies GitHub; `local-cache` identifies the preserved bare repository. For a local checkpoint:
 
 ```sh
-git -C apps/serendipity push origin main
+git -C apps/serendipity push local-cache main
 git add apps/serendipity
 git commit -m "chore(illyaverse): update Serendipity revision"
 ```
 
-子專案自己的來源提交同樣使用 scoped Conventional Commits，例如 `feat(serendipity): add profile editor`。若 origin 已改為外部遠端，推送／發布需由使用者授權後執行。跨子專案變更要把互相配合的 commit 一起固定，並從完整 parent checkout 執行整合驗證。Parent commit 只保存子模組版本指標，不會保存子模組內尚未提交的檔案。
+Child source commits use scoped Conventional Commits, such as `feat(serendipity): add profile editor`. GitHub source pushes and release publication require user authorization. Pin cooperating commits together for changes across projects and verify them from the complete parent checkout. A parent commit saves gitlinks, not uncommitted child source.
 
-### 設定實際遠端
+### Configured repository URLs
 
-使用者提供五個子倉庫的實際 URL 後，才將本機 URL 替換為那些遠端。下列 `<... URL>` 都是需要替換的佔位文字，不是已建立的 repository；這次沒有執行任何遠端設定或外部推送。先保留本機來源／bare 備份，並在使用者授權發布後，確認每個真正遠端已有 parent 所固定的 child commit，才發布更新後的 parent。
+The parent uses `https://github.com/Illyavrs/Illyaverse.git`. The five child origins and `.gitmodules` entries use the corresponding HTTPS URLs for `Serendipity`, `Sanctuary`, `Resonance`, `Kaleidoscope` and `Transfiguration` under `Illyavrs`.
 
-```sh
-git submodule set-url apps/serendipity "<Serendipity URL>"
-git submodule set-url services/sanctuary "<Sanctuary URL>"
-git submodule set-url services/resonance "<Resonance URL>"
-git submodule set-url tools/kaleidoscope "<Kaleidoscope URL>"
-git submodule set-url tools/transfiguration "<Transfiguration URL>"
-git -C apps/serendipity remote set-url origin "<Serendipity URL>"
-git -C services/sanctuary remote set-url origin "<Sanctuary URL>"
-git -C services/resonance remote set-url origin "<Resonance URL>"
-git -C tools/kaleidoscope remote set-url origin "<Kaleidoscope URL>"
-git -C tools/transfiguration remote set-url origin "<Transfiguration URL>"
-git submodule sync --recursive
-```
+This checkpoint configures URLs and preserves previous remotes. It does not push source to GitHub, publish releases or configure signing keys. Availability of the pinned commits on GitHub must be established before claiming a fresh recursive clone works.
 
-這些設定不會上傳來源。確認五個 origin 的固定 commit 可取得後，在 parent 提交 `.gitmodules`。其他 checkout 拉取 parent 設定變更後，先執行 `git submodule sync --recursive`，再執行 `git submodule update --init --recursive`。
+After receiving a parent URL change, run `git submodule sync --recursive` before updating submodules.
 
 ### 備份 Git 來源
 
 來源備份必須包含 Illyaverse parent 和全部五個子倉庫。只備份 parent 的 bundle 不會收集 gitlink 指向的其他 repository，也無法保存之後新增的 child commits。
 
-暫停 Git 寫入後，可以保存完整 parent `.git/`，包括吸收後的 `.git/modules/` 子倉庫歷史與 `.git/local-remotes/` 本機 origins；或分別為 parent 和每個 child 建立並驗證 `git bundle create <備份檔> --all`。Child bundle 要從實際 child checkout 建立，才能包含尚未推到本機 origin 的分支。另行保存需要保留的未提交來源檔案；bundle 不包含工作樹變更（[Git bundle 文件](https://git-scm.com/docs/git-bundle)）。還原時也需恢復 URL／gitlink 的對應並驗證完整遞迴 checkout。營運資料庫、媒體、密鑰與憑證的備份仍依 [部署文件](deployment.md) 處理。
+Pause Git writes before backing up the complete parent `.git/`, including absorbed child histories in `.git/modules/` and preserved local bare caches in `.git/local-remotes/`. Alternatively, create and verify `git bundle create <backup file> --all` separately for the parent and every child. Create child bundles from the actual child checkouts so they include branches not yet preserved in `local-cache`. Save required uncommitted files separately; bundles omit working-tree changes ([Git bundle documentation](https://git-scm.com/docs/git-bundle)). Restore URL/gitlink mappings and verify a complete recursive checkout. Follow the [deployment guide](deployment.md) for databases, media, secrets and certificates.
 
 ## 建置與測試入口
 

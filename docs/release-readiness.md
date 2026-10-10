@@ -2,7 +2,15 @@
 
 這份表依原始需求核對 Illyaverse 的實作與證據。網站與隔離整合測試通過，不等於 stable／lazer 已可正常遊玩；原始目標目前仍未完成。
 
-## 最新整合 checkpoint：2026-10-09
+## Current source and runtime checkpoint: 2026-10-10
+
+The parent origin is `Illyavrs/Illyaverse`; the five child origins and `.gitmodules` URLs use canonical HTTPS GitHub URLs under `Illyavrs`. Exact previous child bare origins remain as `local-cache`, and the previous parent origin remains as `previous-origin`. No source was pushed to GitHub, no release was published and no signing keys were configured.
+
+The recorded source and package inputs produced a complete unsigned 17-file Debug GUI package; native GUI, gameplay and explicit logout verification remain pending. After the authorized Docker restart, a read-only observation confirmed Server 29.8.2 and another confirmed the ten retained containers healthy with their original images. Those observations do not replace schema, data-preservation or application probes. The proposed ledger/live query was rejected by automatic approval review and was not executed. The earlier Docker timeout/cleanup failures remain preserved; a subsequent owned cleanup receipt confirms the original probe container/network removed and its loopback port free. The current five-case PostgreSQL confirmation is running, not passed.
+
+Use the [current integration checkpoint](current-integration-20261010.md) for exact source, package, live-schema and outstanding verification boundaries. Earlier receipts below retain their original dates and scope.
+
+## Historical integration checkpoint: 2026-10-09
 
 五個主要子專案已改成獨立 Git repositories，由 Illyaverse parent 以 submodules 固定版本；目前 origins 是本機 bare repositories，尚未配置可供其他電腦使用的 HTTPS／SSH remotes。[資料夾與 Git 導覽](repository-layout.md)記錄 workspace、共用來源與遞迴 checkout 邊界。
 
@@ -20,9 +28,9 @@
 
 | 需求 | 目前狀態與證據 |
 | --- | --- |
-| Illyaverse 整合 parent、獨立子倉庫、原創程式碼 | Serendipity、Sanctuary、Resonance、Kaleidoscope、Transfiguration 五個獨立子倉庫由 parent submodules 固定版本；目前 origins 僅在本機。共用 workspace、Compose 與 migrations 邊界見 [資料夾導覽](repository-layout.md)。來源規範見 [AGENTS.md](../AGENTS.md) 與 [PRODUCT.md](../PRODUCT.md)。參考專案不作為複製來源。 |
+| Illyaverse integration parent and independent repositories | Serendipity, Sanctuary, Resonance, Kaleidoscope and Transfiguration are independent child repositories pinned by parent submodules. Canonical HTTPS GitHub URLs are configured under `Illyavrs`; exact previous remotes are preserved. GitHub source publication remains separate. See [Repository layout](repository-layout.md), [AGENTS.md](../AGENTS.md) and [PRODUCT.md](../PRODUCT.md). Implementations are original. |
 | Next.js、Tailwind、shadcn/ui、Rust | 已實作；來源與依賴位於 `apps/serendipity`、`services`。最新網站 lint、typecheck、正式 Docker build 及操作證據見 [圖譜與共用層次檢查](map-discovery-review.md)。 |
-| Docker 部署 | 已有初始化、Compose、持久化、健康檢查、備份及正式 HTTPS 配置；兩套本機部署共十個健康容器。見 [部署](deployment.md)。正式 DNS／ACME 仍由營運者配置，本機測試不證明公開域名部署成功。 |
+| Docker deployment | Initialization, Compose, persistence, health checks, backups and HTTPS configuration are implemented. The 2026-10-10 post-restart observation confirmed ten retained containers healthy with original images; schema and application state were not requeried in that observation. Current deployment boundaries follow the [integration checkpoint](current-integration-20261010.md). Public DNS and ACME remain operator work. |
 | 公開註冊、多語系 | 已有網站註冊、登入、帳號設定及 cookie／帳號語系偏好；遊戲註冊導向網站。郵件復原／驗證取決於 SMTP 配置。見 [帳號復原](account-recovery.md) 與 [網站功能](website-features.md)。 |
 | 深淺色、純黑毛玻璃與自訂外觀 | 已有背景上傳、背景 blur／dim、獨立面板 blur／opacity、重點色與圓角。預設 8px／55%／14px，無 AI 圖。見 [外觀狀態](appearance-state.md) 與 [設計系統](../DESIGN.md)。 |
 | 個人頁自訂 | 已有頭像、Banner、裁切位置、公開重點色、介紹、統計、成績、上傳圖譜與實際排名歷史。見 [個人頁](profile-presentation.md)、[排名歷史](rank-history.md)。沒有補造早期記錄或活動。 |

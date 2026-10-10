@@ -18,7 +18,7 @@
     "main_schema": 22,
     "runtime_image_build_parent": "0b4bec3a05fe0136cff8192e461aa3b4f608626f",
     "source28_deployed": false,
-    "new_launcher_package_built": false
+    "new_launcher_package_built": true
   },
   "human_report": {
     "stable_score_submissions": "reported_working_normally",
@@ -62,15 +62,43 @@
     },
     "verification": {
       "updated_ui_typescript": "passed_final_composition_bound_in_shared_web_verdict",
-      "core_first_pass": { "passed": 114, "cases": 115, "additional_case_failed": 1, "failures_reported_fixture_only": true },
-      "core_confirmation": { "status": "failed_compile_link_timeout_zero_cases", "original_failed_cases": 2, "sibling_cases": 3, "selected_cases": 5, "timeout_seconds": 480, "executed_cases": 0 },
-      "core_cleanup": "unverified_after_five_ownership_audit_command_timeouts",
+      "core_first_pass": {
+        "passed": 114,
+        "cases": 115,
+        "additional_case_failed": 1,
+        "failures_reported_fixture_only": true
+      },
+      "core_confirmation": {
+        "status": "failed_compile_link_timeout_zero_cases",
+        "original_failed_cases": 2,
+        "sibling_cases": 3,
+        "selected_cases": 5,
+        "timeout_seconds": 480,
+        "executed_cases": 0,
+        "current_serial_confirmation": "five selected cases running; no pass receipt yet"
+      },
+      "core_cleanup": "recovered_exact_original_probe_cleanup_passed_original_failure_receipts_preserved",
       "core_clippy": "passed_offline_single_job_warnings_denied_after_two_line_corrections",
       "rustfmt_reported_file_count": 144,
       "rustfmt_reported_status": "passed_bound_separate_144_file_phase",
-      "updater_cargo_gate": { "status": "passed_across_preserved_phases", "distinct_core_cases": 18, "affected_case_repeated_after_test_only_lint_fix": 1, "desktop_locked_offline_all_targets_check": "passed", "kaleidoscope_clippy_warnings_denied": "passed" },
-      "website_first_pass": { "passed": 93, "cases": 100, "failed": 7, "failures_reported_fixture_or_readiness_only": true },
-      "website_confirmation": { "status": "passed_after_test_fixture_corrections", "exact_failed_cases": 7, "passed": 7 },
+      "updater_cargo_gate": {
+        "status": "passed_across_preserved_phases",
+        "distinct_core_cases": 18,
+        "affected_case_repeated_after_test_only_lint_fix": 1,
+        "desktop_locked_offline_all_targets_check": "passed",
+        "kaleidoscope_clippy_warnings_denied": "passed"
+      },
+      "website_first_pass": {
+        "passed": 93,
+        "cases": 100,
+        "failed": 7,
+        "failures_reported_fixture_or_readiness_only": true
+      },
+      "website_confirmation": {
+        "status": "passed_after_test_fixture_corrections",
+        "exact_failed_cases": 7,
+        "passed": 7
+      },
       "website_final_unique_cases": 100,
       "website_final_unique_browser_cases": 99,
       "website_final_unique_pure_cases": 1,
@@ -88,11 +116,15 @@
       "signed_feed_source_implementation": "complete",
       "launcher_feed": "Kaleidoscope independent GitHub feed/repository",
       "dll_feed": "Transfiguration independent GitHub feed/repository",
-      "actual_remote_urls_known": false,
       "actual_owner_repository_and_signing_configuration_supplied": false,
       "independent_launcher_and_dll_feeds": true,
       "nested_repository_created": false,
-      "remote_created_or_release_published": false
+      "remote_created_or_release_published": false,
+      "actual_remote_urls_known": true,
+      "github_repository_names_known": true,
+      "signing_configuration_known": false,
+      "launcher_repository": "Illyavrs/Kaleidoscope",
+      "dll_repository": "Illyavrs/Transfiguration"
     },
     "live_change": false
   },
@@ -107,7 +139,8 @@
     "github_or_parent_push": false,
     "parent_checkpoint_commit": "pending_root",
     "source28_package_images_and_deployment_complete": false,
-    "all_proofs_at_one_source_head_claimed": false
+    "all_proofs_at_one_source_head_claimed": false,
+    "scope": "preceding source checkpoint; later topology/helper checkpoint recorded separately"
   },
   "compile_lane_observations": {
     "reported_free_space_before_mb": 878,
@@ -117,7 +150,19 @@
   },
   "appearance_current_source_contract": {
     "document": "docs/appearance-state.md",
-    "visual_patch_fields": ["mode", "accent_color", "background_url", "background_mode", "background_color", "background_blur", "background_dim", "panel_blur", "panel_opacity", "glass_level", "border_radius"],
+    "visual_patch_fields": [
+      "mode",
+      "accent_color",
+      "background_url",
+      "background_mode",
+      "background_color",
+      "background_blur",
+      "background_dim",
+      "panel_blur",
+      "panel_opacity",
+      "glass_level",
+      "border_radius"
+    ],
     "visual_patch_field_count": 11,
     "locale_and_pm_friends_only_excluded": true,
     "normalized_frontend_background_mode": "required default|image|color",
@@ -144,10 +189,30 @@
     "recent_requests": 1154,
     "whitelisted_native_requests": 49,
     "failures": [
-      { "method": "GET", "path": "/api/v2/beatmaps/4911785/scores", "status": 400, "count": 4 },
-      { "method": "GET", "path": "/api/v2/beatmaps/4911786/scores", "status": 400, "count": 1 },
-      { "method": "GET", "path": "/api/v2/beatmaps/4911786/scores", "status": 499, "count": 1 },
-      { "method": "GET", "path": "/api/v2/me/beatmapset-favourites", "status": 400, "count": 3 }
+      {
+        "method": "GET",
+        "path": "/api/v2/beatmaps/4911785/scores",
+        "status": 400,
+        "count": 4
+      },
+      {
+        "method": "GET",
+        "path": "/api/v2/beatmaps/4911786/scores",
+        "status": 400,
+        "count": 1
+      },
+      {
+        "method": "GET",
+        "path": "/api/v2/beatmaps/4911786/scores",
+        "status": 499,
+        "count": 1
+      },
+      {
+        "method": "GET",
+        "path": "/api/v2/me/beatmapset-favourites",
+        "status": 400,
+        "count": 3
+      }
     ],
     "observed_profile_get_status": 200,
     "observed_native_score_post_put_status": 200,
@@ -161,7 +226,12 @@
       "status": "passed",
       "unique_cases": 19,
       "executions": 20,
-      "scope": { "canonical_routes": 9, "lazer_badge": 1, "existing_score_origin": 8, "retained_official_inline_board": 1 },
+      "scope": {
+        "canonical_routes": 9,
+        "lazer_badge": 1,
+        "existing_score_origin": 8,
+        "retained_official_inline_board": 1
+      },
       "original_nonfatal_react_warning_preserved": true,
       "narrow_corrected_rerun_passed": 1,
       "fixture_interception": true,
@@ -349,12 +419,43 @@
       "initial_failure_unchanged": true,
       "only_test_provider_source_changed": true,
       "production_dll_unchanged_between_attempts": true
+    },
+    "post_restart_docker_version": {
+      "sha256": "9b024573d27eb89e155a39efe75302bde03412f8e6e57e4b0d842a4d95cb0c91",
+      "path": ".artifacts/tests/docker-after-restart-259a827deed140bdbea31c349b4977f4/receipt.json"
+    },
+    "post_restart_docker_version_original_metadata": {
+      "sha256": "49a9d43b08d77940e18ba60687c57a88972ec9a75b7e9430910dd6a9ebd8d1d7",
+      "path": ".artifacts/tests/docker-after-restart-259a827deed140bdbea31c349b4977f4/receipt-before-metadata-correction.json"
+    },
+    "retained_containers_after_restart": {
+      "sha256": "b628300285755d94ae49ba06e61306e1e707bc895d177e136e45333bc8ef53f3",
+      "path": ".artifacts/tests/docker-retained-after-restart-3d46758575a54e6f8f7f6e204f13b1d9/receipt.json"
+    },
+    "package_helper_optional_logout": {
+      "sha256": "8fa894efef782e1045fba2fb8d3aa11c18f5aff286b499673e8b656f9e063d07",
+      "path": ".artifacts/tests/package-verification-optional-logout-20261010-d37ca1cf13254289a67c80727c042dea/receipt.json"
+    },
+    "package_helper_frozen_resume": {
+      "sha256": "f456f59006c010739b246a244fd5b619167ce99d6cb85d0c39b6933f5d1e13e2",
+      "path": ".artifacts/tests/package-verification-optional-logout-20261010-d37ca1cf13254289a67c80727c042dea/frozen-helper-and-resume.json"
+    },
+    "source28_complete_debug_package": {
+      "path": ".artifacts/builds/launcher-debug-assembly-20261010-13d2b148f693452fb938a18b4688297f9/run-20261010-041031-7cd3fd112a9c4b459d7bf8f45279754d/complete-package-receipt.json",
+      "sha256": "8401a2e24c40f09737ac7c3edc494d0c8bdb28b758cd8c9ad8cc29789412d09c"
+    },
+    "source28_complete_debug_zip": {
+      "path": ".artifacts/packages/kaleidoscope-source28-debug-20261010-041031-7cd3fd112a9c4b459d7bf8f45279754d.zip",
+      "sha256": "6b8a769c3cb7983fab9a1f5746b95d7625057be14f2ce08b9ac0bfa8348c536d"
+    },
+    "source28_original_probe_cleanup_recovered": {
+      "path": ".artifacts/tests/source28-serial-6d9c628831f245aa836ec3a9bc477e18/cleanup-recovered-133a4c4a5a414c44b01401f5199502e6/cleanup-verification.json",
+      "sha256": "0ea8ad364752599139411c127a91b50af12f97facb73787c975cc668a7a02e20"
     }
   },
   "pending": [
     "Shared source28 backend compilation, unit/PostgreSQL composition and migration verification",
     "Source28 image builds, startup, full protocol, recovery and retained cutover",
-    "New launcher package",
     "Direct native verification of the source28 fixes",
     "Replay playback and launcher exit/restart preservation",
     "Rooms and private messages"
@@ -365,5 +466,97 @@
     "Observed Global HTTP400 cannot establish an exact modifier query or client serializer version from privacy-safe logs.",
     "Source28 implementation and focused source proofs do not change the retained schema27 runtime.",
     "No agent native gameplay launch occurred; the broader goal remains incomplete."
-  ]
+  ],
+  "repository_topology_checkpoint": {
+    "fresh_recursive_clone_verified": false,
+    "organization": "Illyavrs",
+    "parent_origin": "https://github.com/Illyavrs/Illyaverse.git",
+    "pinned_commits_available_on_github_verified": false,
+    "parent_commit": "bbaf941dc57a28261869d32f4e8accb13a9aba00",
+    "github_source_pushed": false,
+    "releases_published": false,
+    "child_origins_and_gitmodules": "canonical HTTPS GitHub URLs for Serendipity, Sanctuary, Resonance, Kaleidoscope and Transfiguration",
+    "kaleidoscope_commit_prefix": "9799f77",
+    "previous_child_bare_remotes_alias": "local-cache",
+    "signing_keys_configured": false,
+    "previous_parent_origin_alias": "previous-origin",
+    "kaleidoscope_commit": "9799f77e51efe1c13b46439f4ebeff6947581d6c"
+  },
+  "docker_recovery_checkpoint": {
+    "desktop_started_hidden": true,
+    "schema_or_application_state_requeried": false,
+    "owned_fixture_cleanup_verified": true,
+    "source28_deployed": false,
+    "retained_original_images_preserved": "coordinator report bound to retained-container receipt",
+    "post_restart_server_version": "29.8.2",
+    "coordinator_reported_authorized_restart": true,
+    "graceful_stop_timed_out": true,
+    "post_restart_version_probe_read_only": true,
+    "retained_healthy_container_count": 10,
+    "version_probe_restarted_or_deleted_anything": false,
+    "proposed_compound_ledger_live_query": "automatic approval review rejected; no execution",
+    "exact_installed_docker_processes_force_stopped": true
+  },
+  "package_assembly_checkpoint": {
+    "status": "complete_unsigned_debug_package",
+    "package_files": 17,
+    "zip_path": ".artifacts/packages/kaleidoscope-source28-debug-20261010-041031-7cd3fd112a9c4b459d7bf8f45279754d.zip",
+    "zip_sha256": "6b8a769c3cb7983fab9a1f5746b95d7625057be14f2ce08b9ac0bfa8348c536d",
+    "compiled_source_pins": {
+      "parent": "33bb73d502c7a855cb36732515a03a859ec7ef93",
+      "kaleidoscope": "71daac1eac5abcce55f40ca06d97b4134e39537c",
+      "transfiguration": "0a5cc690eba8cd52b04b0854108daf9901fcaad0"
+    },
+    "assembly_source_pins": {
+      "parent": "bbaf941dc57a28261869d32f4e8accb13a9aba00",
+      "kaleidoscope": "9799f77e51efe1c13b46439f4ebeff6947581d6c",
+      "transfiguration": "0a5cc690eba8cd52b04b0854108daf9901fcaad0",
+      "serendipity": "fd3474372b59597555831ac859ee2b41e2a33c9a",
+      "sanctuary": "f59d2a5307597d425d0e11a8d09295fdd33ae7fe",
+      "resonance": "f423ce177c8281a54d56a53b9ba6f595af463b64"
+    },
+    "compiled_input_count": 94,
+    "compiled_inputs_identical": 93,
+    "sole_compiled_manifest_delta": "reviewed packaging helper",
+    "noncompiled_deltas": "package-integrity test; canonical .gitmodules; owned assembly script",
+    "launcher_sha256": "1b81bd3d33ddf4217bef5f7d73a49f327ea6c9ad340efb65305add1ee896f95f",
+    "bridge_sha256": "ad8dc189d8542cc937758e15b7b7b461f33587c23597a801284ef5d58c23e9d8",
+    "fresh_compiled_production_browser_checks": 106,
+    "embedded_production_assets": 451,
+    "proofs_consumed_without_execution": true,
+    "helper_synthetic_integrity_checks": 97,
+    "directory_zip_equality_and_all17_hashes": "passed",
+    "final_preservation_guard": "passed",
+    "unsigned": true,
+    "update_feeds": "unconfigured test package",
+    "compiler_exe_dll_or_game_started_during_assembly": false,
+    "native_gui_verified": false,
+    "native_gui_login_gameplay_explicit_logout": "pending human test",
+    "rooms_private_messages": "untested",
+    "release_error_5": "unresolved; no Release retry",
+    "historical_package_and_failed_receipts_preserved": true
+  },
+  "owned_probe_cleanup_checkpoint": {
+    "passed": true,
+    "exact_original_container_and_network_removed": true,
+    "both_exact_identities_absent": true,
+    "loopback_port_free": true,
+    "owned_cli_processes_ended": true,
+    "tests_executed": 0,
+    "source_changes": false,
+    "retained_services_touched": false,
+    "docker_or_wsl_restart_by_cleanup_runner": false,
+    "original_failed_receipts_edited": false
+  },
+  "later_noncompiled_source_context": {
+    "kaleidoscope_commit": "235f8964bf2259c90f9ecff64184ddfab1006f79",
+    "kaleidoscope_scope": "documentation/workflow repository examples only",
+    "transfiguration_commit": "57f7786fd3e5562025947859dcc0c3f33e38f70a",
+    "transfiguration_scope": "release.example.env only",
+    "compiled_code_changed": false,
+    "pushes": "coordinator reported reverified exact local bare local-cache only",
+    "github_or_parent_push": false,
+    "package_compiled_and_assembly_pins_unchanged": true,
+    "new_runtime_or_native_proof": false
+  }
 }
