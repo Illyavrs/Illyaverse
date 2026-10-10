@@ -1,6 +1,6 @@
 # Illyaverse development
 
-All implementation is original. Reference projects may inform protocol behavior and architecture; do not copy their source. Prefer primary upstream documentation and record important protocol assumptions in apps/docs/content/docs/status.md.
+All implementation is original. Reference projects may inform protocol behavior and architecture; do not copy their source. Sole exception: the Relax pp adjustment follows Sunrise's MIT-licensed method as an independent Rust implementation, attributed in THIRD_PARTY_NOTICES.md. Prefer primary upstream documentation and record important protocol assumptions in apps/docs/content/docs/status.md.
 
 Keep honest capability states: implemented, integration-tested, client-tested, and pending are different. Never mark stock stable/lazer connectivity complete without real client verification. Do not render invented activity as live server data.
 

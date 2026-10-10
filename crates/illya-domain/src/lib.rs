@@ -2,6 +2,7 @@
 pub mod beatmap_filename;
 pub mod download_filename;
 pub mod official_set;
+pub mod relax_pp;
 pub mod score_math;
 pub mod score_mods;
 pub mod score_variant;

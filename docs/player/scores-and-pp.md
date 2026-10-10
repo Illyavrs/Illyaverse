@@ -27,6 +27,7 @@ RX is a **separate score category**. It has its own rankings, pp and statistics,
 - Supported for osu!, taiko and catch. mania has no RX.
 - Just play with the Relax mod; nothing else to set up.
 - Leaderboards and profiles can switch between Normal and Relax (RX).
+- RX pp is adjusted from the standard calculation (osu! and catch). The method comes from the open-source Sunrise server; see THIRD_PARTY_NOTICES.md.
 
 ## Comparing scores
 
