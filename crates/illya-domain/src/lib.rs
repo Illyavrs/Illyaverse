@@ -1,5 +1,6 @@
 //! Shared, transport-independent rules for Illyaverse.
 pub mod beatmap_filename;
+pub mod download_filename;
 pub mod official_set;
 pub mod score_math;
 pub mod score_mods;
@@ -63,6 +64,10 @@ pub struct Preferences {
     pub locale: String,
     pub mode: String,
     pub accent_color: String,
+    /// Absent on older preferences; their existing image still takes precedence.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub background_mode: Option<String>,
+    pub background_color: String,
     pub background_url: Option<String>,
     pub background_blur: u8,
     pub background_dim: f32,
@@ -79,6 +84,8 @@ impl Default for Preferences {
             locale: "zh-TW".into(),
             mode: "dark".into(),
             accent_color: "#f28eb6".into(),
+            background_mode: None,
+            background_color: "#000000".into(),
             background_url: None,
             background_blur: 0,
             background_dim: 0.76,
@@ -91,6 +98,16 @@ impl Default for Preferences {
 }
 
 impl Preferences {
+    pub fn effective_background_mode(&self) -> &str {
+        self.background_mode.as_deref().unwrap_or_else(|| {
+            if self.background_url.is_some() {
+                "image"
+            } else {
+                "default"
+            }
+        })
+    }
+
     pub fn validate(&self) -> Result<(), &'static str> {
         if !matches!(self.locale.as_str(), "zh-TW" | "en" | "ja") {
             return Err("Unsupported locale.");
@@ -100,6 +117,15 @@ impl Preferences {
         }
         if !validate_color(&self.accent_color) {
             return Err("Accent color must be a six-digit hex color.");
+        }
+        if !matches!(
+            self.effective_background_mode(),
+            "default" | "image" | "color"
+        ) {
+            return Err("Unknown background mode.");
+        }
+        if !validate_color(&self.background_color) {
+            return Err("Background color must be a six-digit hex color.");
         }
         if self.background_blur > 48
             || self.panel_blur > 48
@@ -208,6 +234,83 @@ mod tests {
         assert_eq!(p.panel_opacity, 0.55);
         assert_eq!(p.glass_level, 100);
         assert!(!p.pm_friends_only);
+        assert_eq!(p.background_mode, None);
+        assert_eq!(p.effective_background_mode(), "image");
+        assert_eq!(p.background_color, "#000000");
+        assert!(
+            serde_json::to_value(&p)
+                .unwrap()
+                .get("background_mode")
+                .is_none()
+        );
+    }
+    #[test]
+    fn background_modes_preserve_an_uploaded_image_when_switching_to_color() {
+        let default = Preferences::default();
+        assert_eq!(default.effective_background_mode(), "default");
+        assert_eq!(default.background_color, "#000000");
+        for background_mode in ["default", "image", "color"] {
+            let p = Preferences {
+                background_mode: Some(background_mode.into()),
+                background_color: "#aBcD09".into(),
+                background_url: Some("/media/background/player.webp".into()),
+                locale: "ja".into(),
+                panel_blur: 11,
+                glass_level: 40,
+                pm_friends_only: true,
+                ..Preferences::default()
+            };
+            assert!(p.validate().is_ok());
+            let restored: Preferences =
+                serde_json::from_value(serde_json::to_value(&p).unwrap()).unwrap();
+            assert_eq!(restored.effective_background_mode(), background_mode);
+            assert_eq!(restored.background_color, "#aBcD09");
+            assert_eq!(restored.background_url, p.background_url);
+            assert_eq!(restored.locale, "ja");
+            assert_eq!(restored.panel_blur, 11);
+            assert_eq!(restored.glass_level, 40);
+            assert!(restored.pm_friends_only);
+        }
+    }
+    #[test]
+    fn background_preferences_reject_invalid_modes_colors_and_field_types() {
+        for mode in ["", "solid", "IMAGE", "#123456", "image\n"] {
+            let p = Preferences {
+                background_mode: Some(mode.into()),
+                ..Preferences::default()
+            };
+            assert!(p.validate().is_err(), "{mode:?}");
+        }
+        for color in [
+            "",
+            "#fff",
+            "#12345678",
+            "123456",
+            "#abcdef\n",
+            "red",
+            "#12zz56",
+        ] {
+            let p = Preferences {
+                background_color: color.into(),
+                ..Preferences::default()
+            };
+            assert!(p.validate().is_err(), "{color:?}");
+        }
+        for value in [
+            serde_json::json!({"background_mode": 0}),
+            serde_json::json!({"background_mode": []}),
+            serde_json::json!({"background_color": null}),
+            serde_json::json!({"background_color": false}),
+            serde_json::json!({"background_colour": "#123456"}),
+        ] {
+            assert!(serde_json::from_value::<Preferences>(value).is_err());
+        }
+        let infer: Preferences = serde_json::from_value(serde_json::json!({
+            "background_mode": null, "background_url": "/media/background/player.webp"
+        }))
+        .unwrap();
+        assert!(infer.validate().is_ok());
+        assert_eq!(infer.effective_background_mode(), "image");
     }
     #[test]
     fn friend_only_preferences_preserve_partial_theme_values() {

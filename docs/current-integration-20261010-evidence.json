@@ -1,0 +1,369 @@
+{
+  "version": 1,
+  "checkpoint": "2026-10-10 human report and source28 integration",
+  "status": "human_report_received_source28_backend_and_release_pending_live_schema27",
+  "goal_state": {
+    "verified_tool_status": "ACTIVE",
+    "verification_source": "parent verified goal-tool result",
+    "earlier_blocked_summary_stale": true,
+    "objective_complete": false
+  },
+  "historical_checkpoint": {
+    "markdown": "docs/current-integration-20261009.md",
+    "evidence": "docs/current-integration-20261009-evidence.json",
+    "unchanged_by_this_checkpoint": true
+  },
+  "runtime_boundary": {
+    "retained_client_test_schema": 27,
+    "main_schema": 22,
+    "runtime_image_build_parent": "0b4bec3a05fe0136cff8192e461aa3b4f608626f",
+    "source28_deployed": false,
+    "new_launcher_package_built": false
+  },
+  "human_report": {
+    "stable_score_submissions": "reported_working_normally",
+    "lazer_score_submissions": "reported_working_normally",
+    "replay": "reported_retrieval_from_official_website_working_normally",
+    "replay_origin_url_supplied": false,
+    "replay_playback_confirmed": false,
+    "chat": "reported_working_normally",
+    "rooms": "untested",
+    "private_messages": "untested",
+    "client_version_supplied": false,
+    "public_score_urls_supplied": false,
+    "reported_leaderboard_scope": "Global",
+    "played_mode_or_modifier_tuple_inferred": false
+  },
+  "observed_issues_and_source_work": {
+    "native_leaderboard_and_favourites": "Safe method/path/status logs confirm HTTP400; exact query, error code and client version are unknown. Backend compatibility is implemented in source; shared checks are pending.",
+    "profile_and_presence": "Missing profile sections and score beatmap fields are implemented in source. Existing last_visit:null has a known invisible-login effect; use real activity and preserve deliberate saved invisible preferences.",
+    "covers_and_previews": "Private-origin bounded official/local media is implemented in source; shared checks and native rendering/audio remain pending.",
+    "browser_fragments": "Source policy fix has a compiled-production 106-check proof; no native browser action.",
+    "canonical_routes_download_names_local_ids": "Source integration includes canonical navigation, filenames and derived local native-ID distribution; website fixtures passed, backend/migration/release checks remain pending.",
+    "stable_autodetect_and_lazer_badge": "Implemented in source with focused synthetic proofs; no player launch or real rendering proof."
+  },
+  "additional_requested_source_changes": {
+    "implementation_status": "implemented_in_source_not_deployed_final_backend_and_release_gates_pending",
+    "requirements": {
+      "color_picker": "react-colorful 5.8.1",
+      "checkboxes": "Shared shadcn checkbox across features",
+      "country_selector": "Searchable flags and full country names",
+      "pure_color_preferences": "Backward compatible with older saved preferences",
+      "uploaded_only_local_membership": "Website Local tab fixes source=local and uploaded_only=true; explicit native source=local requires a genuine local upload",
+      "logout": "Explicit current-token DELETE and explicit native UI logout; automatic401/disconnect must not revoke",
+      "updates": "Independent signed GitHub Kaleidoscope and Transfiguration feeds/repositories; no nested repository"
+    },
+    "catalogue_contract": {
+      "document": "docs/server-beatmap-catalogue.md",
+      "website_local_tab": "source=local and uploaded_only=true",
+      "explicit_native_source_local": "genuine local uploaded content only",
+      "reserved_server_query_without_explicit_source": "broader finite effective catalogue",
+      "unfiltered_public_and_admin_catalogue": "broader finite effective catalogue"
+    },
+    "verification": {
+      "updated_ui_typescript": "passed_final_composition_bound_in_shared_web_verdict",
+      "core_first_pass": { "passed": 114, "cases": 115, "additional_case_failed": 1, "failures_reported_fixture_only": true },
+      "core_confirmation": { "status": "failed_compile_link_timeout_zero_cases", "original_failed_cases": 2, "sibling_cases": 3, "selected_cases": 5, "timeout_seconds": 480, "executed_cases": 0 },
+      "core_cleanup": "unverified_after_five_ownership_audit_command_timeouts",
+      "core_clippy": "passed_offline_single_job_warnings_denied_after_two_line_corrections",
+      "rustfmt_reported_file_count": 144,
+      "rustfmt_reported_status": "passed_bound_separate_144_file_phase",
+      "updater_cargo_gate": { "status": "passed_across_preserved_phases", "distinct_core_cases": 18, "affected_case_repeated_after_test_only_lint_fix": 1, "desktop_locked_offline_all_targets_check": "passed", "kaleidoscope_clippy_warnings_denied": "passed" },
+      "website_first_pass": { "passed": 93, "cases": 100, "failed": 7, "failures_reported_fixture_or_readiness_only": true },
+      "website_confirmation": { "status": "passed_after_test_fixture_corrections", "exact_failed_cases": 7, "passed": 7 },
+      "website_final_unique_cases": 100,
+      "website_final_unique_browser_cases": 99,
+      "website_final_unique_pure_cases": 1,
+      "website_total_executions": 107,
+      "website_between_phase_test_files_changed": 4,
+      "production_source_changed_by_confirmations": false,
+      "gui_distinct_cases_across_phases": 22,
+      "all_gui_cases_at_same_source_head_claimed": false,
+      "final_backend_receipt_bindings": "pending",
+      "full_core_gate_marked_passed": false,
+      "website_gate_marked_passed": true
+    },
+    "update_distribution": {
+      "launcher_github_remote_requested": true,
+      "signed_feed_source_implementation": "complete",
+      "launcher_feed": "Kaleidoscope independent GitHub feed/repository",
+      "dll_feed": "Transfiguration independent GitHub feed/repository",
+      "actual_remote_urls_known": false,
+      "actual_owner_repository_and_signing_configuration_supplied": false,
+      "independent_launcher_and_dll_feeds": true,
+      "nested_repository_created": false,
+      "remote_created_or_release_published": false
+    },
+    "live_change": false
+  },
+  "source_commit_checkpoint": {
+    "coordinator_reported_all_five_child_commits_clean": true,
+    "serendipity_commit": "fd3474372b59597555831ac859ee2b41e2a33c9a",
+    "transfiguration_commit_prefix": "0a5cc690",
+    "sanctuary_commit_prefix": "f59d2a53",
+    "resonance_commit_prefix": "f423ce17",
+    "kaleidoscope_commit": "71daac1eac5abcce55f40ca06d97b4134e39537c",
+    "child_pushes": "verified exact local bare origin/main only",
+    "github_or_parent_push": false,
+    "parent_checkpoint_commit": "pending_root",
+    "source28_package_images_and_deployment_complete": false,
+    "all_proofs_at_one_source_head_claimed": false
+  },
+  "compile_lane_observations": {
+    "reported_free_space_before_mb": 878,
+    "reported_free_space_after_compile_exit_gb": 23.15,
+    "reported_agent_file_deletion": false,
+    "cause": "not established; explanations remain inference"
+  },
+  "appearance_current_source_contract": {
+    "document": "docs/appearance-state.md",
+    "visual_patch_fields": ["mode", "accent_color", "background_url", "background_mode", "background_color", "background_blur", "background_dim", "panel_blur", "panel_opacity", "glass_level", "border_radius"],
+    "visual_patch_field_count": 11,
+    "locale_and_pm_friends_only_excluded": true,
+    "normalized_frontend_background_mode": "required default|image|color",
+    "backend_background_mode": "optional and omitted when absent",
+    "legacy_mode_inference": "image when background_url exists, otherwise default",
+    "background_color": "six ASCII hexadecimal digits after #; default #000000",
+    "upload_success": "replace background_url and select image",
+    "remove": "clear background_url and select default",
+    "reset": "local visual defaults with locale preserved; Save sends PATCH",
+    "source_references": {
+      "visual_patch": "apps/serendipity/src/components/providers.tsx:267",
+      "frontend_preferences": "apps/serendipity/src/lib/types.ts:62",
+      "backend_preferences": "crates/illya-domain/src/lib.rs:60"
+    },
+    "older_backend_rollback_risk": "An older deny_unknown_fields backend without mode/color fields can reject new PATCH or stored preference JSON; compatibility is directional",
+    "runtime_rollback_tested": false,
+    "source28_deployed": false
+  },
+  "observed_native_log_summary": {
+    "kind": "single bounded privacy-filtered Caddy tool observation",
+    "observed_at_utc": "2026-10-10T01:57:46.2018508Z",
+    "persisted_receipt": false,
+    "window_hours": 3,
+    "recent_requests": 1154,
+    "whitelisted_native_requests": 49,
+    "failures": [
+      { "method": "GET", "path": "/api/v2/beatmaps/4911785/scores", "status": 400, "count": 4 },
+      { "method": "GET", "path": "/api/v2/beatmaps/4911786/scores", "status": 400, "count": 1 },
+      { "method": "GET", "path": "/api/v2/beatmaps/4911786/scores", "status": 499, "count": 1 },
+      { "method": "GET", "path": "/api/v2/me/beatmapset-favourites", "status": 400, "count": 3 }
+    ],
+    "observed_profile_get_status": 200,
+    "observed_native_score_post_put_status": 200,
+    "query_body_error_code_and_client_version_available": false,
+    "rotated_logs_read": false
+  },
+  "evidence": {
+    "combined_website": {
+      "path": ".artifacts/tests/web-client-fixes-b6b059e9a1d24613a1864a226ecd8f22/verdict.json",
+      "sha256": "8539d2ab89d8c4017e1d80cf105bd1d35c47d26630dbd7aa44c6445677c79279",
+      "status": "passed",
+      "unique_cases": 19,
+      "executions": 20,
+      "scope": { "canonical_routes": 9, "lazer_badge": 1, "existing_score_origin": 8, "retained_official_inline_board": 1 },
+      "original_nonfatal_react_warning_preserved": true,
+      "narrow_corrected_rerun_passed": 1,
+      "fixture_interception": true,
+      "retained_or_native_behavior_tested": false,
+      "owned_resources_cleaned": true
+    },
+    "stable_autodetect": {
+      "path": ".artifacts/tests/stable-autodetect-20261010/verification.json",
+      "sha256": "e64584bae11bfacdd5c12989259aa2844d63b4ee2cafbc53a869716495ae6433",
+      "status": "passed",
+      "gui_cases": 2,
+      "gui_failures": 0,
+      "gui_retries": 0,
+      "gui_skipped": 0,
+      "ui_typecheck_exit_code": 0,
+      "native_launch": false,
+      "source_commit": "uncommitted-root-owned-commit-pending"
+    },
+    "compiled_production_browser_policy": {
+      "path": ".artifacts/builds/launcher-browser-stable-debug-20261010-020351-a59f329f39ce4aa795e618ab01f2c17a/browser-only-20261010-021216-6308de4bb5984fd7a27ae06fe761f5f0/receipt.json",
+      "sha256": "e9b6137a04e56a614baf3acbf21efd2a45105de7a3b93e486f5aab9c2a31b7e6",
+      "status": "passed",
+      "actual_checks": 106,
+      "production_bridge_sha256": "7b008cde2c2e57ba85d880de663a4fb21a3c1b7769b8cfa6b17591ab8812afb4",
+      "runtime": "owned cached .NET 10.0.12 by reference",
+      "production_bootstrap_executed": false,
+      "game_framework_realm_loaded": false,
+      "native_game_started": false,
+      "network_or_shell_executed": false,
+      "dependencies_copied": false,
+      "inputs_unchanged_after": true,
+      "new_package_completion_proved": false
+    },
+    "stock_leaderboard_serializer": {
+      "path": ".artifacts/builds/launcher-browser-stable-debug-20261010-020351-a59f329f39ce4aa795e618ab01f2c17a/scores-serializer-run-20261010-022017-ceae2a5be1204bd7a0717d3538f74859/receipt.json",
+      "sha256": "2de41a0a839e5338bbf6a8e482c65bf4958334eb5f005f56d9d26c6d3297c4f6",
+      "status": "passed",
+      "actual_synthetic_cases": 5,
+      "native_request_code_and_fake_api_provider": true,
+      "native_parameter_tuples_inspected": true,
+      "complete_queries_reconstructed_only": true,
+      "game_framework_realm_code_metadata_loaded": true,
+      "framework_logger_timer_may_run": true,
+      "network_send_or_request_queue": false,
+      "api_worker_or_game_configuration_construction": false,
+      "player_config_auth_or_realm_database_access": false,
+      "earlier_reflection_harness_failures_preserved": true,
+      "inputs_unchanged_after": true,
+      "observed_live_400_query_identified": false
+    },
+    "detached_logout_original": {
+      "path": ".artifacts/builds/launcher-production-logout-20261010-cbf61588d76e4622b679d9b311bc4344/run-20261010-025026-a56db609c12b43c4976499a83eaa8c6a/receipt.json",
+      "sha256": "a5609def3f7bbec5f3c158b05940c8fc7f634e147f22e206e024681bb87409ef",
+      "status": "failed",
+      "expected_checks": 29,
+      "worker_reported_assertions_before_fixture_failure": 27,
+      "full_contract_passed": false,
+      "failure_scope": "Synthetic DispatchProxy could not implement pinned IAPIProvider internal Schedule",
+      "confirmation": "separate_29_check_pass_after_test_provider_only_correction",
+      "production_dll_sha256": "a24ae5d69e773994deedd5d57de611d8b48079665e3a44f47f977863729a1157",
+      "earlier_106_browser_checks_apply_to_this_binary": false,
+      "network_shell_or_native_launch": false,
+      "player_config_auth_or_realm_database_access": false,
+      "inputs_unchanged_after": true
+    },
+    "focused_core_confirmation_timeout": {
+      "path": ".artifacts/tests/source28-final-4157d5d1e90b4b72bfaee4dfc69c31b6/verification.json",
+      "sha256": "65c7492f6e40340dcbaef309ec0e385c610cfd7025e520a2846ad292af1f8334",
+      "status": "failed",
+      "selected_cases": 4,
+      "extra_selected_cases": 1,
+      "overall_unique_executed": 0,
+      "compile_link_timeout_seconds": 480,
+      "corrected_fixture_confirmation_complete": false,
+      "source_unchanged": true,
+      "cleanup_verified": false
+    },
+    "focused_core_cleanup_recovery": {
+      "path": ".artifacts/tests/source28-final-4157d5d1e90b4b72bfaee4dfc69c31b6/cleanup-recovery.json",
+      "sha256": "4a6119548f4efcdd3749dbee5ffb49d2a98c024594f229dd78e8c9fb1859b802",
+      "status": "failed_cleanup_unverified",
+      "ownership_audit_commands": 5,
+      "all_commands_timed_out": true,
+      "per_command_timeout_seconds": 45,
+      "owned_probe_processes_remaining": 0,
+      "private_temp_absent": true,
+      "owned_loopback_port_free": false,
+      "retained_services_touched": false,
+      "docker_or_wsl_restarted": false,
+      "resources_deleted": false
+    },
+    "core_rustfmt": {
+      "path": ".artifacts/tests/source28-core-rustfmt-20261010T025851Z-a381fbe99c474374800f932a4f78c92b/verification.json",
+      "sha256": "a1f081e0adf6abfd5f5ccfb418f91a8467c140509a849d031920f3a9e845fb02",
+      "status": "passed",
+      "rust_files": 144,
+      "check_only": true,
+      "source_inputs_unchanged": 178,
+      "phase": "Before the two later authorized lint-line corrections, which received their own scoped format check"
+    },
+    "core_clippy_confirmation": {
+      "path": ".artifacts/tests/source28-core-clippy-confirmation-20261010T030932Z-4af284329ceb4c63bffecdc36e87325a/verification.json",
+      "sha256": "9297061b8df1873fd96e429e408943ed96d56fe079e2e069b6e19496b64677b4",
+      "status": "passed",
+      "scope": "Sanctuary, Resonance and illya-domain all targets; offline single job; warnings denied",
+      "source_inputs_unchanged": 178,
+      "initial_two_lint_findings_preserved": true,
+      "authorized_two_line_delta": "Semantic-preserving borrow comparison and fixture Result expectation",
+      "corrected_files_scoped_format_check": "passed_2_files",
+      "tests_invoked": false,
+      "owned_cargo_processes_remaining": 0
+    },
+    "kaleidoscope_signed_updater_aggregate": {
+      "path": ".artifacts/tests/kaleidoscope-updater-clippy-fix-20261010-eb39cf26d0b14209bac98a9d70c314be/summary.json",
+      "sha256": "7f12ce524026f9993327e855aae64d49b57c7b2290bd26cb3ff4c9393c10dd10",
+      "status": "passed_across_preserved_phases",
+      "distinct_core_tests": 18,
+      "affected_rejection_case_repeated_after_test_only_lint_fix": 1,
+      "desktop_locked_offline_all_targets_check": "passed",
+      "kaleidoscope_clippy_warnings_denied": "passed",
+      "earlier_failed_desktop_and_clippy_attempts_preserved": true,
+      "source_mutation_during_each_run": false,
+      "actual_update_production_signing_publication_game_or_launcher_application": false,
+      "alive_owned_cargo_processes": 0
+    },
+    "kaleidoscope_updater_final_confirmation": {
+      "path": ".artifacts/tests/kaleidoscope-updater-clippy-fix-20261010-eb39cf26d0b14209bac98a9d70c314be/verification.json",
+      "sha256": "70724e2647d4bca1904b056f74cf94a2fbd4e002cbf4aeb223cb40d30c132229",
+      "status": "passed",
+      "affected_test_only_rejection_confirmation": 1,
+      "clippy_warnings_denied": "passed"
+    },
+    "kaleidoscope_updater_final_source_manifest": {
+      "path": ".artifacts/tests/kaleidoscope-updater-clippy-fix-20261010-eb39cf26d0b14209bac98a9d70c314be/source-after.json",
+      "sha256": "2a4c810ee87a165ad557c2449132f9c212de2693250e83ec86dee992979fa212",
+      "current_source_inputs_checked_before_docs_update": 24,
+      "all_current_hashes_and_lengths_match": true,
+      "source_root": "repository root; entries include tools/kaleidoscope"
+    },
+    "docker_version_after_disk_recovery": {
+      "path": ".artifacts/tests/docker-version-observation-1c3dab0739cb41c18fde70cae18cb714/receipt.json",
+      "sha256": "237acd471b495b142b60b52095b13b3ff47a8168324f8b2264f6f1bd80b0eebf",
+      "observed_at_utc": "2026-10-10T03:16:21.340175Z",
+      "status": "timed_out",
+      "coordinator_reported_timeout_seconds": 8,
+      "owned_cli_only": true,
+      "engine_restarted": false,
+      "docker_readiness_and_fixture_cleanup_verified": false
+    },
+    "final_shared_website": {
+      "path": ".artifacts/tests/final-shared-web-gate-142433473b484d30a5fc99f340bf9687/verdict.json",
+      "sha256": "627b3b7da3652ecb2a770aa9b7a56400ae38091a09fccae12ec1251eb7bb3064",
+      "status": "passed_after_authorized_test_harness_corrections",
+      "unique_cases": 100,
+      "unique_browser_cases": 99,
+      "unique_pure_cases": 1,
+      "total_executions": 107,
+      "original_passed": 93,
+      "original_failed": 7,
+      "exact_failed_case_confirmation_passed": 7,
+      "between_phase_test_file_changes": 4,
+      "production_changes": 0,
+      "final_ui_typescript": "passed",
+      "owner_lint_and_format": "reported_pass_for_frozen_owned_hashes",
+      "owned_port_and_process_cleanup": "passed",
+      "original_failures_cleanup_guard_and_empty_pid_metadata_preserved": true,
+      "web_head_at_gate": "ece3fd7238ef75b6ccc2f7587516142e86b39fe1",
+      "root_head_at_gate": "2afeb6b086a38c9719706b04ba33124322b805dd",
+      "root_reported_following_web_commit": "fd3474372b59597555831ac859ee2b41e2a33c9a",
+      "scope": "Owned Next development server with synthetic API/media interception; not retained runtime or native behavior"
+    },
+    "detached_logout_confirmation": {
+      "path": ".artifacts/builds/launcher-production-logout-20261010-cbf61588d76e4622b679d9b311bc4344/run-20261010-025515-ad560cccd4c34f729cc3396592a741e3/receipt.json",
+      "sha256": "edfdc39ec4868474fa809ee47b88974bfc9608fa99ccbe6596c6b145af3f944d",
+      "status": "passed",
+      "actual_checks": 29,
+      "production_dll_sha256": "a24ae5d69e773994deedd5d57de611d8b48079665e3a44f47f977863729a1157",
+      "scope": "Detached production UI IL and synthetic provider only; real native signout/server revocation untested",
+      "native_game_network_shell_config_auth_or_realm_database_access": false
+    },
+    "detached_logout_composite": {
+      "path": ".artifacts/builds/launcher-production-logout-20261010-cbf61588d76e4622b679d9b311bc4344/composite-a37ff0f17fe140519137f647544df8b6.json",
+      "sha256": "d8b04e799d469ea376db006fef24144128de65da027a8da7a7b6c6094a220a2e",
+      "status": "passed_after_test_provider_correction",
+      "initial_failure_unchanged": true,
+      "only_test_provider_source_changed": true,
+      "production_dll_unchanged_between_attempts": true
+    }
+  },
+  "pending": [
+    "Shared source28 backend compilation, unit/PostgreSQL composition and migration verification",
+    "Source28 image builds, startup, full protocol, recovery and retained cutover",
+    "New launcher package",
+    "Direct native verification of the source28 fixes",
+    "Replay playback and launcher exit/restart preservation",
+    "Rooms and private messages"
+  ],
+  "limits": [
+    "Human submission/chat reports are distinct from agent fixtures; no client version or score/replay origin URLs were supplied.",
+    "Replay retrieval does not prove playback, and the phrase official website does not identify an origin.",
+    "Observed Global HTTP400 cannot establish an exact modifier query or client serializer version from privacy-safe logs.",
+    "Source28 implementation and focused source proofs do not change the retained schema27 runtime.",
+    "No agent native gameplay launch occurred; the broader goal remains incomplete."
+  ]
+}

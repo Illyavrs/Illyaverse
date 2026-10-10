@@ -1248,8 +1248,12 @@ dependencies = [
 name = "kaleidoscope"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "fs2",
  "getrandom 0.4.3",
+ "reqwest",
+ "ring",
+ "semver",
  "serde",
  "serde_json",
  "sha2",
@@ -1257,6 +1261,7 @@ dependencies = [
  "url",
  "uuid",
  "windows-sys 0.61.2",
+ "zip",
 ]
 
 [[package]]
@@ -1968,6 +1973,7 @@ checksum = "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
 dependencies = [
  "base64 0.22.1",
  "bytes",
+ "futures-channel",
  "futures-core",
  "futures-util",
  "http",
@@ -2008,6 +2014,8 @@ dependencies = [
  "argon2",
  "axum",
  "chrono",
+ "crc32fast",
+ "encoding_rs",
  "futures-util",
  "illya-domain",
  "image",
@@ -2029,6 +2037,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "zip",
 ]
 
 [[package]]

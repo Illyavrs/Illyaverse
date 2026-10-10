@@ -15,11 +15,13 @@ Illyaverse brings accounts, beatmaps, scores, replays, rankings and chat into on
 deployment. Its name is inspired by _Fate/kaleid liner Prisma Illya_. Players
 register on the website and use the same account in either game client.
 
-Development is ongoing. Human testing has confirmed stable score persistence
-and lazer sign-in; complete gameplay, replay playback, multiplayer and launcher
-cleanup still need client verification. The [release checklist](docs/release-readiness.md)
-and [integration record](docs/current-integration-20261009.md) distinguish source
-features, deployed versions, automated checks and human test results.
+Development is ongoing. The user now reports stable and lazer score submissions,
+replay retrieval and chat working normally. Replay playback, multiplayer, private
+messages and launcher cleanup still need client verification. The
+[current integration record](docs/current-integration-20261010.md) supersedes
+older failure checkpoints and distinguishes human reports from automated proof.
+Source-28 fixes are under verification and are not deployed; the
+[release checklist](docs/release-readiness.md) retains its dated evidence.
 
 ## Run a local server
 
@@ -105,8 +107,8 @@ nomination and staff decisions target individual difficulties. The
 conflict handling and integration status. The main deployment remains at schema
 22. Client-test also includes private-message read receipts, the combined server
 catalogue and archive acquisition. See the
-[integration record](docs/current-integration-20261009.md) for
-the deployment evidence and pending human client checks.
+[current integration record](docs/current-integration-20261010.md) for
+the deployment boundary, latest human report and source-28 checks still pending.
 
 ## Connect a game client
 
@@ -204,7 +206,7 @@ requirements are in [AGENTS.md](AGENTS.md).
 - [API and permissions](docs/api.md) · [Role management](docs/permissions.md)
 - [Beatmap discovery](docs/map-discovery.md) · [Ranking requests](docs/beatmap-rank-requests.md)
 - [Scores and replays](docs/native-score-submission.md) · [Chat](docs/website-chat.md)
-- [Current integration](docs/current-integration-20261009.md) · [Release readiness](docs/release-readiness.md)
+- [Current integration](docs/current-integration-20261010.md) · [Release readiness](docs/release-readiness.md)
 
 ## License and references
 

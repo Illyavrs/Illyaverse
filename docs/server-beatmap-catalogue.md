@@ -2,7 +2,9 @@
 
 這是有限的本站目錄：保存的圖譜、社群上傳，以及有本站 difficulty 決定且已發布完整公開 metadata 的官方 set。官方／網站／lazer 的預設搜尋仍使用官方來源。官方 Ranked 篩選維持上游成員；本站核准官方 Pending 或 Graveyard 後，使用本站目錄才能按本站有效狀態發現它。
 
-網站使用 `GET /api/v1/server/beatmapsets`。Lazer `GET /api/v2/beatmapsets/search` 使用 `source=local`，或未指定 source 且 `q` 以保留的 `server:` 開頭。前綴後的文字是搜尋詞，例如 `server: 星`；`server:` 空詞可列出目錄。`source=official` 明確保留官方搜尋詞。這個選擇使用 stock 原有的 `q`，不需要修改客戶端；實際遊戲畫面仍須真人驗證。
+2026-10-10 來源契約將玩家上傳與完整有效狀態目錄分開；這些新限制尚未部署至保留的 schema 27。網站 Local／玩家上傳分頁使用 `GET /api/v1/server/beatmapsets`，固定 `source=local` 與 `uploaded_only=true`，只列出真正有 uploader 的本站社群套件。Lazer `GET /api/v2/beatmapsets/search` 明確指定 `source=local` 時也要求真正的本站上傳內容，不混入官方保存或 metadata-only 結果。
+
+未指定 source 且 `q` 以保留的 `server:` 開頭時，仍選擇較廣的有限有效狀態目錄，包含保存的官方圖譜與已發布完整 metadata 的官方 set。前綴後的文字是搜尋詞，例如 `server: 星`；`server:` 空詞可列出此目錄。未加上來源／上傳限制的 public API 與管理用途也保留較廣範圍。`source=official` 明確保留官方搜尋詞。這個選擇使用 stock 原有的 `q`，不需要修改客戶端；實際遊戲畫面仍須真人驗證。
 
 ## 成員與狀態
 
@@ -16,7 +18,7 @@
 
 ## 篩選與分頁
 
-網站支援 `q`、`mode=0..3`、`status`、`source=official|local`、`uploaded_by`、`uploaded_only`、`page`、`page_size`（最多 50）。`uploaded_only` 必須是真正有 uploader 的本站高區段社群套件；metadata-only 官方結果不會冒充玩家上傳。排序為 `recent`、`title`、`stars`、`length`，並接受下列原生排序。`recent` 是本站加入日期；`updated` 使用驗證的原始更新日期或本站內容建立日期。
+Public `GET /api/v1/server/beatmapsets` 支援 `q`、`mode=0..3`、`status`、`source=official|local`、`uploaded_by`、`uploaded_only`、`page`、`page_size`（最多 50）；未限制時仍是較廣的有效狀態目錄。網站 Local 分頁固定 local／uploaded-only 條件，不提供混合來源選單。`uploaded_only` 必須是真正有 uploader 的本站高區段社群套件；metadata-only 官方結果不會冒充玩家上傳。排序為 `recent`、`title`、`stars`、`length`，並接受下列原生排序。`recent` 是本站加入日期；`updated` 使用驗證的原始更新日期或本站內容建立日期。
 
 原生支援 `q`、`m`、`s`、`sort`、`nsfw`、`cursor_string` 或單一 `cursor[illya]`。排序支援 `ranked`、`updated`／`date`、`title`、`artist`、`difficulty`、`relevance` 的 `_asc`／`_desc`。Relevance 是原創、公開的文字權重：標題完全符合 8／包含 4，artist 完全符合 4／包含 2，version 包含 1，取符合 difficulty 的最高分。全部排序用 canonical set ID 決定同分順序。
 
