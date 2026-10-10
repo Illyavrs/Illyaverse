@@ -36,7 +36,7 @@ The latest actual stable failure remains the earlier 413: multipart part 14, fiv
 
 ## 2026-10-10 source contract
 
-The preceding sections retain their historical deployment and test scope, including the old visual-field count and native failure snapshot. The [current integration checkpoint](current-integration-20261010.md) supersedes those current-status statements: the user now reports stable/lazer submissions and chat working normally, while source-28 appearance changes and release verification remain pending.
+The preceding sections retain their historical deployment and test scope, including the old visual-field count and native failure snapshot. The current integration checkpoint supersedes those current-status statements: the user now reports stable/lazer submissions and chat working normally, while source-28 appearance changes and release verification remain pending.
 
 Current appearance saves contain **11 visual fields**: `mode`, `accent_color`, `background_url`, `background_mode`, `background_color`, `background_blur`, `background_dim`, `panel_blur`, `panel_opacity`, `glass_level` and `border_radius`. They exclude `locale` and `pm_friends_only`. Color selection uses `react-colorful` 5.8.1. The frontend normalizes `background_mode` to `default`, `image` or `color`; the backend keeps this field optional so older preferences without a mode infer `image` from an existing background URL, otherwise `default`. A valid background color is exactly six hexadecimal digits after `#`, with `#000000` as the default.
 

@@ -16,4 +16,4 @@
 - 每項包含 `native_set_id`、既有公開圖譜 DTO `representative`、`matching_count`、`stored_count`、`matching_modes`、`matching_statuses`、`stars_min/max`、`length_min/max`、`added_at` 和最多八項 `preview`。狀態與模式描述符合篩選的難度，不會把混合狀態合成一個組狀態。
 - `GET /api/v1/beatmaps/{id}/set/difficulties?page=1&page_size=24`：以該難度所屬的 canonical 圖譜組查詢已收錄且可用的難度，與是否有 `.osz` 無關。依模式、星數、ID 排序，回傳既有精簡難度 DTO 與實際成員數量。
 
-兩項查詢不新增資料庫遷移、不修改圖譜、權限或官方 rate limit；資料和計數在同一個查詢快照中讀取。既有 `/beatmaps` 單一難度 API 與圖譜包 API 保持相容。Native stable／lazer 遊戲與送分驗證仍依[驗證說明](verification.md)處理。
+兩項查詢不新增資料庫遷移、不修改圖譜、權限或官方 rate limit；資料和計數在同一個查詢快照中讀取。既有 `/beatmaps` 單一難度 API 與圖譜包 API 保持相容。Native stable／lazer 遊戲與送分驗證仍依[驗證說明](../apps/docs/content/docs/reference/verification.md)處理。

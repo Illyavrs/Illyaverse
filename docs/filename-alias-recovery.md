@@ -53,7 +53,7 @@ Body 上限 1 KiB，只接受 `apply` 布林值；未知欄位或錯誤型別回
 
 ## 驗證範圍
 
-2026-10-09 的[驗證記錄](filename-alias-recovery-evidence.json)對應 Sanctuary image `sha256:6f1095b7c6f237e78ec38198e43954cc1dd853a92533b69e9f0195cd4bd7b1f5`：
+2026-10-09 的驗證記錄對應 Sanctuary image `sha256:6f1095b7c6f237e78ec38198e43954cc1dd853a92533b69e9f0195cd4bd7b1f5`：
 
 - Rustfmt、Sanctuary all-target Clippy（warnings denied）、80 項非 ignored API 單元測試及 6 項 migration source checks 通過；109 項 ignored 測試並非全部重跑。
 - 在新建、專屬 tmpfs PostgreSQL 17 上，9 項 backfill endpoint fixtures、10 項既有 filename、13 項 package 與 3 項 mutation fixtures 共 35 項通過。包含未知／已建立 fingerprint、正確 Unicode 配對、預覽不寫入、重複執行、壞封包／缺漏／改檔、權限撤銷／到期、同名歧義、並行套用、撤回及 commit rollback。Fixture 均完成清理，不使用保留中的資料庫。
@@ -77,4 +77,4 @@ cargo test -p sanctuary --locked map_mutation_tests -- --ignored --test-threads=
 
 Linux 的非 ignored reader cases 可用 `cargo test --locked --release -p sanctuary filename_backfill_tests` 執行。Final-image HTTP 使用 tracked `infra/disposable-protocol-smoke.mjs`；它建立隨機專屬 Compose project、固定當次本機 image ID，最後清理自身容器、network、volumes 與秘密環境檔。驗證不得指向玩家資料庫。
 
-本次是 backend／隔離 HTTP 驗證，未執行真實 stable／lazer 遊戲或 Kaleidoscope 生命周期測試，不代表 native release checklist 完成。既有 native filename lookup 的契約見 [native discovery](native-beatmap-discovery.md)，ZIP 編碼與 immutable package 契約見 [local packages](local-map-packages.md)。
+本次是 backend／隔離 HTTP 驗證，未執行真實 stable／lazer 遊戲或 Kaleidoscope 生命周期測試，不代表 native release checklist 完成。既有 native filename lookup 的契約見 [native discovery](native-beatmap-discovery.md)，ZIP 編碼與 immutable package 契約見 [local packages](../apps/docs/content/docs/operate/local-map-packages.md)。

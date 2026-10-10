@@ -27,7 +27,7 @@ stable 依目前 action 的 RX mod 讀取對應統計；lazer API 保留原始 r
 
 ## 原生客戶端測試
 
-使用 [Kaleidoscope 測試包](kaleidoscope-launcher.md)與網站建立的 Illyaverse 帳號：
+使用 [Kaleidoscope 測試包](../apps/docs/content/docs/clients/kaleidoscope-launcher.md)與網站建立的 Illyaverse 帳號：
 
 1. 先在 osu! 模式完成一筆 Normal 成績，再開 RX 完成同一張譜面，確認都能提交。通過必要 replay／capture 檢查的 native 成績會自動公開；API、未完成 capture 或明確管理決定的成績仍留在 staging。
 2. 公開後，在網站玩家頁、排行榜與譜面榜切換 Normal／RX；核對成績、pp、準確率與遊玩次數分區，RX 譜面榜按 pp 排序。

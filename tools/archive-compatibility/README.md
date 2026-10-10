@@ -68,7 +68,7 @@ IL inspection evidence is retained at
 This is filename enumeration evidence for these exact assemblies and fixtures,
 not real client import, gameplay, score persistence or broad ZIP-producer
 certification. Server policy is documented in
-[local map packages](../../docs/local-map-packages.md#archive-filename-validation).
+[local map packages](../../apps/docs/content/docs/operate/local-map-packages.md#archive-filename-validation).
 
 ## Server checkpoint
 

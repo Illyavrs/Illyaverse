@@ -5,7 +5,7 @@
 `GET /api/v1/official/beatmapsets/search` 提供公開搜尋，`GET /api/v1/official/beatmapsets/{id}` 提供整組 metadata；兩者不需要匯入權限，也不會自動匯入或新增任何圖譜。`/beatmaps/official/{id}` 顯示官方整組難度與 metadata，只在 API 已核對本站難度 ID／checksum 時提供相應本站頁面。
 
 整組下載是 `.osz`。下載能力區分已保存的完整封包，以及營運者明確啟用的
-[已驗證暫存取得](official-archive-acquisition.md)。新的暫存取得遵守已知官方
+[已驗證暫存取得](../apps/docs/content/docs/operate/official-archive-acquisition.md)。新的暫存取得遵守已知官方
 `download_disabled=false`，未知狀態不可取得；已保存的原始封包維持既有讀取契約。
 未啟用 provider 時不以 `.osu` 假裝整組下載。官方搜尋結果的狀態、本站保存狀態與本站審核
 是不同資料；未保存的官方結果不顯示虛構的本站 leaderboard。
@@ -66,8 +66,8 @@
 | 502 `official_search_invalid`／`official_api_failed`／`official_auth_failed` | 上游資料、服務或營運者授權問題；不當成零結果 |
 
 完整 `.osz` 自動下載需要另外的授權或明確設定的封包來源；搜尋成功不代表已下載音樂、
-背景或全部難度。可以使用原有的[完整封包匯入](official-beatmap-archives.md)，
-或由營運者啟用[已驗證暫存取得](official-archive-acquisition.md)。
+背景或全部難度。可以使用原有的[完整封包匯入](../apps/docs/content/docs/operate/official-beatmap-archives.md)，
+或由營運者啟用[已驗證暫存取得](../apps/docs/content/docs/operate/official-archive-acquisition.md)。
 搜尋與完整封包的 metadata 驗證不會宣稱各個音樂／圖片資產由官方逐檔驗證。
 
 ## 公開圖譜卡片的難度預覽

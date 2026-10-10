@@ -18,7 +18,7 @@ The API change is additive: score responses include artist, official beatmapset 
 
 ## Evidence and scope
 
-The primary visual reference is the player's attached score-list screenshot. The source studies and pinned osu-web/Sunset revisions are recorded in [website-redesign.md](website-redesign.md). Original design rules are recorded in [DESIGN.md](../DESIGN.md) and the Serendipity surface brief.
+The primary visual reference is the player's attached score-list screenshot. The source studies and pinned osu-web/Sunset revisions are recorded in website-redesign.md. Original design rules are recorded in [DESIGN.md](../DESIGN.md) and the Serendipity surface brief.
 
 All writable verification uses owned disposable PostgreSQL/Compose environments. The browser captures use explicitly synthetic activity fixtures; gray banner/avatar and a small geometric uploaded-background fixture are original non-AI QA pixels. They are not shipping assets or production activity. Actual official map covers remain runtime content, and personal images remain user uploads.
 

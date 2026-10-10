@@ -18,7 +18,7 @@ Gateway 先驗證登入 bearer，再透過既有 service key 呼叫內部搜尋�
 
 本站的 withdrawal 與個別難度的狀態決定會在每次回覆時重新套用，包含已快取頁面。每個 difficulty 有自己的 `status`，核准一張 Ranked 不會改變同組其他難度；原生 JSON 的 `ranked` 數字也依各難度狀態對應（Graveyard -2、WIP -1、Pending 0、Ranked 1、Loved 4）。官方搜尋遇到混合狀態仍保留原官方 set 標籤；有本站決定且所有難度同狀態時才彙總為共用標籤。本機套件遇到混合狀態以 Pending 作為 set 摘要，個別狀態仍完整列出。
 
-搜尋的 `total`、cursor、成員及排序仍使用官方目錄；例如官方 Pending 中一張難度被本站核准，不會令官方 `s=ranked` 查詢自行加入這組。本站已收錄圖譜的狀態篩選使用本機目錄。完整下載仍使用實際保存的 `.osz`，`availability.download_disabled` 不會因 metadata 已找到就變成 false。官方 `public` client-credentials token 並不授權整包下載，沒有已驗證封包的圖譜目前可以搜尋與辨識，但不能透過此路由下載；不以單張 `.osu` 代替完整 archive。詳見[官方封包契約](official-beatmap-archives.md)。
+搜尋的 `total`、cursor、成員及排序仍使用官方目錄；例如官方 Pending 中一張難度被本站核准，不會令官方 `s=ranked` 查詢自行加入這組。本站已收錄圖譜的狀態篩選使用本機目錄。完整下載仍使用實際保存的 `.osz`，`availability.download_disabled` 不會因 metadata 已找到就變成 false。官方 `public` client-credentials token 並不授權整包下載，沒有已驗證封包的圖譜目前可以搜尋與辨識，但不能透過此路由下載；不以單張 `.osu` 代替完整 archive。詳見[官方封包契約](../apps/docs/content/docs/operate/official-beatmap-archives.md)。
 
 `source=local` 明確選擇[本站有效狀態目錄](server-beatmap-catalogue.md)。Stock lazer 可在一般搜尋欄輸入 `server:`，後面接搜尋詞；未指定 source 的 query 以這個保留前綴開頭時使用同一目錄。這個目錄包含已保存的圖譜、社群上傳，以及核准時原子發布完整 metadata 的官方圖譜，故官方 Pending／Graveyard 的本站 Ranked difficulty 不必先匯入內容才可被發現。`source=official` 可明確選擇官方來源並保留搜尋詞。預設仍是官方，不會自動切換來源。
 
@@ -28,7 +28,7 @@ Gateway 先驗證登入 bearer，再透過既有 service key 呼叫內部搜尋�
 
 最終搜尋來源通過 67 個 Resonance 單元測試、6 個隔離 PostgreSQL／HTTP 測試及 Clippy／格式檢查，涵蓋 bearer 撤銷、withdrawal、真實 cursor、個別狀態與無匯入讀取。Graveyard／WIP 同時驗證 lazer JSON 的 -2／-1，以及實際 stable getscores 路由的已提交狀態 0 與 canonical IDs。另有 13 個圖譜及 17 個直接 set 回歸測試；[完整收據](../.artifacts/tests/lazer-official-search-20261009T155720Z-cf12e3114b5f40cb949540442559afbd/verification-confirmed.json) 分開綁定完整回歸與最後的本機篩選修正，並保留 Sanctuary 快取／上游契約驗證、失敗嘗試及獨立 review。專用 tmpfs PostgreSQL、network 與私有測試設定已清除；此批沒有啟動原生遊戲、變更玩家檔案或部署 retained 服務。
 
-具有 `beatmaps.import` 權限的帳號也可以提供完整官方 `.osz` 與 set ID，經整組官方 metadata 核對後保存原始封包與全部 difficulties。這是網站的明確匯入動作；原生 set lookup 不會自動下載整包。匯入成功後，stable osu!direct 與 lazer set download 可下載相同的完整 bytes，網站也可瀏覽同封包難度。驗證範圍、重試與版本限制見[官方封包匯入](official-beatmap-archives.md)。
+具有 `beatmaps.import` 權限的帳號也可以提供完整官方 `.osz` 與 set ID，經整組官方 metadata 核對後保存原始封包與全部 difficulties。這是網站的明確匯入動作；原生 set lookup 不會自動下載整包。匯入成功後，stable osu!direct 與 lazer set download 可下載相同的完整 bytes，網站也可瀏覽同封包難度。驗證範圍、重試與版本限制見[官方封包匯入](../apps/docs/content/docs/operate/official-beatmap-archives.md)。
 
 ## Lazer 官方圖譜集資訊
 
@@ -46,7 +46,7 @@ Sanctuary 的 metadata 工作總預算 6 秒，Gateway 內部 HTTP 預算 8 秒�
 
 對外 difficulty ID 與資料庫內部 ID 是不同欄位。Stable 的 leaderboard、BeatmapInfo 和提交結果使用 canonical native ID；分數、replay 與網站圖譜頁使用本機資料庫 ID。官方 native ID 保留在 `1..1_999_999_999`，私服 difficulty／set 分別使用 `2_000_000_000..2_147_483_647`，不是把內部 primary key 當別名。未知高區段 ID 不會觸發官方查詢。BeatmapInfo 最多接收 100 個 selector，只查快取，不會同步匯入整批未知圖譜。
 
-Lazer 使用相同的 canonical difficulty／set ID。已匯入官方圖譜的資料庫 primary key 不接受為另一個原生 ID；私服套件與其 difficulties 有獨立且持久的對外 ID。官方 metadata 若進入本站管理的高區段則明確拒絕，這個區段是本站政策而非 osu! 官方保留範圍。升級與舊圖譜限制見[套件契約](local-map-packages.md)。
+Lazer 使用相同的 canonical difficulty／set ID。已匯入官方圖譜的資料庫 primary key 不接受為另一個原生 ID；私服套件與其 difficulties 有獨立且持久的對外 ID。官方 metadata 若進入本站管理的高區段則明確拒絕，這個區段是本站政策而非 osu! 官方保留範圍。升級與舊圖譜限制見[套件契約](../apps/docs/content/docs/operate/local-map-packages.md)。
 
 單人成績 token 先依 checksum 辨識，再綁定本機圖譜、對外 ID、ruleset 與玩家。辨識等待結束後，在寫入 token 的短交易內重新檢查 bearer session 和帳號狀態；提交與重試只使用已綁定身分，不會重新辨識或接受官方圖譜的 primary-key 別名。
 
@@ -62,7 +62,7 @@ Lazer 的 `BeatmapOnlineStatus` 沒有 `Unranked` 成員。本站資料庫的 un
 
 新 `.osu` 上傳保留原始 basename；新 `.osz` 上傳將每張 difficulty 與封包內解碼後的 basename 一起保存，checksum 排序不會打散其關聯。`beatmap_filename_aliases` 使用精確、區分大小寫及 Unicode bytes 的資料庫鍵；名稱不經 trim、case folding 或 Unicode normalization。它是查詢資料，不會組成檔案路徑，也不會在每次 lookup 解壓封包。公開圖譜回覆不新增檔名、對照表或檔案路徑欄位。
 
-本站 filename selector 限制為 5–1024 UTF-8 bytes、`.osu` 副檔名（副檔名驗證忽略 ASCII 大小寫），禁止斜線、反斜線、冒號與 control characters。驗證允許 `.OSU` 不代表查詢會把它改成 `.osu`；整個名稱仍精確比對。這是本站的 basename 政策，不是官方 API 宣告的完整字元規則。新 ZIP 上傳在建立索引前驗證原始項目，依 UTF-8 flag、CP932 或有效 Unicode Path 解碼，再處理分隔符；畸形編碼不使用替代字元修補。見[封包檔名政策](local-map-packages.md#archive-filename-validation)。舊 `.osz` 可使用下述明確維護操作；實際 native 匯入仍需要真人驗證。
+本站 filename selector 限制為 5–1024 UTF-8 bytes、`.osu` 副檔名（副檔名驗證忽略 ASCII 大小寫），禁止斜線、反斜線、冒號與 control characters。驗證允許 `.OSU` 不代表查詢會把它改成 `.osu`；整個名稱仍精確比對。這是本站的 basename 政策，不是官方 API 宣告的完整字元規則。新 ZIP 上傳在建立索引前驗證原始項目，依 UTF-8 flag、CP932 或有效 Unicode Path 解碼，再處理分隔符；畸形編碼不使用替代字元修補。見[封包檔名政策](../apps/docs/content/docs/operate/local-map-packages.md#archive-filename-validation)。舊 `.osz` 可使用下述明確維護操作；實際 native 匯入仍需要真人驗證。
 
 同名可以屬於不同 difficulty；lookup 若命中兩張以上，回覆 409 `beatmap_filename_ambiguous`，不依 ID 大小、owner、官方來源或狀態任意選一張，也不繼續查官方。新的 alias 與圖譜在同一 publication transaction 發布，並使用 authority → filename → checksum／resource 的鎖順序。完整同 owner 重試不會以新的 standalone 檔名擴充既有 alias。Migration 0017 只建對照表，不猜測舊名稱、不改任何 retained bytes／checksum／ID。具有 `beatmaps.moderate` 的管理員可逐個 package 預覽、驗證並套用[舊 `.osz` 檔名修復](filename-alias-recovery.md)；它驗證原始 archive、完整 manifest 與 retained member bytes，只新增 aliases 及一次有效寫入的 audit。未知 legacy fingerprint 保持未知；standalone `.osu` 缺少可驗證原始名稱時明確拒絕。
 
@@ -95,13 +95,13 @@ Stable 的 filename-only BeatmapInfo（`Ids` 空陣列）保留原輸入的 zero
 3. 確認狀態已顯示，實際完成一次遊玩，再確認網站自己的成績紀錄與 replay。
 4. 若仍是 Not submitted，提供該 difficulty 的官方網址或 ID，以及發生時間。圖譜辨識與真正提交是分開的驗證；尚未嘗試送分不能判定為提交失敗。
 
-符合目前驗證條件的原生成績會自動公開；需要完整 capture 的 lazer 成績會等待 capture 完成。一般 stable 成績不需要逐筆 moderator 審查。隔離 HTTP／PostgreSQL fixture 不代表遊戲視窗、原生送分或 replay 播放已通過。完整檢查見 [相容性清單](protocol-compatibility.md) 與 [本機測試](local-client-testing.md)。
+符合目前驗證條件的原生成績會自動公開；需要完整 capture 的 lazer 成績會等待 capture 完成。一般 stable 成績不需要逐筆 moderator 審查。隔離 HTTP／PostgreSQL fixture 不代表遊戲視窗、原生送分或 replay 播放已通過。完整檢查見 [相容性清單](../apps/docs/content/docs/reference/protocol-compatibility.md) 與 [本機測試](../apps/docs/content/docs/clients/local-client-testing.md)。
 
 官方 API 契約參考 [Lookup Beatmap](https://osu.ppy.sh/docs/index.html#lookup-beatmap)；伺服器實作及 fixture 為原創。
 
 ## Configured official archive acquisition
 
-The optional [archive acquisition provider](official-archive-acquisition.md) extends the retention-only download statements above. `OSU_ARCHIVE_URL_TEMPLATE` is empty by default. The operator can configure a fixed HTTPS template containing a numeric official set ID. This does not reuse a player's official login, turn an OAuth application token into download authorization, or publish transient files as a retained catalogue package.
+The optional [archive acquisition provider](../apps/docs/content/docs/operate/official-archive-acquisition.md) extends the retention-only download statements above. `OSU_ARCHIVE_URL_TEMPLATE` is empty by default. The operator can configure a fixed HTTPS template containing a numeric official set ID. This does not reuse a player's official login, turn an OAuth application token into download authorization, or publish transient files as a retained catalogue package.
 
 Native downloads first read an existing immutable local or official archive and recheck local withdrawal. Retained reads remain available during an upstream outage. When an official archive is absent, stable's public read-only `/d/{id}` and authenticated lazer's `/api/v2/beatmapsets/{id}/download` can request the configured acquisition. Local IDs never enter the official provider. Known disabled or unknown official download policy blocks new acquisition. Sanctuary verifies the complete ZIP and original difficulty manifest, stored identities, fresh policy and withdrawal before returning bytes.
 

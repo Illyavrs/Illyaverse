@@ -34,9 +34,9 @@ Multer 3.1 的內建參數辨識區分大小寫，會漏認 `Name`／`FileName`�
 
 測試服務更新後，登入 stable 並完成一張 Ranked／Loved 圖譜，或等待待送成績重試。網站應顯示保存的成績與 Replay；正常 passed 成績完成上述檢查後自動公開，排名仍依圖譜、模式、mods 與 PP eligibility 決定。若仍失敗，提供發生時間即可，先使用上述安全診斷定位，不要貼密碼或 request body。圖譜辨識是另一項檢查，見[官方圖譜辨識](native-beatmap-discovery.md)。
 
-獨立 Python Rijndael fixture 在 Docker 最終映像測試中送出超過 32 KiB 的合法 LZMA replay，涵蓋標準參數、不同大小寫參數、無 MIME 的 attachment、相同成績重試去重、replay round trip、錯誤密碼與 checksum 拒絕。來源 gate、映像 ID 和部署 checkpoint 見[驗證紀錄](verification.md)。
+獨立 Python Rijndael fixture 在 Docker 最終映像測試中送出超過 32 KiB 的合法 LZMA replay，涵蓋標準參數、不同大小寫參數、無 MIME 的 attachment、相同成績重試去重、replay round trip、錯誤密碼與 checksum 拒絕。來源 gate、映像 ID 和部署 checkpoint 見[驗證紀錄](../apps/docs/content/docs/reference/verification.md)。
 
-附加欄位修正另完成一輪 461 次 HTTP／56 類最終映像協定測試，其中新的第十四項 opaque 附加資料仍取得原有 score receipt、Replay bytes；錯誤密碼與 checksum 依然拒絕。兩套本機 Resonance 已在 2026-10-08 台灣 17:36 更新，備份與 schema 22 核對通過。該 checkpoint 時實機送分成功仍待確認；確切來源、映像與部署範圍見 [修正證據](stable-ancillary-evidence.json)。
+附加欄位修正另完成一輪 461 次 HTTP／56 類最終映像協定測試，其中新的第十四項 opaque 附加資料仍取得原有 score receipt、Replay bytes；錯誤密碼與 checksum 依然拒絕。兩套本機 Resonance 已在 2026-10-08 台灣 17:36 更新，備份與 schema 22 核對通過。該 checkpoint 時實機送分成功仍待確認；確切來源、映像與部署範圍見 修正證據。
 
 同日 09:38:19／27／42 UTC 的三次真人重試已通過 multipart 與解密，改於 `StableSubmission::parse` 回覆 400 `invalid_score_envelope`；資料庫仍為零成績／Replay。這確認前述 413 阻擋已清除，但不代表完整送分成功。下一項是取得不含值的固定 parser failure category，以區分欄位數、版本、時間及其他 envelope 格式檢查。
 
@@ -44,13 +44,13 @@ Multer 3.1 的內建參數辨識區分大小寫，會漏認 `Name`／`FileName`�
 
 Envelope 拒絕診斷只輸出白名單固定 `parse_reason`、欄位數、附加欄位數、總 bytes，以及欄位數至少為 18 時 canonical 第 18 欄的原始／正常化長度和尾端 ASCII 空格數。公開回應維持 400 `invalid_score_envelope`。不輸出 parser error 原始字串、解密內容、版本值、玩家名稱或任何成績欄位值。
 
-此版本完成 7 個核心 submission tests、原有 25 個 multipart tests、新的診斷隱私測試及 Clippy；新的隱私 fixture 一度誤把合法空格後綴當成超長版本，修正 fixture 後單獨通過，未重跑已通過的 reader tests。最終映像另通過一輪 465 HTTP／57 類隔離協定檢查，包含獨立加密 128／256／512 空格後綴重試、原 receipt／Replay 一致及超長版本拒絕。兩套本機 Resonance 已在 2026-10-08 台灣 18:00 更新，schema 22、其他八個容器與原有資料 ID 保留；更新時仍無原生成績／Replay。新的 source、映像、備份及驗證範圍見 [版本旗標修正證據](stable-version-flags-evidence.json)。真人成功依然需要對應請求與持久化證據。
+此版本完成 7 個核心 submission tests、原有 25 個 multipart tests、新的診斷隱私測試及 Clippy；新的隱私 fixture 一度誤把合法空格後綴當成超長版本，修正 fixture 後單獨通過，未重跑已通過的 reader tests。最終映像另通過一輪 465 HTTP／57 類隔離協定檢查，包含獨立加密 128／256／512 空格後綴重試、原 receipt／Replay 一致及超長版本拒絕。兩套本機 Resonance 已在 2026-10-08 台灣 18:00 更新，schema 22、其他八個容器與原有資料 ID 保留；更新時仍無原生成績／Replay。新的 source、映像、備份及驗證範圍見 版本旗標修正證據。真人成功依然需要對應請求與持久化證據。
 
 2026-10-08 13:53:40–13:55:32 UTC（台灣 21:53–21:55）的五次真人提交，均於欄位數檢查回覆 400：`parse_reason=field_count`、19 欄、143 bytes，資料庫仍為零成績／Replay。這確定「剛好 18 欄」的檢查是當次阻擋點；先前的版本旗標修正不能當成這次已成功。同期讀取排行榜的八個請求為七次 200、一次 499，但 HTTP 狀態本身不證明原生 UI 解析成功。
 
 [Sunrise 的固定欄位解析](https://github.com/SunriseCommunity/Sunrise/blob/f44fa316152a5b93e32cba6b4d48ca98535a2918/Sunrise.Shared/Extensions/Scores/ScoreExtensions.cs#L139) 接受至少 18 欄並讀取索引 0–17；[bancho.py 的資料模型](https://github.com/osuAkatsuki/bancho.py/blob/f10c03a3969c1b48a0cf9a423384653633c52fba/app/objects/score.py#L179) 也以固定索引讀取 canonical 資料。Resonance 以原創 `splitn(19, ':')` 實作有界前段解析：前 18 欄仍依原規則驗證，後續 opaque 附加內容保留為單一未使用 slice，整體 16 KiB 上限不變。附加內容不成為帳號、checksum、版本、PP、Replay 或審核依據。這不推定真人第 19 欄的具體語意；伺服器只使用協定中已知且經驗證的欄位。
 
-有界前段修正完成 10 個核心 tests、更新後的診斷隱私測試與 Clippy；獨立 Python fixture 以 19 欄首次保存成績及 Replay，之後以 18 欄、空／decimal／opaque／多欄附加內容重試取得相同 receipt，17 欄截斷、錯誤 checksum／密碼仍被拒絕。最終映像通過一輪 472 HTTP／58 類隔離協定 gate，兩套本機 Resonance 在 2026-10-08 台灣 22:07 更新，十個容器健康、schema 22 與原有資料 ID 保留。來源、參考 revision、備份和原生觀察範圍見 [前段解析證據](stable-prefix-evidence.json)；隔離 fixture 成功仍不等同真人成功。
+有界前段修正完成 10 個核心 tests、更新後的診斷隱私測試與 Clippy；獨立 Python fixture 以 19 欄首次保存成績及 Replay，之後以 18 欄、空／decimal／opaque／多欄附加內容重試取得相同 receipt，17 欄截斷、錯誤 checksum／密碼仍被拒絕。最終映像通過一輪 472 HTTP／58 類隔離協定 gate，兩套本機 Resonance 在 2026-10-08 台灣 22:07 更新，十個容器健康、schema 22 與原有資料 ID 保留。來源、參考 revision、備份和原生觀察範圍見 前段解析證據；隔離 fixture 成功仍不等同真人成功。
 
 ## 真人 stable 保存證據
 
@@ -60,4 +60,4 @@ Envelope 拒絕診斷只輸出白名單固定 `parse_reason`、欄位數、附�
 
 本機唯讀證據保留在忽略檔 `data-native-auto-publication-20261008/native-persistence-evidence-20261008T141653Z.json`，SHA-256 為 `be2ee1bd27d09aadd45d677df58e37c5fa908f1f2e7acf1daf3876fdf857a09c`。採樣只保存固定分類、byte counts 與比對 booleans，沒有寫入正式資料、複製 Replay 內容或操作遊戲。這證明本次真人 stable 成績保存與 passed Replay 的持久化／綁定；尚未證明原生 Replay 播放、所有規則模式、lazer 或完整 release checklist，原始目標仍未完成。
 
-自動公開版已於台灣 22:38 更新兩套本機 Resonance，最終映像通過 537 HTTP／64 類隔離回歸。更新後按這兩筆既有原生證據、immutable receipt 與管理狀態檢查，僅公開 #1、#2 並各記一次 `scores.native_publish`。匿名 HTTPS 已讀到兩筆 verified、個人頁兩次遊玩與正 PP，#2 Replay 可公開讀取；不需要重新遊玩來解除舊 pending。確切來源、映像、備份、測試修正和更新範圍見 [自動公開證據](native-auto-publication-evidence.json)。
+自動公開版已於台灣 22:38 更新兩套本機 Resonance，最終映像通過 537 HTTP／64 類隔離回歸。更新後按這兩筆既有原生證據、immutable receipt 與管理狀態檢查，僅公開 #1、#2 並各記一次 `scores.native_publish`。匿名 HTTPS 已讀到兩筆 verified、個人頁兩次遊玩與正 PP，#2 Replay 可公開讀取；不需要重新遊玩來解除舊 pending。確切來源、映像、備份、測試修正和更新範圍見 自動公開證據。

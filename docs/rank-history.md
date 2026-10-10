@@ -26,4 +26,4 @@ Sanctuary 啟動時與每分鐘檢查一次是否需要記錄，同一天的成�
 
 `points` 只包含實際紀錄，依日期升序，欄位為 `date`、`captured_at`、`pp`、`rank`、`country_rank`、`country`。空陣列表示該範圍尚無這位玩家的紀錄。資料庫以交易及跨副本鎖保證七個分區一同完成；失敗時不留下部分觀測。重啟或多副本在同一收集週期內不會重複寫入。
 
-遷移 `0022_rank_history.sql` 只建立儲存結構，不回填歷史。升級時需要一起更新 Sanctuary 和 Resonance，因為兩者都內嵌完整遷移。原有帳號、圖譜、成績與公告保留。此功能不代表 native stable／lazer gameplay 或送分已通過實際客戶端驗證；進度見[驗證說明](verification.md)。
+遷移 `0022_rank_history.sql` 只建立儲存結構，不回填歷史。升級時需要一起更新 Sanctuary 和 Resonance，因為兩者都內嵌完整遷移。原有帳號、圖譜、成績與公告保留。此功能不代表 native stable／lazer gameplay 或送分已通過實際客戶端驗證；進度見[驗證說明](../apps/docs/content/docs/reference/verification.md)。
