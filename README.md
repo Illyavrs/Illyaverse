@@ -25,10 +25,6 @@
 
 ---
 
-<p align="center">
-  <img src="docs/readme/showcase.webp" alt="Illyaverse home page, player profile and beatmap browser" width="100%">
-</p>
-
 Illyaverse brings accounts, beatmaps, scores, replays, rankings and chat into one
 deployment. Its name is inspired by _Fate/kaleid liner Prisma Illya_. Players
 register on the website and use the same account in either game client.
@@ -39,6 +35,10 @@ launcher cleanup still need client verification. Client-test now runs schema 29,
 with its existing data preserved; the main deployment remains at schema 22. See the
 current integration record and
 [release checklist](https://docs.shdcloud.top/en/docs/status) for verification scope.
+
+<p align="center">
+  <img src="docs/readme/showcase.webp" alt="Illyaverse home page, player profile and beatmap browser" width="100%">
+</p>
 
 ## Run a local server
 
