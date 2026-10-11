@@ -1155,7 +1155,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "rosu-mods",
- "rosu-pp",
+ "rosu-pp 4.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde",
  "serde_json",
  "uuid",
@@ -2116,6 +2116,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rosu-pp"
+version = "4.0.1"
+source = "git+https://github.com/MaxOhn/rosu-pp?rev=072ed255fa043aba495212c441030dc7a5e61469#072ed255fa043aba495212c441030dc7a5e61469"
+dependencies = [
+ "divan",
+ "rosu-map",
+ "rosu-mods",
+]
+
+[[package]]
 name = "rsa"
 version = "0.9.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2232,7 +2242,8 @@ dependencies = [
  "rand_core 0.6.4",
  "reqwest",
  "resonance-protocol",
- "rosu-pp",
+ "rosu-pp 4.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rosu-pp 4.0.1 (git+https://github.com/MaxOhn/rosu-pp?rev=072ed255fa043aba495212c441030dc7a5e61469)",
  "serde",
  "serde_json",
  "sha2",
