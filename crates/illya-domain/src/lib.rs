@@ -48,8 +48,8 @@ pub fn validate_username(value: &str) -> Result<(), &'static str> {
 }
 
 pub fn validate_password(value: &str) -> Result<(), &'static str> {
-    if !(12..=128).contains(&value.len()) {
-        return Err("Password must be 12–128 bytes.");
+    if !(8..=128).contains(&value.len()) {
+        return Err("Password must be 8–128 bytes.");
     }
     Ok(())
 }
@@ -62,6 +62,8 @@ pub fn validate_color(value: &str) -> bool {
 #[serde(default, deny_unknown_fields)]
 pub struct Preferences {
     pub pm_friends_only: bool,
+    /// Show the rank this pp would hold on official Bancho (never applies to Relax).
+    pub bancho_rank: bool,
     pub locale: String,
     pub mode: String,
     pub accent_color: String,
@@ -82,6 +84,7 @@ impl Default for Preferences {
     fn default() -> Self {
         Self {
             pm_friends_only: false,
+            bancho_rank: false,
             locale: "zh-TW".into(),
             mode: "dark".into(),
             accent_color: "#f28eb6".into(),
