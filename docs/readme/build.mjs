@@ -72,8 +72,8 @@ const buttons = page(
     .t{font-size:22px;font-weight:900;line-height:1.15}
     .s{font-size:14px;font-weight:700;opacity:.72;margin-top:2px}
   </style>
-  ${btn(download, "Kaleidoscope launcher", "stable and lazer", true, 230)}
-  ${btn(book, "Documentation", "Deploy, configure, connect", false, 630)}`,
+  ${btn(download, "Kaleidoscope launcher", "stable and lazer", true, 173.33)}
+  ${btn(book, "Documentation", "Deploy, configure, connect", false, 686.67)}`,
   100,
   "--pos:center 22%;--dim:.22",
 );

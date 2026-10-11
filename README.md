@@ -13,15 +13,17 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square" alt="MIT License"></a>
 </p>
 
-<p align="center"><a href="https://github.com/Illyavrs/Kaleidoscope/releases/latest"><img src="docs/readme/btn-kaleidoscope.webp" alt="Kaleidoscope launcher" width="50%"></a><a href="https://docs.shdcloud.top/"><img src="docs/readme/btn-docs.webp" alt="Documentation" width="50%"></a></p>
-
 <p align="center">
   <a href="#run-a-local-server">Quick start</a> ·
   <a href="#what-is-included">Features</a> ·
   <a href="#connect-a-game-client">Connect a client</a> ·
   <a href="#repository-layout">Layout</a> ·
-  <a href="apps/docs/content/docs/status.md">Status</a>
+  <a href="https://docs.shdcloud.top/en/docs/status">Status</a>
 </p>
+
+<p align="center"><a href="https://github.com/Illyavrs/Kaleidoscope/releases/latest"><img src="docs/readme/btn-kaleidoscope.webp" alt="Kaleidoscope launcher" width="50%"></a><a href="https://docs.shdcloud.top/"><img src="docs/readme/btn-docs.webp" alt="Documentation" width="50%"></a></p>
+
+---
 
 <p align="center">
   <img src="docs/readme/showcase.webp" alt="Illyaverse home page, player profile and beatmap browser" width="100%">
@@ -36,7 +38,7 @@ working. Replay playback, multiplayer, private messages, Relax, reconnection and
 launcher cleanup still need client verification. Client-test now runs schema 29,
 with its existing data preserved; the main deployment remains at schema 22. See the
 current integration record and
-[release checklist](apps/docs/content/docs/status.md) for verification scope.
+[release checklist](https://docs.shdcloud.top/en/docs/status) for verification scope.
 
 ## Run a local server
 
@@ -78,9 +80,9 @@ use the HTTPS overlay:
 docker compose -f compose.yaml -f compose.production.yaml up -d --build --wait
 ```
 
-The [deployment guide](apps/docs/content/docs/deployment.md) covers DNS, HTTPS, environment
+The [deployment guide](https://docs.shdcloud.top/en/docs/deployment) covers DNS, HTTPS, environment
 settings, backups and restoration. The separate
-[local client test configuration](apps/docs/content/docs/connecting-players.md) uses `illya.test`
+[local client test configuration](https://docs.shdcloud.top/en/docs/connecting-players) uses `illya.test`
 and a local CA; browser preview alone does not configure game connectivity.
 
 ## What is included
@@ -144,9 +146,9 @@ A lazer update can require an updated launcher package. The current package is
 a local unsigned Debug test build with the production web interface embedded; public
 release distribution is not configured. The new 17-file package is complete;
 its native GUI and gameplay checks remain pending. The
-[launcher guide](apps/docs/content/docs/kaleidoscope.md) links the package and explains
-restart, cleanup and recovery. See [connection setup](apps/docs/content/docs/connecting-players.md) and
-[protocol compatibility](apps/docs/content/docs/status.md) for verification scope.
+[launcher guide](https://docs.shdcloud.top/en/docs/kaleidoscope) links the package and explains
+restart, cleanup and recovery. See [connection setup](https://docs.shdcloud.top/en/docs/connecting-players) and
+[protocol compatibility](https://docs.shdcloud.top/en/docs/status) for verification scope.
 
 ## Repository layout
 
@@ -180,7 +182,7 @@ previous origin remains as `previous-origin`. This configures repository URLs;
 source has not been pushed to GitHub, releases have not been published and signing
 keys have not been configured. Pinned commits must be available there before a
 fresh recursive clone can be claimed to work.
-See the [repository guide](apps/docs/content/docs/architecture.md) for submodule workflows
+See the [repository guide](https://docs.shdcloud.top/en/docs/architecture) for submodule workflows
 and the boundaries between source files and generated output.
 
 ## Develop and verify
@@ -195,7 +197,7 @@ npm run dev
 
 The root npm commands target Serendipity. API and protocol services need
 PostgreSQL, `DATABASE_URL` and service secrets; `compose.dev.yaml` provides
-loopback-only database and API ports. See the [architecture guide](apps/docs/content/docs/architecture.md)
+loopback-only database and API ports. See the [architecture guide](https://docs.shdcloud.top/en/docs/architecture)
 for service startup and routing.
 
 ```sh
@@ -208,7 +210,7 @@ npm run build
 Kaleidoscope's interface is a separate npm workspace:
 `npm run dev --workspace @illyaverse/kaleidoscope`. Building its native Windows
 package also needs the MSVC toolchain and .NET 10 SDK; follow the launcher guide.
-[Verification records](apps/docs/content/docs/status.md)
+[Verification records](https://docs.shdcloud.top/en/docs/status)
 document the integration gates. Ignored database tests and protocol fixtures do
 not replace actual client testing.
 
@@ -223,11 +225,11 @@ requirements are in [AGENTS.md](AGENTS.md).
 
 Operator documentation is the bilingual site in [apps/docs](apps/docs):
 
-- [Deployment](apps/docs/content/docs/deployment.md) and [configuration](apps/docs/content/docs/configuration.md)
-- [Backup and restore](apps/docs/content/docs/backup-and-restore.md)
-- [Architecture](apps/docs/content/docs/architecture.md) and [roles and permissions](apps/docs/content/docs/permissions.md)
-- [Connecting players](apps/docs/content/docs/connecting-players.md) and the [Kaleidoscope launcher](apps/docs/content/docs/kaleidoscope.md)
-- [Verification status](apps/docs/content/docs/status.md)
+- [Deployment](https://docs.shdcloud.top/en/docs/deployment) and [configuration](https://docs.shdcloud.top/en/docs/configuration)
+- [Backup and restore](https://docs.shdcloud.top/en/docs/backup-and-restore)
+- [Architecture](https://docs.shdcloud.top/en/docs/architecture) and [roles and permissions](https://docs.shdcloud.top/en/docs/permissions)
+- [Connecting players](https://docs.shdcloud.top/en/docs/connecting-players) and the [Kaleidoscope launcher](https://docs.shdcloud.top/en/docs/kaleidoscope)
+- [Verification status](https://docs.shdcloud.top/en/docs/status)
 
 Player help shown on the website lives in [docs/player](docs/player). The score conversion derivation is in [docs/score-normalization.md](docs/score-normalization.md).
 
