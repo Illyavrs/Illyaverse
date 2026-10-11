@@ -6,3 +6,7 @@ Dockerfile text eol=lf
 *.yaml text eol=lf
 Caddyfile* text eol=lf
 /migrations/*.sql text eol=lf
+
+# Exclude test, operations and tooling scripts from GitHub language statistics.
+infra/**/*.mjs linguist-detectable=false
+docs/readme/build.mjs linguist-detectable=false
