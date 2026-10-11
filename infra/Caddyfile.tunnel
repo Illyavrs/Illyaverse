@@ -25,6 +25,8 @@
 	header_up X-Forwarded-For {client_ip}
 }
 
+# Routes shared by the website host and the osu.* host the game clients use. The final catch-all
+# differs: the website serves pages, while osu.* sends page requests back to the website host.
 (website_routes) {
 	import lazer_user_alias
 	encode zstd gzip
@@ -43,6 +45,10 @@
 			import upstream_ip
 		}
 	}
+}
+
+http://{$ILLYA_DOMAIN} {
+	import website_routes
 	handle {
 		reverse_proxy serendipity:3000 {
 			import upstream_ip
@@ -50,8 +56,12 @@
 	}
 }
 
-http://{$ILLYA_DOMAIN}, http://osu.{$ILLYA_DOMAIN} {
+http://osu.{$ILLYA_DOMAIN} {
 	import website_routes
+	# stable opens web pages on osu.*; send them to the real site (protocol paths stay above).
+	handle {
+		redir https://{$ILLYA_DOMAIN}{uri} 302
+	}
 }
 
 http://c.{$ILLYA_DOMAIN}, http://ce.{$ILLYA_DOMAIN}, http://c4.{$ILLYA_DOMAIN}, http://api.{$ILLYA_DOMAIN}, http://spectator.{$ILLYA_DOMAIN}, http://bss.{$ILLYA_DOMAIN}, http://a.{$ILLYA_DOMAIN}, http://b.{$ILLYA_DOMAIN} {
