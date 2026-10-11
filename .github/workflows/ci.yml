@@ -163,11 +163,17 @@ jobs:
           cache: npm
       - uses: Swatinem/rust-cache@v2
       - run: cargo test -p kaleidoscope --locked
-      - run: ./tools/kaleidoscope/tests/runtime-host.ps1
+      - name: Verify self-contained runtime host boundaries
         shell: pwsh
+        # The script deliberately probes native exit codes; do not let the last one leak out as the step status.
+        run: |
+          ./tools/kaleidoscope/tests/runtime-host.ps1
+          $global:LASTEXITCODE = 0
       - name: Verify portable package assembly with synthetic files
         shell: pwsh
-        run: ./tools/kaleidoscope/tests/package-integrity.ps1
+        run: |
+          ./tools/kaleidoscope/tests/package-integrity.ps1
+          $global:LASTEXITCODE = 0
       - run: npm ci
       - run: npm run build --workspace @illyaverse/kaleidoscope
       - run: cargo build --manifest-path tools/kaleidoscope/ui/src-tauri/Cargo.toml --release --locked --features custom-protocol
@@ -197,6 +203,8 @@ jobs:
       - run: node --test infra/tests/disposable-web-smoke.test.mjs
       - run: node --test infra/tests/recovery.test.mjs
       - run: docker compose build
+      # The recovery drill never pulls; it needs the pinned base image present locally.
+      - run: docker pull postgres:17-alpine
       - run: node infra/disposable-recovery-drill.mjs
         env:
           ILLYA_ALLOW_DISPOSABLE_TEST: '1'
