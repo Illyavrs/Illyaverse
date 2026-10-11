@@ -23,3 +23,4 @@ tools/kaleidoscope/ui/tsconfig.tsbuildinfo
 tools/kaleidoscope/ui/src-tauri/gen/schemas/
 # Legacy build output remains in place; only tracked launcher source was moved.
 apps/kaleidoscope/
+docs/readme/out/

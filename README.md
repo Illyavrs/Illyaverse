@@ -1,7 +1,9 @@
-<h1 align="center">Illyaverse</h1>
+<p align="center">
+  <img src="docs/readme/hero.webp" alt="Illyaverse: an osu! community server" width="100%">
+</p>
 
 <p align="center">
-  <strong>An osu! community server: a customizable player website, Rust services, and a Windows launcher for stable and lazer.</strong>
+  <strong>An osu! community server: a customizable player website, Rust services, and a launcher for stable and lazer.</strong>
 </p>
 
 <p align="center">
@@ -9,6 +11,23 @@
   <a href="services/sanctuary"><img src="https://img.shields.io/badge/Services-Rust-ce824d?style=flat-square&logo=rust" alt="Rust services"></a>
   <a href="compose.yaml"><img src="https://img.shields.io/badge/Deploy-Docker-2496ed?style=flat-square&logo=docker" alt="Docker deployment"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square" alt="MIT License"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Illyavrs/Kaleidoscope/releases/latest"><img src="docs/readme/btn-kaleidoscope.webp" alt="Kaleidoscope launcher" width="32%"></a>
+  <a href="https://docs.shdcloud.top/"><img src="docs/readme/btn-docs.webp" alt="Documentation" width="32%"></a>
+</p>
+
+<p align="center">
+  <a href="#run-a-local-server">Quick start</a> ·
+  <a href="#what-is-included">Features</a> ·
+  <a href="#connect-a-game-client">Connect a client</a> ·
+  <a href="#repository-layout">Layout</a> ·
+  <a href="apps/docs/content/docs/status.md">Status</a>
+</p>
+
+<p align="center">
+  <img src="docs/readme/showcase.webp" alt="Illyaverse home page, player profile and beatmap browser" width="100%">
 </p>
 
 Illyaverse brings accounts, beatmaps, scores, replays, rankings and chat into one
@@ -222,6 +241,13 @@ graphics and launcher dependencies retain their own licenses and notices.
 See font provenance, the
 [Twemoji attribution](apps/serendipity/public/flags/twemoji/ATTRIBUTION.txt) and
 the [bridge notices](tools/transfiguration/THIRD-PARTY-NOTICES.md).
+
+The README images are rendered from [`docs/readme/build.mjs`](docs/readme/build.mjs).
+The hero background is a scene from _Sakura no Uta_ (Sakura no Uta 10th Anniversary
+Edition) the character is the website's homepage artwork, and the screenshots show this project's website (see
+[provenance](apps/serendipity/public/images/home-character.provenance.md)). Both are
+used by the project owner for decoration only and remain the property of their
+respective rights holders; they are not covered by the MIT License.
 
 Research references include [Solar-System](https://github.com/SunriseCommunity/Solar-System),
 [Sunset](https://github.com/SunriseCommunity/Sunset),
