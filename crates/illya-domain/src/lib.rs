@@ -24,6 +24,7 @@ pub const PERMISSIONS: &[&str] = &[
     "audit.read",
     "scores.moderate",
     "announcements.manage",
+    "broadcast.send",
     "admin.view",
 ];
 
