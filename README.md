@@ -13,10 +13,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square" alt="MIT License"></a>
 </p>
 
-<p align="center">
-  <a href="https://github.com/Illyavrs/Kaleidoscope/releases/latest"><img src="docs/readme/btn-kaleidoscope.webp" alt="Kaleidoscope launcher" width="32%"></a>
-  <a href="https://docs.shdcloud.top/"><img src="docs/readme/btn-docs.webp" alt="Documentation" width="32%"></a>
-</p>
+<p align="center"><a href="https://github.com/Illyavrs/Kaleidoscope/releases/latest"><img src="docs/readme/btn-kaleidoscope.webp" alt="Kaleidoscope launcher" width="50%"></a><a href="https://docs.shdcloud.top/"><img src="docs/readme/btn-docs.webp" alt="Documentation" width="50%"></a></p>
 
 <p align="center">
   <a href="#run-a-local-server">Quick start</a> ·

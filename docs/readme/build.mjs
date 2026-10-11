@@ -62,19 +62,21 @@ const hero = page(
 );
 
 // ---------------------------------------------------------------- buttons
-const button = (icon, title, sub, primary, pos) =>
-  page(
-    `<style>
-      .b{position:absolute;inset:14px;display:flex;align-items:center;gap:16px;padding:0 26px;
-         ${primary ? "background:#f28eb6;color:#111;border-color:#f6a9c7" : ""}}
-      .b svg{flex:none}
-      .t{font-size:22px;font-weight:900;line-height:1.15}
-      .s{font-size:14px;font-weight:700;opacity:.72;margin-top:2px}
-    </style>
-    <div class="glass b" style="${primary ? "backdrop-filter:none" : ""}">${icon}<div><div class="t">${title}</div><div class="s">${sub}</div></div></div>`,
-    100,
-    `--pos:${pos};--dim:.22;width:400px`,
-  ).replace("html,body{width:1200px", "html,body{width:400px");
+// One continuous strip, split into two halves so each half can be its own link.
+const btn = (icon, title, sub, primary, left) =>
+  `<div class="glass b" style="left:${left}px;${primary ? "background:#f28eb6;color:#111;border-color:#f6a9c7;backdrop-filter:none" : ""}">${icon}<div><div class="t">${title}</div><div class="s">${sub}</div></div></div>`;
+const buttons = page(
+  `<style>
+    .b{position:absolute;top:14px;bottom:14px;width:340px;display:flex;align-items:center;gap:16px;padding:0 28px}
+    .b svg{flex:none}
+    .t{font-size:22px;font-weight:900;line-height:1.15}
+    .s{font-size:14px;font-weight:700;opacity:.72;margin-top:2px}
+  </style>
+  ${btn(download, "Kaleidoscope launcher", "stable and lazer", true, 230)}
+  ${btn(book, "Documentation", "Deploy, configure, connect", false, 630)}`,
+  100,
+  "--pos:center 22%;--dim:.22",
+);
 
 // ---------------------------------------------------------------- showcase
 const showcase = page(
@@ -97,8 +99,7 @@ const showcase = page(
 // ---------------------------------------------------------------- render
 const jobs = [
   ["hero", hero, 520, W],
-  ["btn-kaleidoscope", button(download, "Kaleidoscope launcher", "stable and lazer", true, "60% 20%"), 100, 400],
-  ["btn-docs", button(book, "Documentation", "Deploy, configure, connect", false, "30% 60%"), 100, 400],
+  ["buttons", buttons, 100, W],
   ["showcase", showcase, 1180, W],
 ];
 
@@ -115,6 +116,14 @@ for (const [name, html, h, w] of jobs) {
   await p.evaluate(() => document.fonts.ready);
   await p.waitForTimeout(300);
   const png = await p.screenshot({ clip: { x: 0, y: 0, width: w, height: h } });
+  if (name === "buttons") {
+    const half = W; // 2x device scale: each half is 600 css px wide
+    await sharp(png).extract({ left: 0, top: 0, width: half, height: h * 2 }).webp({ quality: 90 }).toFile(join(here, "btn-kaleidoscope.webp"));
+    await sharp(png).extract({ left: half, top: 0, width: half, height: h * 2 }).webp({ quality: 90 }).toFile(join(here, "btn-docs.webp"));
+    await p.close();
+    console.log("wrote btn-kaleidoscope.webp, btn-docs.webp");
+    continue;
+  }
   await sharp(png).webp({ quality: 90 }).toFile(join(here, `${name}.webp`));
   await p.close();
   console.log("wrote", `${name}.webp`);
