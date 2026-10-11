@@ -65,7 +65,7 @@ export function validateWebSmokeConfig(config, { project, port, images, caddyFil
         actual.push([volume.source, volume.target]);
       } else if (name === 'caddy' && volume.type === 'bind' && volume.read_only === true &&
           volume.target === '/etc/caddy/Caddyfile' && typeof volume.source === 'string' && samePath(volume.source, caddyFile) &&
-          volume.bind?.create_host_path === false) {
+          volume.bind?.create_host_path !== true) {
         binds++;
       } else throw new Error(`Disposable website may bind only the exact read-only infra/Caddyfile (service ${name}, expected ${caddyFile}, got ${JSON.stringify(volume)}).`);
     }

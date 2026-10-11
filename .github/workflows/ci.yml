@@ -28,6 +28,18 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Provide public manifest helper for isolated-schema migrations
+        # Migration 0029 hardcodes public.illya_valid_map_manifest; test schemas only own their private copy.
+        run: |
+          psql "postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci" -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE FUNCTION public.illya_valid_map_manifest(value TEXT[]) RETURNS BOOLEAN
+              LANGUAGE sql IMMUTABLE STRICT AS $$
+              SELECT cardinality(value) BETWEEN 1 AND 512
+                  AND array_position(value,NULL) IS NULL
+                  AND value = ARRAY(SELECT DISTINCT entry FROM unnest(value) entry ORDER BY entry)
+                  AND (SELECT bool_and(entry ~ '^[0-9a-f]{32}$') FROM unnest(value) entry)
+          $$;
+          SQL
       - run: cargo fmt --all --check
       - run: cargo test --workspace --locked
       - run: cargo test -p sanctuary persistence_and_permissions --locked -- --ignored
