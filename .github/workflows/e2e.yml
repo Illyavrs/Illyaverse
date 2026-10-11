@@ -1,0 +1,34 @@
+name: Browser e2e
+
+# Playwright browser tests run apart from Illyaverse CI so a failing UI test
+# never blocks the Rust, build, container and image checks.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: sh infra/setup.sh
+      - run: docker compose build
+      # The disposable website never builds or pulls; it needs every base image present locally.
+      - run: docker pull postgres:17-alpine
+      - run: docker pull caddy:2-alpine
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: node infra/disposable-web-smoke.mjs
+        env:
+          ILLYA_ALLOW_DISPOSABLE_TEST: '1'
