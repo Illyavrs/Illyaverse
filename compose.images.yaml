@@ -1,0 +1,19 @@
+# Run prebuilt images published by .github/workflows/publish-images.yml instead of building on the host.
+# Requires Docker Compose 2.24.4+ for !reset.
+# Use with the tunnel (or production) override:
+#   docker compose -f compose.yaml -f compose.tunnel.yaml -f compose.images.yaml pull
+#   docker compose -f compose.yaml -f compose.tunnel.yaml -f compose.images.yaml up -d --no-build --wait
+# Pin a release with ILLYA_IMAGE_TAG=<commit sha>; the default follows the main branch.
+services:
+  sanctuary:
+    image: ghcr.io/illyavrs/illyaverse-sanctuary:${ILLYA_IMAGE_TAG:-latest}
+    pull_policy: always
+    build: !reset null
+  resonance:
+    image: ghcr.io/illyavrs/illyaverse-resonance:${ILLYA_IMAGE_TAG:-latest}
+    pull_policy: always
+    build: !reset null
+  serendipity:
+    image: ghcr.io/illyavrs/illyaverse-serendipity:${ILLYA_IMAGE_TAG:-latest}
+    pull_policy: always
+    build: !reset null

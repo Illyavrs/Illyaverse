@@ -80,6 +80,16 @@ use the HTTPS overlay:
 docker compose -f compose.yaml -f compose.production.yaml up -d --build --wait
 ```
 
+To avoid compiling on the server, pull the images that GitHub Actions publishes to GHCR instead
+(add `compose.tunnel.yaml` rather than `compose.production.yaml` for a Cloudflare Tunnel deployment):
+
+```sh
+docker compose -f compose.yaml -f compose.production.yaml -f compose.images.yaml pull
+docker compose -f compose.yaml -f compose.production.yaml -f compose.images.yaml up -d --no-build --wait
+```
+
+Set `ILLYA_IMAGE_TAG` to a commit SHA to pin a release; the default follows `main`.
+
 The [deployment guide](https://docs.shdcloud.top/en/docs/deployment) covers DNS, HTTPS, environment
 settings, backups and restoration. The separate
 [local client test configuration](https://docs.shdcloud.top/en/docs/connecting-players) uses `illya.test`
