@@ -67,7 +67,7 @@ export function validateWebSmokeConfig(config, { project, port, images, caddyFil
           volume.target === '/etc/caddy/Caddyfile' && typeof volume.source === 'string' && samePath(volume.source, caddyFile) &&
           volume.bind?.create_host_path === false) {
         binds++;
-      } else throw new Error('Disposable website may bind only the exact read-only infra/Caddyfile.');
+      } else throw new Error(`Disposable website may bind only the exact read-only infra/Caddyfile (service ${name}, expected ${caddyFile}, got ${JSON.stringify(volume)}).`);
     }
     if (JSON.stringify(actual.sort()) !== JSON.stringify(mounts[name].slice().sort()))
       throw new Error('Disposable website data mounts must be its own expected volumes.');
