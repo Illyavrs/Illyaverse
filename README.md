@@ -115,7 +115,10 @@ to empty, so metadata-only sets remain unavailable for download. Additional
 redirect hosts use `OSU_ARCHIVE_REDIRECT_HOSTS`. The client-test deployment
 includes this workflow.
 Local uploads do not require those credentials. SMTP is optional; the website
-reports when email features are unavailable.
+reports when email features are unavailable. To send mail through Resend, set
+`RESEND_API_KEY` and `SMTP_FROM` (a sender on a domain verified in Resend); any other
+provider uses `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD` and `SMTP_TLS`
+(`starttls` or `implicit`).
 
 The default dark background is plain black. Players can adjust background
 blur and dimming, panel blur and opacity, glass coverage, accent color and
