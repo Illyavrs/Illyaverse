@@ -25,3 +25,11 @@ Background, blur and opacity settings are stored only in your browser by default
 ## Profile and announcements
 
 Your profile's "About me" and announcements support [Markdown](/docs/markdown). Images are not loaded and links open in a new tab.
+
+## Changing your username
+
+You can change your username once every seven days in account settings, using your current password. Your previous name stays reserved for you for 90 days. Staff changes retain their existing cooldown exemption.
+
+## Writing your profile
+
+Profile settings include a visual rich-text editor with formatting tools, source editing and preview. Choose Markdown or BBCode for each biography. Existing biographies remain Markdown. The saved format travels with the text; changing formats converts the current draft. Links are untrusted user content, raw HTML is not executed, and remote images are not loaded automatically.
