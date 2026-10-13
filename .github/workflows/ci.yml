@@ -78,6 +78,9 @@ jobs:
       - run: cargo test -p sanctuary profile_presentation_tests --locked -- --ignored --test-threads=1
         env:
           ILLYA_TEST_DATABASE_URL: postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci
+      - run: cargo test -p sanctuary rewards_public_cards_show_only_equipped_cosmetics_and_preserve_visibility --locked -- --ignored
+        env:
+          ILLYA_TEST_DATABASE_URL: postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci
       - run: cargo test -p sanctuary chat_visibility_tests --locked -- --ignored --test-threads=1
         env:
           ILLYA_TEST_DATABASE_URL: postgres://illya:illyaverse-ci-only@localhost:5432/illyaverse_ci
